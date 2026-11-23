@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: westbummeln-multiplayer
+    runtime: python
+    plan: free
+    buildCommand: "echo Build bereit"
+    startCommand: python server.py
+    healthCheckPath: /
