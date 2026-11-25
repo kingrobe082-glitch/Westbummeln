@@ -1,5 +1,8 @@
 """Sichert die Konten automatisch in ein privates GitHub-Repo und stellt sie beim Start wieder her.
-Nur Standardbibliothek. Aktiv, wenn BACKUP_GITHUB_TOKEN und BACKUP_GITHUB_REPO gesetzt sind."""
+Nur Standardbibliothek. Aktiv, wenn BACKUP_GITHUB_TOKEN und BACKUP_GITHUB_REPO gesetzt sind.
+
+Sicherheitsregeln: Es wird nie gesichert, bevor der Start-Check (Zugriff + Wiederherstellung) geklappt hat,
+und eine leere Datenbank überschreibt nie eine vorhandene Sicherung."""
 import base64
 import hashlib
 import json
@@ -13,20 +16,38 @@ import urllib.request
 import accounts
 
 TOKEN = os.environ.get('BACKUP_GITHUB_TOKEN', '').strip()
-REPO = os.environ.get('BACKUP_GITHUB_REPO', '').strip()          # z. B. meinname/westbummeln-backup
+REPO = os.environ.get('BACKUP_GITHUB_REPO', '').strip()          # z. B. meinname/westbummeln-konten
 FILE = os.environ.get('BACKUP_FILE', 'accounts-backup.json').strip()
 BRANCH = os.environ.get('BACKUP_GITHUB_BRANCH', 'main').strip()
 ENABLED = bool(TOKEN and REPO)
 
+HINTS = {
+    401: 'Token ungültig oder abgelaufen.',
+    403: 'Token darf nicht schreiben (nötig: Contents = Read and write).',
+    404: 'Repo nicht gefunden oder Token hat keinen Zugriff darauf (Repo-Name und Token prüfen).',
+    409: 'Konflikt, wird erneut versucht.',
+    422: 'Branch oder Datei passt nicht (Branch-Name prüfen), wird erneut versucht.',
+}
+
 _event = threading.Event()
 _push_lock = threading.Lock()
 _last_hash = None
+_ready = False          # erst nach erfolgreichem Start-Check darf gesichert werden
+_notified = False
 
 
-def _request(method, body=None):
-    url = f'https://api.github.com/repos/{REPO}/contents/{FILE}'
-    if method == 'GET':
-        url += f'?ref={BRANCH}'
+class AccessDenied(RuntimeError):
+    """Token oder Repo-Name falsch: Wiederholen hilft nicht."""
+
+
+def _problem(status):
+    return f'Status {status}: ' + HINTS.get(status, 'unerwartete Antwort von GitHub.')
+
+
+def _request(method, body=None, repo_only=False):
+    url = f'https://api.github.com/repos/{REPO}'
+    if not repo_only:
+        url += f'/contents/{FILE}' + (f'?ref={BRANCH}' if method == 'GET' else '')
     req = urllib.request.Request(url, method=method, data=json.dumps(body).encode() if body else None, headers={
         'Authorization': f'Bearer {TOKEN}', 'Accept': 'application/vnd.github+json',
         'User-Agent': 'westbummeln-backup', 'Content-Type': 'application/json'})
@@ -46,6 +67,11 @@ def _b64(value):
 
 def _unb64(value):
     return base64.b64decode(value) if value is not None else None
+
+
+def _account_count():
+    with accounts.database() as db:
+        return db.execute('SELECT COUNT(*) FROM accounts').fetchone()[0]
 
 
 def export_text():
@@ -70,45 +96,60 @@ def import_text(text):
     return len(data['accounts'])
 
 
+def check_access():
+    status, _ = _request('GET', repo_only=True)
+    if status in (401, 403, 404):
+        raise AccessDenied(_problem(status))
+    if status != 200:
+        raise RuntimeError(_problem(status))
+
+
 def restore():
-    """Beim Start: Ist die lokale Datenbank leer, werden die Konten aus dem Backup geholt."""
+    """Ist die lokale Datenbank leer, werden die Konten aus dem Backup geholt."""
     global _last_hash
-    if not ENABLED:
+    if _account_count():
         return
-    with accounts.database() as db:
-        if db.execute('SELECT COUNT(*) FROM accounts').fetchone()[0]:
-            return
     status, data = _request('GET')
     if status == 404:
-        print('Backup: noch keine Sicherung vorhanden.', flush=True)
+        print('Backup: Repo erreichbar, noch keine Sicherung vorhanden.', flush=True)
         return
     if status != 200:
-        raise RuntimeError(f'GitHub antwortet mit Status {status}')
+        raise RuntimeError(_problem(status))
     count = import_text(base64.b64decode(data['content']).decode())
     _last_hash = hashlib.sha256(export_text().encode()).hexdigest()
     print(f'Backup: {count} Konten wiederhergestellt.', flush=True)
 
 
+def _prepare():
+    global _ready
+    check_access()
+    restore()
+    _ready = True
+
+
 def push():
     global _last_hash
+    if not _account_count():
+        return                       # eine leere Datenbank überschreibt nie eine Sicherung
     text = export_text()
     digest = hashlib.sha256(text.encode()).hexdigest()
     if digest == _last_hash:
         return
     status, data = _request('GET')
     if status not in (200, 404):
-        raise RuntimeError(f'GitHub antwortet mit Status {status}')
+        raise RuntimeError(_problem(status))
     body = {'message': 'Konten-Backup', 'branch': BRANCH, 'content': base64.b64encode(text.encode()).decode()}
     if status == 200:
         body['sha'] = data['sha']
     status, _ = _request('PUT', body)
     if status not in (200, 201):
-        raise RuntimeError(f'Sicherung fehlgeschlagen (Status {status})')
+        raise RuntimeError(_problem(status))
     _last_hash = digest
+    print(f'Backup: {len(json.loads(text)["accounts"])} Konten gesichert.', flush=True)
 
 
 def flush():
-    if ENABLED:
+    if ENABLED and _ready:
         with _push_lock:
             push()
 
@@ -118,9 +159,28 @@ def mark_dirty():
         _event.set()
 
 
+def _retry_prepare():
+    global _notified
+    if _account_count():
+        if not _notified:
+            print('Backup: pausiert bis zum nächsten Neustart (es gibt neue Konten, '
+                  'aber die alte Sicherung konnte nicht geladen werden).', flush=True)
+            _notified = True
+        return
+    try:
+        _prepare()
+        print('Backup: wieder verbunden.', flush=True)
+    except Exception as error:
+        print('Backup: GitHub weiterhin nicht erreichbar:', error, flush=True)
+
+
 def _worker():
     while True:
-        _event.wait()
+        _event.wait(None if _ready else 30)
+        if not _ready:
+            _retry_prepare()
+            if not _ready:
+                continue
         time.sleep(3)          # kurz sammeln, damit mehrere Änderungen eine Sicherung ergeben
         _event.clear()
         try:
@@ -134,6 +194,8 @@ def _worker():
 def _on_sigterm(*_):
     try:
         flush()
+    except Exception as error:
+        print('Backup beim Beenden fehlgeschlagen:', error, flush=True)
     finally:
         raise SystemExit(0)
 
@@ -142,9 +204,18 @@ def start():
     if not ENABLED:
         print('Backup: aus (BACKUP_GITHUB_TOKEN/BACKUP_GITHUB_REPO nicht gesetzt).', flush=True)
         return
-    try:
-        restore()
-    except Exception as error:
-        print('Backup: Wiederherstellung fehlgeschlagen:', error, flush=True)
+    for attempt in range(3):
+        try:
+            _prepare()
+            print('Backup: bereit.', flush=True)
+            break
+        except AccessDenied as error:
+            print('Backup: KEIN ZUGRIFF auf GitHub.', error, 'Sicherungen sind aus.', flush=True)
+            return
+        except Exception as error:
+            print(f'Backup: Start-Check fehlgeschlagen ({error}), Versuch {attempt + 1} von 3.', flush=True)
+            time.sleep(3)
+    else:
+        print('Backup: GitHub nicht erreichbar. Sicherungen pausieren, bis es klappt.', flush=True)
     threading.Thread(target=_worker, daemon=True).start()
     signal.signal(signal.SIGTERM, _on_sigterm)
