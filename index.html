@@ -2,16 +2,32 @@
 :root{font:15px system-ui,Arial;color:#eef5ff;background:#0b1420}*{box-sizing:border-box}body{margin:0}header{padding:14px 20px;background:#15263a;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}h1{font-size:21px;margin:0}h2{font-size:17px;margin:0 0 12px}h3{font-size:15px;margin:8px 0}main{max-width:1650px;margin:auto;padding:12px;display:grid;grid-template-columns:1.2fr 1fr;gap:12px}.panel{background:#192c41;border:1px solid #3a536d;border-radius:12px;padding:13px;min-width:0}.wide{grid-column:1/-1}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}.row>*{flex:1;min-width:0}button,input,select{font:inherit;border:1px solid #54718e;border-radius:8px;background:#263f59;color:white;padding:9px;min-height:39px}button{cursor:pointer}button:hover{background:#385e7d}button:disabled{opacity:.4;cursor:not-allowed}input{width:100%}.small{color:#c0d2e4;font-size:12px}.item{padding:9px 3px;border-bottom:1px solid #38516a}.pill{display:inline-block;padding:3px 8px;background:#39536b;border-radius:6px;font-size:12px}.green{background:#226d50}.hidden{display:none!important}#notice{color:#ffcd7d;min-height:24px;padding:0 15px}.statuses{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.active{background:#217451!important}.map{position:relative;width:100%;aspect-ratio:3/2;background:#1e3b2a;overflow:hidden;border-radius:9px}.map img{width:100%;height:100%;object-fit:fill;display:block}.pin{position:absolute;transform:translate(-50%,-100%);border:2px solid white;border-radius:100%;width:23px;height:23px;background:#e63731;color:white;display:grid;place-items:center;font-size:12px;box-shadow:0 2px 5px #0009;cursor:pointer;padding:0;min-height:0}.pin.vehicle{background:#2675d6;border-color:#d9eaff;width:15px;height:15px}.pin.selected{outline:3px solid #ffde70}.progress{height:11px;background:#0b1c2d;border-radius:9px;overflow:hidden;margin:8px 0}.progress span{display:block;height:100%;background:#37ad79}.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.tabs button{min-height:35px}#log{max-height:250px;overflow:auto;background:#0f2031;border-radius:8px;padding:6px}.incident{border:1px solid #3c5873;border-radius:9px;padding:10px;margin:8px 0}#vehicles{max-height:420px;overflow:auto}#connection{font-size:13px}label{font-size:13px}@media(max-width:850px){main{grid-template-columns:1fr}.wide{grid-column:auto}.statuses{grid-template-columns:repeat(3,1fr)}header{padding:12px}}
 
 /* Leitstelle V4 */
-:root{font-size:14px}body{background:#0a111b}header{position:sticky;top:0;z-index:20;border-bottom:1px solid #41617e;box-shadow:0 5px 20px #0005}main{grid-template-columns:minmax(0,1.3fr) minmax(350px,1fr);align-items:start}.panel{box-shadow:0 4px 15px #0003}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #ffd16e;outline-offset:2px}.panel h2{border-bottom:1px solid #37526c;padding-bottom:9px}.statbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.stat{background:#122338;border:1px solid #385575;border-radius:9px;padding:12px}.stat strong{font-size:25px;display:block}.stat span{font-size:12px;color:#c2d5e8}.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.toolbar>*{flex:1;min-width:110px}.incident{background:#12263a}.incident:target{outline:2px solid #ffd36a}.item{padding:10px 5px}.item button{margin-top:5px}.quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}.quick button{min-height:35px;padding:6px 9px;font-size:12px;background:#304960}.compact{font-size:12px;color:#c4d7eb}.map{aspect-ratio:1.55}.filterline{display:flex;gap:8px;flex-wrap:wrap}.filterline input{flex:2}.filterline select{flex:1}.screen-title{font-size:12px;letter-spacing:.09em;color:#92b5d8;text-transform:uppercase}.section-tag{background:#0d1d2c;border-radius:6px;padding:4px 8px;font-size:11px;color:#c5dcf5}.panel.wide{grid-column:1/-1}#radioPanel{grid-column:1/-1}#vehiclesPanel{grid-column:2}#controlPanel{grid-column:2}#mapPanel{grid-column:1;grid-row:span 2}#incidentsPanel{grid-column:1}#dashboard{grid-column:1/-1}.hidden{display:none!important}@media(max-width:850px){main{grid-template-columns:1fr}#mapPanel,#incidentsPanel,#vehiclesPanel,#controlPanel,#dashboard,#radioPanel{grid-column:1;grid-row:auto}.statbar{grid-template-columns:repeat(2,1fr)}.map{aspect-ratio:1.3}}#weatherOverlay{position:absolute;inset:0;pointer-events:none;z-index:3}#weatherOverlay.rain{background:repeating-linear-gradient(105deg,transparent 0 18px,#b9d9ff66 19px 20px,transparent 21px 38px);animation:rainfall .7s linear infinite}#weatherOverlay.fog{background:#cbd5e170;backdrop-filter:blur(2px)}#weatherOverlay.wind{background:repeating-linear-gradient(0deg,transparent 0 38px,#e4f4ff25 39px 40px,transparent 41px 90px);animation:rainfall 2s linear infinite}@keyframes rainfall{from{background-position:0 0}to{background-position:30px 80px}}@media(prefers-reduced-motion:reduce){#weatherOverlay{animation:none!important}}</style></head><body><header><div><h1>🚒 WESTBUMMELN · LEITSTELLE</h1><div class="small">Multiplayer · Einsatzkarte · Alarmierung · Funk</div></div><div class="row" style="flex:0 1 auto"><button id="soundToggle" aria-pressed="false">🔇 Ton einschalten</button><label style="white-space:nowrap">Lautstärke <input id="volume" type="range" min="0" max="100" value="55" style="width:95px;vertical-align:middle"></label><div id="connection">Nicht verbunden</div></div></header><div id="notice" role="status"></div><main>
+:root{font-size:14px}body{background:#0a111b}header{position:sticky;top:0;z-index:20;border-bottom:1px solid #41617e;box-shadow:0 5px 20px #0005}main{grid-template-columns:minmax(0,1.3fr) minmax(350px,1fr);align-items:start}.panel{box-shadow:0 4px 15px #0003}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #ffd16e;outline-offset:2px}.panel h2{border-bottom:1px solid #37526c;padding-bottom:9px}.statbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.stat{background:#122338;border:1px solid #385575;border-radius:9px;padding:12px}.stat strong{font-size:25px;display:block}.stat span{font-size:12px;color:#c2d5e8}.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.toolbar>*{flex:1;min-width:110px}.incident{background:#12263a}.incident:target{outline:2px solid #ffd36a}.item{padding:10px 5px}.item button{margin-top:5px}.quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}.quick button{min-height:35px;padding:6px 9px;font-size:12px;background:#304960}.compact{font-size:12px;color:#c4d7eb}.map{aspect-ratio:1.55}.filterline{display:flex;gap:8px;flex-wrap:wrap}.filterline input{flex:2}.filterline select{flex:1}.screen-title{font-size:12px;letter-spacing:.09em;color:#92b5d8;text-transform:uppercase}.section-tag{background:#0d1d2c;border-radius:6px;padding:4px 8px;font-size:11px;color:#c5dcf5}.panel.wide{grid-column:1/-1}#radioPanel{grid-column:1/-1}#vehiclesPanel{grid-column:2}#controlPanel{grid-column:2}#mapPanel{grid-column:1;grid-row:span 2}#incidentsPanel{grid-column:1}#dashboard{grid-column:1/-1}.hidden{display:none!important}@media(max-width:850px){main{grid-template-columns:1fr}#mapPanel,#incidentsPanel,#vehiclesPanel,#controlPanel,#dashboard,#radioPanel{grid-column:1;grid-row:auto}.statbar{grid-template-columns:repeat(2,1fr)}.map{aspect-ratio:1.3}}#weatherOverlay{position:absolute;inset:0;pointer-events:none;z-index:3}#weatherOverlay.rain{background:repeating-linear-gradient(105deg,transparent 0 18px,#b9d9ff66 19px 20px,transparent 21px 38px);animation:rainfall .7s linear infinite}#weatherOverlay.fog{background:#cbd5e170;backdrop-filter:blur(2px)}#weatherOverlay.wind{background:repeating-linear-gradient(0deg,transparent 0 38px,#e4f4ff25 39px 40px,transparent 41px 90px);animation:rainfall 2s linear infinite}@keyframes rainfall{from{background-position:0 0}to{background-position:30px 80px}}@media(prefers-reduced-motion:reduce){#weatherOverlay{animation:none!important}}
+.authTabs{display:flex;gap:6px;margin:6px 0 10px;max-width:420px}
+.authTabs button{flex:1;min-height:40px;font-size:14px;background:#263f59;border:1px solid #54718e;color:#cfe0f0;border-radius:8px;margin:0}
+.authTabs button.active{background:#c93a3a;border-color:#ff8a8a;color:#fff;font-weight:700}
+.authFields{display:grid;gap:10px;max-width:420px}
+.authFields label{display:grid;gap:4px}
+.authFields input{flex:none}
+.authFields button[type=submit]{min-height:44px;font-size:15px;font-weight:700;background:#2f8f5b;color:#fff;border:0;border-radius:8px}
+.authFields button[disabled]{opacity:.6;cursor:wait}
+.notice{padding:9px 11px;border-radius:8px;font-size:14px;margin:10px 0;max-width:420px}
+.notice.error{background:#4a1d24;border:1px solid #ff7b7b;color:#ffd5d5}
+.notice.ok{background:#173d2a;border:1px solid #5fd18f;color:#d3ffe5}
+.notice.info{background:#1a3350;border:1px solid #6aa9ff;color:#d6e8ff}
+</style></head><body><header><div><h1>🚒 WESTBUMMELN · LEITSTELLE</h1><div class="small">Multiplayer · Einsatzkarte · Alarmierung · Funk</div></div><div class="row" style="flex:0 1 auto"><button id="soundToggle" aria-pressed="false">🔇 Ton einschalten</button><label style="white-space:nowrap">Lautstärke <input id="volume" type="range" min="0" max="100" value="55" style="width:95px;vertical-align:middle"></label><div id="connection">Nicht verbunden</div></div></header><div id="notice" role="status"></div><main>
 <section class="panel wide" id="login"><h2>Spielraum betreten</h2>
 <div id="accountControls">
-  <form id="accountForm">
-    <div class="row">
-      <label>Benutzername oder E-Mail<input id="accountName" autocomplete="username" maxlength="254" required></label>
-      <label>E-Mail (nur beim Erstellen)<input id="accountEmail" type="email" autocomplete="email" maxlength="254"></label>
-      <label>Passwort<input id="accountPassword" type="password" autocomplete="current-password" maxlength="128" required></label>
-      <button type="submit" value="login">Anmelden</button>
-      <button type="submit" value="register">Konto erstellen</button>
+  <form id="accountForm" novalidate>
+    <div class="authTabs">
+      <button type="button" id="tabLogin" class="active">Anmelden</button>
+      <button type="button" id="tabRegister">Neues Konto</button>
+    </div>
+    <div class="authFields">
+      <label><span id="nameLabel">Benutzername oder E-Mail</span><input id="accountName" autocomplete="username" maxlength="254"></label>
+      <label id="emailRow" class="hidden"><span>E-Mail-Adresse</span><input id="accountEmail" type="email" autocomplete="email" maxlength="254"></label>
+      <label><span>Passwort</span><input id="accountPassword" type="password" autocomplete="current-password" maxlength="128"></label>
+      <button type="submit" id="accountSubmit">Anmelden</button>
     </div>
   </form>
   <div id="googleButton"></div>
@@ -25,7 +41,7 @@
     <p id="developerStatus" role="status"></p>
   </details>
 </div>
-<p id="accountNotice" class="small" role="status"></p>
+<p id="accountNotice" class="small notice hidden" role="status"></p>
 <div class="row hidden" id="roomEntry"><label>Raumcode<input id="room" maxlength="16" value="WESTBUMMELN"></label><button id="join" disabled>Beitreten</button></div><p class="small">Alle Mitspieler öffnen dieselbe Webseite und geben denselben Raumcode ein. Offline-Spieler werden nach 30 Sekunden automatisch entfernt.</p></section>
 <section class="panel wide hidden" id="rolesPanel"><h2>🎮 Rolle wählen</h2><p id="roleInfo" class="small">Wähle Leitstelle oder Gruppenführer. Die Leitstelle kann nur einmal besetzt werden.</p><div class="row"><button id="takeLs">📞 Leitstelle übernehmen</button><button id="leaveLs">Leitstelle verlassen</button><button id="goGf">🚒 Fahrzeug als GF wählen</button></div></section><section class="panel wide hidden" id="dashboard"><div class="row" style="justify-content:space-between"><h2 style="margin:0">📊 Leitstellenübersicht</h2><span class="section-tag">WESTBUMMELN · ELS</span></div><div class="statbar"><div class="stat"><strong id="countOpen">0</strong><span>Offene Einsätze</span></div><div class="stat"><strong id="countFree">0</strong><span>Freie Fahrzeuge</span></div><div class="stat"><strong id="countDrive">0</strong><span>Auf Anfahrt</span></div><div class="stat"><strong id="countSite">0</strong><span>An Einsatzstelle</span></div></div></section><section class="panel hidden" id="mapPanel"><h2>🗺️ Einsatzkarte Westbummeln</h2><div class="map" id="map"><img src="/karte.webp" alt="Westbummeln Einsatzkarte"><div id="weatherOverlay" aria-hidden="true"></div><div id="markers"></div></div><div class="small">Rote Punkte: offene Einsätze · Blaue Punkte: Fahrzeuge auf Anfahrt oder Rückfahrt. Einsatzpunkte anklicken, um den Einsatz zu finden.</div></section>
 <section class="panel hidden" id="incidentsPanel"><h2>📞 Notrufannahme & Disposition</h2><div class="screen-title">Schnellstichwort auswählen</div><div class="quick" id="quickKeywords"><button data-keyword="F1 · Kleinbrand">F1 Kleinbrand</button><button data-keyword="F2 · Wohnungsbrand">F2 Wohnungsbrand</button><button data-keyword="TH1 · Verkehrsunfall">TH1 Verkehrsunfall</button><button data-keyword="BMA · Brandmeldeanlage">BMA</button><button data-keyword="TH · Wasserschaden">Wasserschaden</button></div><div class="row"><input id="title" placeholder="Stichwort, z. B. F2 Wohnungsbrand"><select id="address"><option value="">Einsatzort wählen</option><option>Hauptstraße</option><option>Marktplatz</option><option>Schulstraße</option><option>Waldstraße</option><option>Dorfstraße</option><option>Nelkenweg</option><option>Mathias-Berg-Straße</option><option>Robin-Hof-Straße</option><option>Werkstraße</option><option>Buchenstraße</option><option>Eichenstraße</option><option>Bachstraße</option><option>Flurstraße</option><option>Tannenweg</option><option>Ahornallee</option><option>Kreuzbergstraße</option><option>Jägerstraße</option><option>Scheunenweg</option><option>Blütenstraße</option><option>Sportplatzring</option><option>Kirchstraße</option><option>Rosenstraße</option><option>Sonnenstraße</option><option>Mozartweg</option><option>Uferstraße</option><option>Mühlenweg</option><option>Gartenweg</option><option>Wiesenstraße</option><option>Bummelbachweg</option><option>Dorflick</option><option>Bürgerstraße</option><option>Forstweg</option><option>Feldweg</option><option>Am Rathauspark</option><option>Erlenstraße</option></select><button id="create">Einsatz erstellen</button></div><div class="toolbar"><select id="incidentFilter"><option value="open">Offene Einsätze</option><option value="all">Alle Einsätze</option><option value="closed">Abgeschlossen</option></select><button id="refreshList">🔄 Aktualisieren</button></div><div id="incidents"></div></section>
@@ -144,7 +160,7 @@ function renderSections(){
 $('quickKeywords').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('title').value=b.dataset.keyword;$('address').focus()});
 ['vehicleSearch','unitFilter','incidentFilter'].forEach(id=>$(id).addEventListener(id==='vehicleSearch'?'input':'change',()=>render()));
 $('refreshList').onclick=()=>render();
-setInterval(async()=>{if(!me||busy||pendingActions)return;busy=true;const revision=stateRevision;try{let x=await api('state');if(revision!==stateRevision)return;state=x.state;soundsFromState(state);render();$('connection').style.color='#a5e7b5'}catch(e){$('connection').textContent='Verbindung unterbrochen';$('connection').style.color='#ffb2a2';if(String(e.message).includes('Sitzung abgelaufen')){me=null;state=null;$('login').classList.remove('hidden');['rolesPanel','dashboard','mapPanel','incidentsPanel','vehiclesPanel','controlPanel','sectionsPanel','radioPanel','voicePanel'].forEach(id=>$(id).classList.add('hidden'));$('fmePanel').classList.add('hidden');fmeKey='';loadAccount().catch(error=>{$('accountNotice').textContent=error.message});notice(e.message)}}finally{busy=false}},1500);
+setInterval(async()=>{if(!me||busy||pendingActions)return;busy=true;const revision=stateRevision;try{let x=await api('state');if(revision!==stateRevision)return;state=x.state;soundsFromState(state);render();$('connection').style.color='#a5e7b5'}catch(e){$('connection').textContent='Verbindung unterbrochen';$('connection').style.color='#ffb2a2';if(String(e.message).includes('Sitzung abgelaufen')){me=null;state=null;$('login').classList.remove('hidden');['rolesPanel','dashboard','mapPanel','incidentsPanel','vehiclesPanel','controlPanel','sectionsPanel','radioPanel','voicePanel'].forEach(id=>$(id).classList.add('hidden'));$('fmePanel').classList.add('hidden');fmeKey='';loadAccount().catch(error=>setNotice(error.message,'error'));notice(e.message)}}finally{busy=false}},1500);
 
 // WebRTC-Sprachfunk: Audio nur nach Zustimmung und nur bei gedrückter Sprechtaste.
 let voiceStream=null,voicePeers=new Map(),voiceRemoteChannels=new Map(),voiceSeq=0,voiceBusy=false,voiceChannel='leitstelle';
@@ -205,25 +221,59 @@ function showAccount({ name, developer }) {
   }
 }
 
+let authMode = 'login';
+function setNotice(text, kind) {
+  const n = $('accountNotice');
+  n.textContent = text || '';
+  n.className = 'small notice' + (kind ? ' ' + kind : '') + (text ? '' : ' hidden');
+}
+function setAuthMode(mode) {
+  authMode = mode;
+  $('tabLogin').classList.toggle('active', mode === 'login');
+  $('tabRegister').classList.toggle('active', mode === 'register');
+  $('emailRow').classList.toggle('hidden', mode !== 'register');
+  $('nameLabel').textContent = mode === 'register' ? 'Benutzername (3–24 Zeichen)' : 'Benutzername oder E-Mail';
+  $('accountPassword').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
+  $('accountSubmit').textContent = mode === 'register' ? 'Konto erstellen' : 'Anmelden';
+  setNotice('');
+}
+
 async function accountAction(action, fields = {}) {
   if (accountBusy) return;
   accountBusy = true;
-  $('accountNotice').textContent = '';
+  const submit = $('accountSubmit');
+  const label = submit.textContent;
+  submit.disabled = true;
+  if (action === 'login' || action === 'register') {
+    submit.textContent = 'Bitte warten …';
+    setNotice('Einen Moment, der Server prüft deine Daten. Das kann beim ersten Mal bis zu einer Minute dauern.', 'info');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
   try {
     const response = await fetch('/account', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, ...fields })
+      body: JSON.stringify({ action, ...fields }),
+      signal: controller.signal
     });
-    const account = await response.json();
-    if (!response.ok) throw new Error(account.error || 'Anmeldung fehlgeschlagen.');
+    let account = {};
+    try { account = await response.json(); } catch { /* keine JSON-Antwort */ }
+    if (!response.ok) throw new Error(account.error || 'Serverfehler (' + response.status + '). Bitte versuche es gleich noch einmal.');
     $('accountPassword').value = '';
     if (action === 'logout') showAccount({});
     await loadAccount();
+    setNotice(action === 'register' ? 'Konto erstellt. Du bist angemeldet.' : '', action === 'register' ? 'ok' : '');
   } catch (error) {
-    $('accountNotice').textContent = error.message;
+    const message = error.name === 'AbortError'
+      ? 'Der Server antwortet nicht. Er wacht vielleicht gerade auf. Versuche es in einer Minute noch einmal.'
+      : error instanceof TypeError ? 'Keine Verbindung zum Server. Prüfe dein Internet und versuche es noch einmal.' : error.message;
+    setNotice(message, 'error');
   } finally {
+    clearTimeout(timer);
     accountBusy = false;
+    submit.disabled = false;
+    submit.textContent = label;
   }
 }
 
@@ -251,18 +301,27 @@ async function loadAccount() {
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.onload = renderGoogleButton;
-    script.onerror = () => { $('accountNotice').textContent = 'Google-Anmeldung konnte nicht geladen werden.'; };
+    script.onerror = () => setNotice('Google-Anmeldung konnte nicht geladen werden.', 'error');
     document.head.append(script);
   }
 }
 
+$('tabLogin').onclick = () => setAuthMode('login');
+$('tabRegister').onclick = () => setAuthMode('register');
 $('accountForm').addEventListener('submit', event => {
   event.preventDefault();
-  accountAction(event.submitter?.value || 'login', {
-    name: $('accountName').value,
-    email: $('accountEmail').value,
-    password: $('accountPassword').value
-  });
+  const name = $('accountName').value.trim();
+  const email = $('accountEmail').value.trim();
+  const password = $('accountPassword').value;
+  if (!name) return setNotice(authMode === 'register' ? 'Bitte gib einen Benutzernamen ein.' : 'Bitte gib Benutzername oder E-Mail ein.', 'error');
+  if (authMode === 'register') {
+    if (!/^[\p{L}\p{N}_-]{3,24}$/u.test(name)) return setNotice('Benutzername: 3–24 Buchstaben, Zahlen, Unterstriche oder Bindestriche, ohne Leerzeichen.', 'error');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) return setNotice('Bitte gib eine gültige E-Mail-Adresse ein.', 'error');
+    if (password.length < 8) return setNotice('Das Passwort braucht mindestens 8 Zeichen.', 'error');
+  } else if (!password) {
+    return setNotice('Bitte gib dein Passwort ein.', 'error');
+  }
+  accountAction(authMode, authMode === 'register' ? { name, email, password } : { name, password });
 });
 $('accountLogout').onclick = () => accountAction('logout');
 $('developerRefresh').onclick = async () => {
@@ -276,7 +335,7 @@ $('developerRefresh').onclick = async () => {
     status.textContent = error.message;
   }
 };
-loadAccount().catch(error => { $('accountNotice').textContent = error.message; });
+loadAccount().catch(error => setNotice(error.message, 'error'));
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(error => console.warn('App-Registrierung fehlgeschlagen', error));
