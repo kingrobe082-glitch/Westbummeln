@@ -59,3 +59,34 @@ Testkonto: Benutzername `test`, Passwort `test`. Es wird beim lokalen Start von
 `python server.py` automatisch angelegt. Auf Render nur, wenn die Variable
 `CREATE_TEST_ACCOUNT=1` gesetzt ist. Danach wieder entfernen, denn ein Konto mit
 so einem Passwort darf nicht dauerhaft öffentlich erreichbar sein.
+
+## Automatisches Backup auf GitHub (kostenlos, für Render Free)
+
+Der Server sichert die Konten nach jeder Registrierung in ein **privates**
+GitHub-Repo und holt sie beim Start zurück, wenn die Datenbank leer ist.
+
+1. Auf GitHub ein neues **privates** Repo anlegen (z. B. `westbummeln-backup`),
+   mit einer README, damit der Branch `main` existiert.
+2. Unter Settings → Developer settings → Fine-grained tokens ein Token nur für
+   dieses Repo erstellen, Berechtigung **Contents: Read and write**.
+3. Auf Render die Variablen `BACKUP_GITHUB_TOKEN` (Token) und
+   `BACKUP_GITHUB_REPO` (z. B. `meinname/westbummeln-backup`) setzen, neu deployen.
+
+Im Log erscheint „Backup: N Konten wiederhergestellt“. Das Repo enthält E-Mails
+und Passwort-Hashes, es muss privat bleiben. Nicht gesichert werden angemeldete
+Sitzungen (nach einem Neustart melden sich Spieler neu an) und laufende Spiele.
+
+### Was im Render-Log steht (Backup)
+
+| Zeile | Bedeutung |
+|---|---|
+| `Backup: bereit.` | Zugriff aufs Repo klappt, Sicherung ist aktiv. |
+| `Backup: Repo erreichbar, noch keine Sicherung vorhanden.` | Normal beim allerersten Start. |
+| `Backup: N Konten wiederhergestellt.` | Nach einem Neustart wurden die Konten zurückgeholt. |
+| `Backup: N Konten gesichert.` | Nach einer Registrierung wurde gespeichert. |
+| `Backup: KEIN ZUGRIFF auf GitHub. Status 404 ...` | Token oder Repo-Name falsch (GitHub meldet 404, auch wenn der Token keinen Zugriff hat). Variablen prüfen. |
+| `Status 401` | Token ungültig oder abgelaufen. |
+| `Status 403` | Token darf nicht schreiben: Contents auf Read and write stellen. |
+| `Backup: GitHub nicht erreichbar ...` | Kurzer Ausfall beim Start. Es wird nichts überschrieben, der Server versucht es erneut. |
+
+Eine leere Datenbank überschreibt nie eine vorhandene Sicherung.
