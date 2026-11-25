@@ -25,6 +25,9 @@ def database():
                 id INTEGER PRIMARY KEY, name TEXT NOT NULL,
                 name_key TEXT UNIQUE, salt BLOB, password BLOB, google_sub TEXT UNIQUE
             )''')
+            if 'email' not in [c[1] for c in db.execute('PRAGMA table_info(accounts)')]:
+                db.execute('ALTER TABLE accounts ADD COLUMN email TEXT')
+            db.execute('CREATE UNIQUE INDEX IF NOT EXISTS accounts_email ON accounts(email)')
             db.execute('''CREATE TABLE IF NOT EXISTS sessions (
                 token TEXT PRIMARY KEY, account INTEGER NOT NULL REFERENCES accounts(id),
                 expires INTEGER NOT NULL
@@ -41,7 +44,10 @@ def password_hash(password, salt):
     return scrypt(password.encode(), salt=salt, n=2**15, r=8, p=1, maxmem=64 * 1024**2)
 
 
-def account_for_password(db, data, register):
+EMAIL_RE = re.compile(r'[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}')
+
+
+def account_for_password(db, data, register, need_email=True):
     name = str(data.get('name', '')).strip()
     password = data.get('password')
     if not isinstance(password, str) or not 1 <= len(password) <= 128:
@@ -51,16 +57,23 @@ def account_for_password(db, data, register):
             raise ValueError('Benutzername: 3–24 Buchstaben, Zahlen, Unterstriche oder Bindestriche.')
         if len(password) < 8:
             raise ValueError('Das Passwort braucht mindestens 8 Zeichen.')
+        email = str(data.get('email') or '').strip().lower()
+        if need_email or email:
+            if len(email) > 254 or not EMAIL_RE.fullmatch(email):
+                raise ValueError('Bitte gib eine gültige E-Mail-Adresse ein.')
+        email = email or None
+        if email and db.execute('SELECT 1 FROM accounts WHERE email=?', (email,)).fetchone():
+            raise ValueError('Diese E-Mail-Adresse ist bereits registriert.')
         salt = secrets.token_bytes(16)
         hashed = password_hash(password, salt)
         try:
-            row = db.execute('INSERT INTO accounts (name,name_key,salt,password) VALUES (?,?,?,?)',
-                             (name, name.casefold(), salt, hashed))
+            row = db.execute('INSERT INTO accounts (name,name_key,salt,password,email) VALUES (?,?,?,?,?)',
+                             (name, name.casefold(), salt, hashed, email))
         except sqlite3.IntegrityError:
-            raise ValueError('Dieser Benutzername ist bereits vergeben.') from None
+            raise ValueError('Dieser Benutzername oder diese E-Mail ist bereits vergeben.') from None
         return row.lastrowid, name
-    row = db.execute('SELECT id,name,salt,password FROM accounts WHERE name_key=?',
-                     (name.casefold(),)).fetchone()
+    row = db.execute('SELECT id,name,salt,password FROM accounts WHERE name_key=? OR email=?',
+                     (name.casefold(), name.casefold())).fetchone()
     hashed = password_hash(password, row[2] if row else bytes(16))
     if not row or not compare_digest(hashed, row[3]):
         raise ValueError('Benutzername oder Passwort stimmt nicht.')
@@ -147,7 +160,19 @@ def provision_developer():
             'SELECT id FROM accounts WHERE name_key=?', (name.casefold(),)
         ).fetchone()
         if not row:
-            account, _ = account_for_password(db, {'name': name, 'password': password}, True)
+            account, _ = account_for_password(db, {'name': name, 'password': password}, True, need_email=False)
             db.execute('INSERT INTO developers VALUES (?)', (account,))
         elif not db.execute('SELECT 1 FROM developers WHERE account=?', row).fetchone():
             raise RuntimeError('Der Entwicklername gehört bereits einem normalen Konto. Wähle einen anderen Namen.')
+
+
+def provision_test_account():
+    """Legt das Testkonto test/test an. Lokal automatisch, auf Render nur mit CREATE_TEST_ACCOUNT=1."""
+    if os.environ.get('RENDER') and os.environ.get('CREATE_TEST_ACCOUNT') != '1':
+        return
+    with database() as db:
+        if db.execute("SELECT 1 FROM accounts WHERE name_key='test'").fetchone():
+            return
+        salt = secrets.token_bytes(16)
+        db.execute('INSERT INTO accounts (name,name_key,salt,password,email) VALUES (?,?,?,?,?)',
+                   ('test', 'test', salt, password_hash('test', salt), 'test@example.com'))

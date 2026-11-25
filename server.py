@@ -375,4 +375,5 @@ class Handler(BaseHTTPRequestHandler):
  def log_message(self,*args):pass
 if __name__=='__main__':
  accounts.provision_developer()
+ accounts.provision_test_account()
  port=int(os.environ.get('PORT','8765'));print('Westbummeln auf Port',port,flush=True);ThreadingHTTPServer(('0.0.0.0',port),Handler).serve_forever()
