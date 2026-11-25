@@ -3,6 +3,7 @@ from threading import RLock
 from pathlib import Path
 import json, time, secrets, re, os
 import accounts
+import backup
 from threading import BoundedSemaphore
 from collections import deque
 
@@ -196,6 +197,7 @@ class Handler(BaseHTTPRequestHandler):
   secure=self.secure_request()
   cookies=[accounts.make_cookie(accounts.COOKIE,token,accounts.LIFETIME if token else 0,secure)]
   if action=='google':cookies.append(accounts.make_cookie('wb_google_nonce','',0,secure))
+  if action in ('register','google'):backup.mark_dirty()
   return self.reply(200,{'name':name},cookies)
 
  def do_POST(self):
@@ -374,6 +376,8 @@ class Handler(BaseHTTPRequestHandler):
   except Exception:self.reply(500,{'error':'Serverfehler'})
  def log_message(self,*args):pass
 if __name__=='__main__':
+ backup.start()
  accounts.provision_developer()
  accounts.provision_test_account()
+ backup.mark_dirty()
  port=int(os.environ.get('PORT','8765'));print('Westbummeln auf Port',port,flush=True);ThreadingHTTPServer(('0.0.0.0',port),Handler).serve_forever()
