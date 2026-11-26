@@ -84,7 +84,7 @@ jobs:
             exit 1
           fi
           if ! git merge-base --is-ancestor "$sha" origin/main; then
-            echo "::warning title=Nicht auf main::Commit $sha ist nicht in main enthalten. Er wird trotzdem gebaut und deployt."
+            echo "::warning title=Nicht auf main::Commit $sha ist nicht in main enthalten. Er wird trotzdem verwendet."
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "Commit: $sha" >> "$GITHUB_STEP_SUMMARY"

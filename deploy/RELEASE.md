@@ -74,10 +74,10 @@ schlechte Release Migrationen enthielt, vorher klären, ob die alte Version mit 
 
 Frühere SHAs findest du mit `git log --oneline main` oder unter **Actions → Release** (Laufname).
 
-**Variante B, direkt auf dem Server** (z. B. wenn GitHub Actions nicht geht):
+**Variante B, direkt auf dem Server** (z. B. wenn GitHub Actions nicht geht). Host und Benutzer sind die Werte der Secrets `DEPLOY_HOST` und `DEPLOY_USER`:
 
 ```powershell
-ssh deploy@63.183.198.23
+ssh <DEPLOY_USER>@<DEPLOY_HOST>
 ```
 
 ```bash
@@ -96,12 +96,14 @@ Repository-Secrets und -Variablen kann nur jemand mit Admin-Rechten auf dem Repo
 
 | Name | Art | Pflicht | Inhalt |
 |---|---|---|---|
-| `DEPLOY_HOST` | Secret | ja | IP oder Hostname des Servers, z. B. `63.183.198.23` |
+| `DEPLOY_HOST` | Secret | ja | Öffentliche IP oder Hostname des Servers (der aktuelle Wert steht nur in diesem Secret, nicht im Repo) |
 | `DEPLOY_USER` | Secret | ja | SSH-Benutzer, `deploy` |
 | `DEPLOY_SSH_KEY` | Secret | ja | Privater SSH-Schlüssel (komplett, inkl. `-----BEGIN OPENSSH PRIVATE KEY-----`). Nur für Deploys, ohne Passphrase. Der öffentliche Teil steht in `~deploy/.ssh/authorized_keys`. |
-| `DEPLOY_KNOWN_HOSTS` | Secret | ja | Host-Key-Zeile(n) des Servers für `known_hosts`, z. B. Ausgabe von `ssh-keyscan -t ed25519 63.183.198.23`. Fingerprint mit `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` auf dem Server abgleichen. Bei einem anderen Port als 22 lautet die Zeile `[host]:port …`. |
+| `DEPLOY_KNOWN_HOSTS` | Secret | ja | Host-Key-Zeile(n) des Servers für `known_hosts`, z. B. Ausgabe von `ssh-keyscan -t ed25519 <DEPLOY_HOST>`. Fingerprint mit `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` auf dem Server abgleichen. Bei einem anderen Port als 22 lautet die Zeile `[host]:port …`. |
 | `DEPLOY_DOMAIN` | Variable | nein | Öffentliche Domain ohne `https://`, z. B. `westbummeln.example.de`. Ist sie gesetzt, prüft der Lauf am Ende `https://<domain>/healthz`. |
 | `DEPLOY_SSH_PORT` | Variable | nein | SSH-Port, Standard `22` |
+
+Ändert sich die IP des Servers, müssen `DEPLOY_HOST` und `DEPLOY_KNOWN_HOSTS` neu gesetzt werden. Workflow und Doku enthalten bewusst keine IP.
 
 `GITHUB_TOKEN` stellt GitHub automatisch bereit. Der Build-Job hat `packages: write`, der Deploy-Job nur `packages: read`.
 
