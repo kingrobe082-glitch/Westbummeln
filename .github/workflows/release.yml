@@ -25,12 +25,9 @@ on:
         required: false
         default: false
         type: boolean
-  # NUR ZUM TESTEN, wird vor dem Merge entfernt: baut auf umbau/release ein Image mit Tag test-<sha>, ohne Deploy.
+  # NUR ZUM TESTEN, wird vor dem Merge entfernt: baut ein Image mit Tag test-<sha>, ohne Deploy.
   push:
-    branches: [umbau/release]
-    paths:
-      - .github/workflows/release.yml
-      - Dockerfile
+    branches: [umbau/release, umbau/release-test]
 
 permissions:
   contents: read
@@ -321,7 +318,8 @@ jobs:
         # SHA ist eine von git rev-parse geprüfte 40-stellige Hex-ID, lokales Expandieren ist gewollt.
         run: |
           # shellcheck disable=SC2029
-          ssh server "cd '$DEPLOY_PATH' && IMAGE_TAG='$SHA' ./remote-deploy.sh"
+          # chmod: falls das Ausführungsrecht beim Commit unter Windows verloren ging.
+          ssh server "cd '$DEPLOY_PATH' && chmod +x remote-deploy.sh && IMAGE_TAG='$SHA' ./remote-deploy.sh"
 
       - name: Server bei ghcr.io abmelden
         if: always() && steps.ssh.outcome == 'success'
