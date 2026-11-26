@@ -5,6 +5,7 @@ import pytest
 
 from game import engine, rooms
 from integrations import discord
+from tests.helpers import make_moderator
 
 NOW = 1_000_000.0
 EXPIRY = engine.OFFLINE_TIMEOUT + 1800
@@ -304,7 +305,7 @@ def test_http_join_unknown_room(player):
 
 
 def test_http_developer_counts_all_rooms(player, django_user_model):
-    django_user_model.objects.filter(username='Florian1').update(is_staff=True)
+    make_moderator(django_user_model.objects.get(username='Florian1'))
     player.create()
     player.create()
     assert player.client.get('/developer').json() == {'rooms': 2, 'players': 2, 'rooms_total': 2}

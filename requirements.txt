@@ -6,3 +6,4 @@ whitenoise>=6.8,<7
 google-auth>=2.30,<3
 requests>=2.32,<3
 django-csp>=4.0,<5
+tzdata>=2024.1  # Zeitzonen für zoneinfo, auch unter Windows

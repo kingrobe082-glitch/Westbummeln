@@ -6,7 +6,7 @@ filterwarnings = ["ignore:No directory at:UserWarning"]
 
 [tool.ruff]
 line-length = 120
-extend-exclude = ["accounts/migrations", ".venv", "staticfiles", "tests/legacy_accounts_54c2a9b.py"]
+extend-exclude = ["accounts/migrations", "moderation/migrations", ".venv", "staticfiles", "tests/legacy_accounts_54c2a9b.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "B", "UP"]

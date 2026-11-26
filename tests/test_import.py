@@ -11,6 +11,8 @@ from django.contrib.auth import authenticate
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from moderation.roles import role_of
+
 pytestmark = pytest.mark.django_db
 LEGACY_CODE = Path(__file__).with_name('legacy_accounts_54c2a9b.py')
 
@@ -78,6 +80,9 @@ def check_imported(django_user_model):
     assert users['Funk-1a2b3c4d'].google_sub == 'google-123'
     assert users['Chefin'].is_staff and users['Chefin'].is_superuser
     assert not users['Anna'].is_staff
+    # Alte Entwickler sind jetzt Admins mit allen Moderationsrechten, alle anderen normale Spieler.
+    assert role_of(users['Chefin']) == 'admin' and users['Chefin'].has_perm('moderation.assign_roles')
+    assert role_of(users['Anna']) == 'user' and not users['Anna'].has_perm('moderation.ban_user')
 
     # Altes Passwort funktioniert (Name und E-Mail) und wird dabei auf den neuen Hasher umgestellt.
     assert users['Anna'].password.startswith('wb_scrypt$')

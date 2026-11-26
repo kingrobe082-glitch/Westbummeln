@@ -1,8 +1,9 @@
 let accountBusy = false;
 let developerAccount = false;
 let publicRoomCode = '';
-function showAccount({ name, developer, hasPassword }) {
+function showAccount({ name, developer, staff, hasPassword }) {
   developerAccount = Boolean(developer);
+  $('moderationLink').classList.toggle('hidden', !staff);
   $('passwordForm').classList.toggle('hidden', !hasPassword);
   if (!name) $('securityPanel').open = false;
   $('accountControls').classList.toggle('hidden', Boolean(name));
@@ -83,6 +84,7 @@ async function loadAccount() {
   publicRoomCode = account.publicRoom || '';
   $('publicRoomCode').textContent = publicRoomCode;
   showAccount(account);
+  if (account.loginNotice) setNotice(account.loginNotice, 'error');
   $('discordLogin').classList.toggle('hidden', !account.discordLogin || Boolean(account.name));
   const voiceLink = $('discordVoice');
   voiceLink.classList.toggle('hidden', !account.discordVoiceUrl);
@@ -147,7 +149,8 @@ const loginErrors = {
   state: 'Die Discord-Anmeldung ist abgelaufen. Bitte versuche es noch einmal.',
   guild: 'Du musst Mitglied auf dem Discord-Server sein, um dich anzumelden.',
   off: 'Die Discord-Anmeldung ist nicht eingerichtet.',
-  failed: 'Discord-Anmeldung fehlgeschlagen. Bitte versuche es noch einmal.'
+  failed: 'Discord-Anmeldung fehlgeschlagen. Bitte versuche es noch einmal.',
+  banned: 'Dein Konto ist gesperrt.'
 };
 const loginError = new URLSearchParams(location.search).get('login_error');
 if (loginError) {
