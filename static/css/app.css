@@ -118,6 +118,8 @@ main{grid-auto-flow:row dense}
 /* Wetter auf der Karte: dezent, Einsatzpunkte bleiben immer darüber und lesbar. */
 #markers{position:absolute;inset:0;z-index:4;pointer-events:none}
 #markers .pin{pointer-events:auto}
+/* Fahrzeugpunkte sind nur Anzeige: Steht ein Fahrzeug am Einsatzort, bleibt der Einsatzpunkt darunter anklickbar. */
+#markers .pin.vehicle{pointer-events:none}
 #weatherOverlay{position:absolute;inset:0;pointer-events:none;z-index:3;overflow:hidden;transition:background-color 1.5s ease,opacity 1.5s ease}
 #weatherOverlay::before,#weatherOverlay::after{content:"";position:absolute;inset:0;opacity:0;transition:opacity 1.5s ease}
 /* Regen: leicht abgedunkelt, zwei Tropfenschichten (nah/schnell, fern/langsam) */
