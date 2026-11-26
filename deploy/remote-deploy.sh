@@ -143,11 +143,6 @@ if [[ "$(docker compose exec -T caddy cat /etc/caddy/Caddyfile 2>/dev/null | sha
   log "Caddyfile geändert – Caddy wird neu gestartet."
   docker compose up -d --force-recreate --no-deps caddy
 fi
-# Dasselbe für das Skript des S3-Kopie-Containers (BACKUP-OFFSITE.md).
-if [[ "$(docker compose exec -T offsite cat /offsite-backup.sh 2>/dev/null | sha256sum)" != "$(sha256sum <offsite-backup.sh)" ]]; then
-  log "offsite-backup.sh geändert – offsite wird neu gestartet."
-  docker compose up -d --force-recreate --no-deps offsite
-fi
 
 # --- alte Images aufräumen: die letzten $KEEP_IMAGES erfolgreich ausgerollten Tags bleiben
 # (laut .deploy-history, die laufende Version steht dort ganz unten). Fehlgeschlagene fliegen raus.
