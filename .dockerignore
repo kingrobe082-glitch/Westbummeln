@@ -24,3 +24,4 @@ tests
 requirements-dev.txt
 *.md
 render.yaml
+tools
