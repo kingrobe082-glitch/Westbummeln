@@ -114,3 +114,20 @@ main{grid-auto-flow:row dense}
   #voicePanel .row>button{flex:1 1 auto}
   .filterline>input,.filterline>select{flex:1 1 100%}
 }
+
+/* Fahrzeugpunkte: optisch klein, Klickfläche über button.pin::after (~33 px); liegen über den Einsatzpunkten */
+.pin.vehicle{z-index:1}
+.pin.vehicle.selected{outline:3px solid #ffde70;outline-offset:1px}
+/* Info-Karte zu einem Fahrzeugpunkt: in der Ecke gegenüber dem Punkt, über Wetter und Punkten */
+#vehicleInfo{position:absolute;z-index:5;width:min(280px,calc(100% - 16px));max-height:calc(100% - 16px);overflow:auto;background:#10233aee;border:1px solid #6d8cab;border-radius:10px;padding:6px 10px 10px;box-shadow:0 6px 20px #000a;font-size:13px}
+#vehicleInfo.at-left{left:8px}#vehicleInfo.at-right{right:8px}#vehicleInfo.at-top{top:8px}#vehicleInfo.at-bottom{bottom:8px}
+#vehicleInfo:focus{outline:none}
+.vehicle-info-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.vehicle-info-head button{width:40px;padding:0;font-size:20px;line-height:1;background:transparent;border-color:transparent}
+#vehicleInfo dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:4px 0 8px}
+#vehicleInfo dt{color:#a9c1d8}#vehicleInfo dd{margin:0;overflow-wrap:anywhere}
+.vehicle-info-actions{display:flex;gap:6px;flex-wrap:wrap}
+.vehicle-info-actions button{flex:1 1 auto;padding:6px 10px;font-size:13px}
+@media(max-width:600px){#vehicleInfo{width:auto;left:6px;right:6px;padding:2px 8px 8px;font-size:12px}#vehicleInfo.at-top{top:6px}#vehicleInfo.at-bottom{bottom:6px}#vehicleInfo dl{gap:1px 8px;margin:0 0 6px}}
+/* Kurz hervorgehobener Eintrag in der Fahrzeugliste („In Fahrzeugliste zeigen“) */
+.vehicle-flash{background:#2b4a68;outline:2px solid #ffd16e;border-radius:6px}
