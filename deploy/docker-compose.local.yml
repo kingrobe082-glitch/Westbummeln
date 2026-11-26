@@ -1,0 +1,12 @@
+# Nur für lokale Tests mit Docker Desktop, NICHT auf dem Server benutzen.
+# Ergänzt docker-compose.prod.yml: web nimmt ein lokal gebautes Image statt GHCR.
+#
+#   docker build -t ghcr.io/kingrobe082-glitch/westbummeln:local .      (im Repo-Ordner)
+#   cd deploy && ./env-init.sh localhost test@example.com
+#   in .env: COMPOSE_FILE=docker-compose.prod.yml:docker-compose.local.yml
+#            COMPOSE_PATH_SEPARATOR=:     IMAGE_TAG=local
+#            ALLOWED_HOSTS/CSRF_TRUSTED_ORIGINS folgen DOMAIN=localhost automatisch
+#   docker compose up -d   ->  https://localhost (Caddy-Test-CA, Warnung im Browser bestätigen)
+services:
+  web:
+    pull_policy: never

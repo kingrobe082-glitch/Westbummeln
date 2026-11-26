@@ -7,6 +7,7 @@ import re
 import secrets
 from hmac import compare_digest
 
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
@@ -201,9 +202,9 @@ def remove_test_account():
 
 
 def provision_test_account():
-    """Lokal: Testkonto test/test anlegen. Auf Render nur mit CREATE_TEST_ACCOUNT=1, sonst wird ein
+    """Lokal: Testkonto test/test anlegen. In Produktion nur mit CREATE_TEST_ACCOUNT=1, sonst wird ein
     vorhandenes Testkonto gelöscht."""
-    if os.environ.get('RENDER') and os.environ.get('CREATE_TEST_ACCOUNT') != '1':
+    if settings.PRODUCTION and os.environ.get('CREATE_TEST_ACCOUNT') != '1':
         remove_test_account()
         return
     if get_user_model().objects.filter(username__iexact=TEST_NAME).exists():

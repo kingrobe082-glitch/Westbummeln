@@ -1,0 +1,151 @@
+# Westbummeln auf dem eigenen Server (/opt/westbummeln, t3.micro mit ~900 MB RAM + 2 GB Swap).
+#
+# Die GitHub Action kopiert diesen Ordner nach /opt/westbummeln und ruft dort
+#   IMAGE_TAG=<git-sha> ./remote-deploy.sh
+# auf. Geheimnisse und Domain stehen nur in /opt/westbummeln/.env (siehe .env.example, env-init.sh).
+# Compose liest dieselbe .env auch für die ${…}-Platzhalter in dieser Datei.
+#
+# Nach außen offen sind nur 80/443 von Caddy. web und db veröffentlichen keine Ports.
+# Speichergrenzen (Summe ~740 MB, typisch belegt ~300 MB): siehe RUNBOOK.md.
+name: westbummeln
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      # Nur die zwei Werte, die Caddy braucht. Keine Geheimnisse an Caddy.
+      DOMAIN: ${DOMAIN:?DOMAIN fehlt in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL fehlt in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # Zertifikate und ACME-Konto: nie löschen (Rate-Limits)
+      - caddy-config:/config
+    networks:
+      frontend:
+        # Feste Adresse: gunicorn glaubt X-Forwarded-* nur von hier (FORWARDED_ALLOW_IPS bei web).
+        ipv4_address: ${CADDY_IP:-10.250.53.10}
+    depends_on:
+      - web
+    mem_limit: 64m
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  web:
+    image: ghcr.io/kingrobe082-glitch/westbummeln:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_ENV: prod
+      FORWARDED_ALLOW_IPS: ${CADDY_IP:-10.250.53.10}
+    # Keine "ports:". Caddy erreicht web:8000 über "frontend"; "frontend" ist ein normales Netz,
+    # damit web nach außen telefonieren kann (Google-Token prüfen, Discord).
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s   # beim Start alle 2 s prüfen, damit remote-deploy.sh schnell "gesund" sieht
+    stop_grace_period: 35s      # gunicorn graceful_timeout 30 s
+    mem_limit: 350m
+    logging: *logging
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: westbummeln
+      POSTGRES_DB: westbummeln
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt in .env}
+    # Für ~1 GB RAM abgespeckt. 30 Verbindungen reichen: web hält höchstens 8 (1 Worker × 8 Threads),
+    # dazu Backup und gelegentlich psql.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=30
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - effective_cache_size=192MB
+      - -c
+      - wal_buffers=4MB
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    shm_size: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U westbummeln -d westbummeln"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    stop_grace_period: 30s
+    mem_limit: 256m
+    logging: *logging
+
+  # Tägliche Sicherung nach /opt/westbummeln/backups (daily/, weekly/, monthly/, last/).
+  # Aufbewahrung: 7 Tage + 4 Wochen + 3 Monate. Einspielen: RUNBOOK.md "Backup einspielen".
+  backup:
+    image: prodrigestivill/postgres-backup-local:17-alpine
+    restart: unless-stopped
+    # Schreibt als Benutzer deploy (UID/GID aus .env, Standard 1000), damit deploy die Dateien
+    # lesen, kopieren und löschen kann.
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: westbummeln
+      POSTGRES_USER: westbummeln
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt in .env}
+      # --clean --if-exists: Der Dump löscht beim Einspielen erst die vorhandenen Tabellen, er lässt
+      # sich also direkt in die laufende Datenbank einspielen (RUNBOOK.md "Backup einspielen").
+      POSTGRES_EXTRA_OPTS: "-Z1 --clean --if-exists --no-owner --no-privileges"
+      SCHEDULE: "${BACKUP_SCHEDULE:-0 3 * * *}"
+      BACKUP_ON_START: "FALSE"
+      BACKUP_KEEP_DAYS: "7"
+      BACKUP_KEEP_WEEKS: "4"
+      BACKUP_KEEP_MONTHS: "3"
+      TZ: Europe/Berlin
+    volumes:
+      - ./backups:/backups
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 64m
+    logging: *logging
+
+networks:
+  frontend:
+    ipam:
+      config:
+        # Fest, damit Caddy eine feste Adresse bekommt (CADDY_IP) und sich das Netz nicht mit
+        # anderen überschneidet. Nicht 172.31.x.x: das ist der Adressbereich der AWS-Standard-VPC.
+        - subnet: ${FRONTEND_SUBNET:-10.250.53.0/24}
+  backend:
+    internal: true   # db und backup haben keinen Weg ins Internet
+    ipam:
+      config:
+        - subnet: ${BACKEND_SUBNET:-10.250.54.0/24}
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:
