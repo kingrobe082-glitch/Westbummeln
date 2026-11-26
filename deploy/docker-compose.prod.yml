@@ -122,10 +122,15 @@ services:
       BACKUP_KEEP_WEEKS: "4"
       BACKUP_KEEP_MONTHS: "3"
       TZ: Europe/Berlin
+      # Ping an healthchecks.io nach jeder Sicherung (/start, Erfolg, /fail); leer = aus.
+      # Siehe MONITORING.md und backup-hooks/10-healthchecks.
+      BACKUP_PING_URL: ${BACKUP_PING_URL:-}
     volumes:
       - ./backups:/backups
+      - ./backup-hooks:/hooks:ro   # ersetzt den Webhook-Hook des Images
     networks:
       - backend
+      - frontend   # nur für den Ping nach außen (backend hat kein Internet)
     depends_on:
       db:
         condition: service_healthy
