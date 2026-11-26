@@ -230,9 +230,24 @@ ROOM_MAX_PLAYERS = int(os.environ.get('ROOM_MAX_PLAYERS', '20'))  # Spieler pro 
 ROOM_MAX_TOTAL = int(os.environ.get('ROOM_MAX_TOTAL', '200'))  # Räume insgesamt
 ROOM_EMPTY_TTL = int(os.environ.get('ROOM_EMPTY_TTL', '1800'))  # Sekunden, bis ein leerer Raum gelöscht wird
 
+# Logs gehen nach stdout und landen so in `docker compose logs web`. Die App-Logger schreiben ab INFO
+# (per LOG_LEVEL änderbar), alles andere ab WARNING. Die App-Logger haben keinen eigenen Handler, sondern
+# reichen an den Root-Logger weiter – so sieht auch pytests caplog jede Meldung.
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'formatters': {'plain': {'format': '%(asctime)s %(levelname)s %(name)s: %(message)s'}},
+    'handlers': {'console': {'class': 'logging.StreamHandler', 'stream': 'ext://sys.stdout', 'formatter': 'plain'}},
     'root': {'handlers': ['console'], 'level': 'WARNING'},
+    'loggers': {
+        **{name: {'level': LOG_LEVEL} for name in
+           ('game', 'accounts', 'moderation', 'westbummeln', 'datenschutz', 'integrations')},
+        # Djangos eigene Handler abklemmen (doppelte Ausgabe mit DEBUG); alles läuft über den Root-Logger.
+        'django': {'handlers': [], 'level': 'WARNING', 'propagate': True},
+        # Nur Serverfehler (5xx) samt Traceback, keine 404/403 von Scannern.
+        'django.request': {'level': 'ERROR'},
+        # Fremde Host-Header von Scannern sind kein Fehler unserer App.
+        'django.security.DisallowedHost': {'handlers': [], 'propagate': False},
+    },
 }
