@@ -1,0 +1,106 @@
+{% load static %}<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#15263a">
+<title>Datenschutz · Westbummeln Leitstelle</title>
+<link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="legalPage">
+<header><div><h1>🚒 WESTBUMMELN · LEITSTELLE</h1><div class="small">Datenschutzhinweise</div></div><a class="backLink" href="/">← Zurück zum Spiel</a></header>
+<main class="legal">
+{# Inhalt mit dem Code abgleichen, wenn sich Daten, Fristen oder Dienste ändern: datenschutz/services.py, deploy/. #}
+
+<h2>Datenschutzhinweise</h2>
+<p>Westbummeln ist ein Browserspiel: Mehrere Spielerinnen und Spieler übernehmen gemeinsam die Feuerwehr-Leitstelle und Fahrzeuge. Hier steht, welche Daten dabei anfallen, wofür, wie lange sie bleiben und wer sie bekommt. Wir verwenden keine Werbung, keine Analyse- oder Tracking-Werkzeuge und verkaufen keine Daten.</p>
+
+<h2>1. Dein Konto</h2>
+<table>
+<thead><tr><th>Daten</th><th>Wofür</th><th>Wie lange</th></tr></thead>
+<tbody>
+<tr><td>Benutzername</td><td>Anmeldung; wird Mitspielenden im Spiel angezeigt</td><td>bis du dein Konto löschst</td></tr>
+<tr><td>E-Mail-Adresse (nur bei älteren Konten)</td><td>Bei der Registrierung fragen wir keine E-Mail-Adresse mehr ab. Wer früher eine angegeben hat, kann sich damit statt mit dem Benutzernamen anmelden. Wir schicken keine E-Mails.</td><td>bis du dein Konto löschst</td></tr>
+<tr><td>Passwort</td><td>Anmeldung. Gespeichert wird nur ein nicht umkehrbarer Hash (scrypt), nie das Passwort selbst.</td><td>bis du dein Konto löschst</td></tr>
+<tr><td>Google-Kennung (nur bei Anmeldung mit Google)</td><td>Wiedererkennen deines Google-Kontos. Name und E-Mail-Adresse von Google speichern wir nicht.</td><td>bis du dein Konto löschst</td></tr>
+<tr><td>Discord-Kennung und Discord-Benutzername (nur bei Anmeldung mit Discord)</td><td>Wiedererkennen deines Discord-Kontos; der Discord-Benutzername wird dein Spielname</td><td>bis du dein Konto löschst</td></tr>
+<tr><td>Zeitpunkt der Registrierung und der letzten Anmeldung</td><td>Verwaltung und Missbrauchsschutz</td><td>bis du dein Konto löschst</td></tr>
+<tr><td>Rolle (Spieler, Moderator, Admin)</td><td>Verwaltung und Moderation des Spiels</td><td>bis du dein Konto löschst</td></tr>
+</tbody>
+</table>
+
+<h2>2. Anmeldung und Cookies</h2>
+<p>Wir setzen nur Cookies, die für das Spiel technisch nötig sind:</p>
+<ul>
+<li><code>sessionid</code>: hält dich angemeldet. Gültig {{ session_days }} Tage. Auf dem Server liegt dazu eine Sitzung mit deiner Konto-ID. Abgelaufene Sitzungen löschen wir automatisch (beim Serverstart und danach stündlich).</li>
+<li><code>csrftoken</code>: schützt deine Kontoaktionen vor Angriffen über fremde Webseiten. Enthält keine persönlichen Daten, gültig bis zu einem Jahr.</li>
+<li><code>wb_google_nonce</code> und <code>wb_discord_state</code>: Schutz bei der Anmeldung mit Google bzw. Discord, gültig 10 Minuten.</li>
+</ul>
+<p>Außerdem merkt sich dein Browser im lokalen Speicher (<code>localStorage</code>, Eintrag <code>wb_age_confirmed</code>), dass du bestätigt hast, mindestens 18 Jahre alt zu sein. Dieser Eintrag wird nicht an uns übertragen; du kannst ihn über die Browsereinstellungen löschen.</p>
+
+<h2>3. Im Spiel</h2>
+<p>Was im Spiel passiert, liegt nur im Arbeitsspeicher des Servers, nicht in der Datenbank: dein Spielname, deine Rolle (Leitstelle oder Gruppenführung), dein Fahrzeug, Funksprüche, Einsätze und Systemmeldungen (z.&nbsp;B. „… ist beigetreten“). Alle im selben Spielraum sehen das. Der Funkverlauf zeigt die letzten 100 Einträge.</p>
+<ul>
+<li>Wer 30 Sekunden keine Verbindung hat, wird aus dem Raum entfernt.</li>
+<li>Ein leerer Raum wird nach {{ room_empty_minutes }} Minuten gelöscht, mit Funkverlauf und Einsätzen.</li>
+<li>Bei jedem Neustart des Servers ist alles weg.</li>
+</ul>
+<p>Bitte schreib keine persönlichen Daten (echter Name, Adresse, Telefonnummer) in Funksprüche.</p>
+
+<h2>4. Sprachfunk</h2>
+<p>Der Sprachfunk ist freiwillig. Das Mikrofon wird erst nach Klick auf „Sprachfunk einschalten“ benutzt. Die Sprache läuft direkt zwischen den Browsern der Beteiligten (WebRTC), nicht über unseren Server, und wird nicht aufgezeichnet.</p>
+<p>Damit sich zwei Browser verbinden können, tauschen sie über unseren Server Verbindungsdaten aus. Darin stehen die IP-Adressen deines Geräts. Diese Daten liegen nur kurz im Arbeitsspeicher. <strong>Deine Gesprächspartner sehen dabei deine IP-Adresse.</strong> Um die eigene öffentliche Adresse herauszufinden, fragt dein Browser einen STUN-Server von Google (<code>stun.l.google.com</code>); dabei erfährt Google deine IP-Adresse.</p>
+
+<h2>5. Sicherheit und Server-Protokolle</h2>
+<ul>
+<li><strong>Schutz vor Missbrauch:</strong> Um zu viele Anfragen und das Erraten von Passwörtern zu bremsen, merkt sich der Server die IP-Adresse kurzzeitig im Arbeitsspeicher: für die Anfragebegrenzung höchstens eine Stunde, für die Sperre nach fünf falschen Passwörtern (Konto und IP-Adresse zusammen) 24 Stunden. Diese Daten liegen nicht in der Datenbank und sind nach einem Neustart weg.</li>
+<li><strong>Zugriffsprotokoll:</strong> Der Server protokolliert für jede Anfrage Zeitpunkt, Art, aufgerufenen Pfad (ohne Parameter), Ergebnis, Größe und Dauer. Deine IP-Adresse steht nicht darin (nur die des vorgeschalteten Proxys auf demselben Server). Dazu kommen Fehler- und Startmeldungen ohne persönliche Daten. Die Protokolle werden fortlaufend überschrieben: höchstens 5 Dateien zu je 20 MB pro Dienst.</li>
+<li><strong>Verschlüsselung:</strong> Die Verbindung zum Spiel ist per HTTPS verschlüsselt.</li>
+</ul>
+
+<h3>Moderation</h3>
+<p>Moderatorinnen, Moderatoren und Admins können Spieler aus Räumen entfernen, Räume schließen, Konten sperren und Rollen vergeben. Dazu speichern wir:</p>
+<ul>
+<li><strong>Sperren:</strong> gesperrtes Konto, Grund, Beginn, Ende, wer gesperrt und wer die Sperre aufgehoben hat. Aufgehobene und abgelaufene Sperren bleiben als Verlauf stehen. Sie werden mit dem Konto gelöscht.</li>
+<li><strong>Moderationsprotokoll:</strong> Zeitpunkt, Aktion, betroffenes Konto und Raum, Namen der Beteiligten (bei geschlossenen Räumen auch die Namen der Spieler darin). Die Namen bleiben im Protokoll, auch wenn ein Konto gelöscht wird, damit Moderationsentscheidungen nachvollziehbar bleiben.</li>
+</ul>
+<p>Ein gesperrtes Konto kann sich nicht anmelden. „Meine Daten herunterladen“ und „Konto löschen“ stehen ihm erst nach dem Ende der Sperre wieder zur Verfügung.</p>
+
+<h2>6. Datensicherungen</h2>
+<p>Damit Konten bei einem Defekt nicht verloren gehen, sichern wir die Datenbank (Konten und Sitzungen) auf demselben Server: täglich (aufbewahrt 7 Tage), wöchentlich (4 Wochen), monatlich (3 Monate) und vor jedem Update (die letzten 5; eine ältere wird gelöscht, sobald fünf neuere vorhanden sind). Gelöschte Konten bleiben in diesen Sicherungen, bis die Sicherungen planmäßig gelöscht werden, also bis zu etwa 3 Monate. Sicherungen werden nur benutzt, um nach einem Fehler den alten Stand wiederherzustellen.</p>
+
+<h2>7. Wer Daten bekommt</h2>
+<ul>
+<li><strong>Hosting:</strong> Der Server läuft bei Amazon Web Services (AWS) im Rechenzentrum Frankfurt am Main (Region eu-central-1). AWS betreibt die Technik, auf der Spiel, Datenbank, Protokolle und Sicherungen liegen.</li>
+<li><strong>Frühere Version:</strong> Bis zur Umstellung lief das Spiel bei Render (USA).</li>
+<li><strong>Google:</strong> bei der Anmeldung mit Google und beim Sprachfunk (STUN-Server, siehe oben). Ist die Anmeldung mit Google eingeschaltet, lädt die Startseite für nicht angemeldete Besucher Googles Anmeldeskript von Google-Servern. Dabei erfährt Google deine IP-Adresse und kann eigene Cookies lesen, auch wenn du dich nicht mit Google anmeldest. Meldest du dich mit Google an, übermittelt uns Google eine Kennung deines Google-Kontos.
+  Auf diesem Server derzeit: Anmeldung mit Google {% if google_login %}eingeschaltet{% else %}ausgeschaltet{% endif %}.</li>
+<li><strong>Discord (nur falls eingeschaltet):</strong>
+  <ul>
+  <li>Anmeldung mit Discord: Discord übermittelt uns deine Discord-Kennung und deinen Benutzernamen. Ist das Spiel auf einen Discord-Server beschränkt, fragen wir bei Discord ab, ob du Mitglied bist; die Liste deiner Server speichern wir nicht.</li>
+  <li>Funkspiegelung: Funksprüche und Systemmeldungen eines Spielraums (mit Spielnamen) werden in einen Discord-Kanal geschrieben. Dort sind sie für alle Mitglieder des Kanals sichtbar und bleiben dauerhaft bei Discord. Beim Löschen deines Kontos werden sie nicht automatisch entfernt.</li>
+  <li>Discord-Kanal im Spiel: Nachrichten aus einem Discord-Kanal erscheinen mit dem Discord-Anzeigenamen im Funk eines Spielraums.</li>
+  </ul>
+  Auf diesem Server derzeit: Anmeldung mit Discord {% if discord_login %}eingeschaltet{% else %}ausgeschaltet{% endif %}, Funkspiegelung {% if discord_mirror %}eingeschaltet{% else %}ausgeschaltet{% endif %}, Discord-Kanal im Spiel {% if discord_bot %}eingeschaltet{% else %}ausgeschaltet{% endif %}.</li>
+</ul>
+<p>Google und Discord sind Unternehmen mit Sitz bzw. Konzernmutter in den USA.</p>
+
+<h2>8. Rechtsgrundlagen</h2>
+<p>Konto, Anmeldung und Spiel zur Erfüllung des Nutzungsverhältnisses (Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;b DSGVO); Schutz vor Missbrauch, Protokolle und Sicherungen aus berechtigtem Interesse an einem sicheren Betrieb (Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;f DSGVO); technisch nötige Cookies nach §&nbsp;25 Abs.&nbsp;2 TDDDG.</p>
+
+<h2>9. Kinder und Jugendliche</h2>
+<p>Westbummeln ist nur für Personen ab 18 Jahren. Beim ersten Aufruf fragt die Seite danach; wer „Nein“ wählt, wird zu Google weitergeleitet. Die Antwort „Ja“ merkt sich nur dein Browser (siehe Abschnitt 2), unser Server speichert sie nicht.</p>
+
+<h2>10. Deine Rechte</h2>
+<ul>
+<li><strong>Auskunft und Datenkopie</strong> (Art.&nbsp;15 und 20 DSGVO): Im Kontobereich unter „Meine Daten“ kannst du jederzeit alle zu deinem Konto gespeicherten Daten als Datei herunterladen.</li>
+<li><strong>Löschung</strong> (Art.&nbsp;17 DSGVO): Im Kontobereich unter „Meine Daten“ kannst du dein Konto selbst löschen. Konto und alle Anmeldungen sind sofort gelöscht und du wirst aus allen Spielräumen entfernt. Was du bereits gefunkt hast, bleibt im Funkverlauf des Raums, bis der Raum gelöscht wird; dein Name im Moderationsprotokoll, Kopien bei Discord (falls eingeschaltet) und in Datensicherungen bleiben wie oben beschrieben.</li>
+<li><strong>Berichtigung, Einschränkung, Widerspruch</strong> (Art.&nbsp;16, 18, 21 DSGVO): Was im Spiel gespeichert ist, siehst du über „Meine Daten herunterladen“ in deinem Konto. Willst du nicht, dass deine Daten weiter verarbeitet werden, kannst du dein Konto jederzeit über „Konto löschen“ entfernen.</li>
+<li><strong>Beschwerde</strong> bei einer Datenschutz-Aufsichtsbehörde.</li>
+</ul>
+
+<p class="small">Stand: 26.11.2026</p>
+</main>
+<footer class="siteFooter small"><a href="/">Zum Spiel</a></footer>
+</body>
+</html>

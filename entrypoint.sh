@@ -8,6 +8,8 @@ set -eu
 if [ "${1:-}" = "gunicorn" ]; then
   python manage.py migrate --noinput
   python manage.py bootstrap_accounts
+  # Abgelaufene Sitzungen löschen; im laufenden Betrieb erledigt das datenschutz.middleware stündlich.
+  python manage.py clearsessions
 fi
 
 exec "$@"

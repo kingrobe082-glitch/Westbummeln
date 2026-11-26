@@ -19,6 +19,7 @@ function showAccount({ name, developer, staff, hasPassword }) {
     $('developerPanel').open = false;
     $('developerStatus').textContent = '';
   }
+  if (typeof updatePrivacyPanel === 'function') updatePrivacyPanel({ name, hasPassword });
 }
 
 let authMode = 'login';
@@ -31,7 +32,7 @@ function setAuthMode(mode) {
   authMode = mode;
   $('tabLogin').classList.toggle('active', mode === 'login');
   $('tabRegister').classList.toggle('active', mode === 'register');
-  $('emailRow').classList.toggle('hidden', mode !== 'register');
+  $('registerHint').classList.toggle('hidden', mode !== 'register');
   $('nameLabel').textContent = mode === 'register' ? 'Benutzername (3–24 Zeichen)' : 'Benutzername oder E-Mail';
   $('accountPassword').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
   $('accountSubmit').textContent = mode === 'register' ? 'Konto erstellen' : 'Anmelden';
@@ -118,17 +119,15 @@ $('tabRegister').onclick = () => setAuthMode('register');
 $('accountForm').addEventListener('submit', event => {
   event.preventDefault();
   const name = $('accountName').value.trim();
-  const email = $('accountEmail').value.trim();
   const password = $('accountPassword').value;
   if (!name) return setNotice(authMode === 'register' ? 'Bitte gib einen Benutzernamen ein.' : 'Bitte gib Benutzername oder E-Mail ein.', 'error');
   if (authMode === 'register') {
     if (!/^[\p{L}\p{N}_-]{3,24}$/u.test(name)) return setNotice('Benutzername: 3–24 Buchstaben, Zahlen, Unterstriche oder Bindestriche, ohne Leerzeichen.', 'error');
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) return setNotice('Bitte gib eine gültige E-Mail-Adresse ein.', 'error');
     if (password.length < 8) return setNotice('Das Passwort braucht mindestens 8 Zeichen.', 'error');
   } else if (!password) {
     return setNotice('Bitte gib dein Passwort ein.', 'error');
   }
-  accountAction(authMode, authMode === 'register' ? { name, email, password } : { name, password });
+  accountAction(authMode, authMode === 'register' ? { name, password } : { name, password });
 });
 $('accountLogout').onclick = () => accountAction('logout');
 $('developerRefresh').onclick = async () => {

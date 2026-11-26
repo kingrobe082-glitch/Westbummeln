@@ -247,6 +247,58 @@ def _unban(r, pid, p, data, now):
 ROOM_ACTIONS = {'kick': _kick, 'transfer_owner': _transfer_owner, 'unban': _unban}
 
 
+# ------------------------------------------------------------------ Datenschutz (Konto löschen, Export)
+
+def remove_account(account_id, now):
+    """Ein gelöschtes Konto aus allen Räumen entfernen.
+
+    Der Spieler verlässt jeden Raum wie bei einem Kick (Leitstelle und Fahrzeug werden frei), Sperr- und
+    Kick-Einträge zu dem Konto verschwinden. Besitzt das Konto einen Raum, übernimmt ihn der nächste
+    anwesende Spieler; ist niemand mehr da, wird der Raum gelöscht. Der Funkverlauf bleibt (nur Namen,
+    flüchtig im Speicher)."""
+    with lock:
+        for code, r in list(rooms.items()):
+            changed = False
+            for target in [p for p in r['players'].values() if p['account'] == account_id]:
+                freed = _remove_player(r, target, now)
+                engine.emit(r, 'System', f'{target["name"]} hat das Spiel verlassen.' + _freed_text(freed))
+                changed = True
+            r['kicked'] = {pid: k for pid, k in r['kicked'].items() if k['account'] != account_id}
+            if r['banned'].pop(account_id, None) is not None:
+                changed = True
+            if r['owner_account'] == account_id:
+                heir = next(iter(r['players'].values()), None)
+                if heir is None:
+                    del rooms[code]
+                    continue
+                r['owner_account'] = heir['account']
+                r['owner_name'] = heir['name']
+                engine.emit(r, 'System', f'{heir["name"]} verwaltet jetzt den Raum.')
+                changed = True
+            if changed:
+                sync_admin(r)
+                r['rev'] += 1
+
+
+def account_rooms(account_id):
+    """Was die Räume im Speicher gerade über ein Konto wissen (für den Datenexport)."""
+    with lock:
+        found = []
+        for r in rooms.values():
+            player = next((p for p in r['players'].values() if p['account'] == account_id), None)
+            owner = r['owner_account'] == account_id
+            banned = account_id in r['banned']
+            if not (player or owner or banned):
+                continue
+            entry = {'code': r['code'], 'owner': owner, 'banned': banned, 'player': None}
+            if player:
+                vehicle = r['vehicles'].get(player['vehicle']) if player['vehicle'] else None
+                entry['player'] = {'name': player['name'], 'role': player['role'],
+                                   'vehicle': vehicle['call'] if vehicle else None}
+            found.append(entry)
+        return found
+
+
 def handle(r, data, account_id, name, is_developer, now):
     """Eine /api-Aktion in einem bestehenden Raum ausführen. Nur unter `lock` aufrufen.
 

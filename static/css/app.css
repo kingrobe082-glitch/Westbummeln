@@ -29,6 +29,29 @@
 #securityPanel{margin:10px 0}
 #securityPanel summary{cursor:pointer;margin-bottom:8px}
 #logoutAll{margin-top:10px}
+#privacyPanel{margin:10px 0}
+#privacyPanel summary{cursor:pointer;margin-bottom:8px}
+#exportData{margin-bottom:12px;max-width:420px;width:100%}
+.authFields button.danger{background:#b3261e}
+.authFields button.danger:hover{background:#d0352b}
+.siteFooter{max-width:1650px;margin:0 auto;padding:16px 20px 24px;text-align:center}
+.siteFooter a,.legal a,.formHint a,#privacyPanel a{color:#9cc8ff}
+.backLink{color:#9cc8ff;font-weight:700}
+.legal{display:block;max-width:860px;line-height:1.55}
+.legal h2{margin:26px 0 8px}
+.legal table{border-collapse:collapse;width:100%;font-size:13px}
+.legal th,.legal td{border:1px solid #3a536d;padding:7px 9px;text-align:left;vertical-align:top}
+.legal th{background:#15263a}
+.legal code{background:#15263a;border-radius:4px;padding:1px 5px}
+@media(max-width:600px){.legal table,.legal tbody,.legal tr,.legal td{display:block}.legal thead{display:none}.legal td{border-top:0}.legal tr{border-top:1px solid #3a536d;margin-bottom:8px}.legal td:first-child{font-weight:700;background:#15263a}}
+.ageGate{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:16px;background:#0a111b}
+.ageGated body>:not(#ageGate):not(script){display:none!important}
+.ageGateBox{max-width:440px;width:100%;background:#192c41;border:1px solid #3a536d;border-radius:12px;padding:22px;text-align:center;box-shadow:0 8px 30px #0008}
+.ageGateBox h2{font-size:20px;margin:0 0 10px}
+.ageGateBox a{color:#9cc8ff}
+.ageGateButtons{display:grid;gap:10px;margin:18px 0 12px}
+#ageYes{background:#2f8f5b;border:0;font-weight:700;min-height:46px}
+#ageNo{min-height:42px}
 /* Raumcode-Zeile: Feld mit Beschriftung und "Raum beitreten" auf einer Unterkante */
 #roomEntry .row{align-items:flex-end}
 #roomEntry label{display:grid;gap:4px}

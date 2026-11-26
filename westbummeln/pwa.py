@@ -28,7 +28,8 @@ BACKGROUND_COLOR = '#0a111b'
 # Alles, was die Seite zum Anzeigen braucht (und die Offline-Seite). Pfade relativ zu static/.
 SHELL_FILES = [
     'css/app.css', 'css/pwa.css',
-    'js/app.js', 'js/game.js', 'js/voice.js', 'js/account.js', 'js/security.js', 'js/pwa.js',
+    'js/agegate.js', 'js/app.js', 'js/game.js', 'js/voice.js', 'js/account.js', 'js/security.js',
+    'js/privacy.js', 'js/pwa.js',
     'karte.webp',
     'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ]
