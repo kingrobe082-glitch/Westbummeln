@@ -276,7 +276,11 @@ def test_privacy_page(client):
     assert response.status_code == 200
     html = response.content.decode()
     assert 'Datenschutzhinweise' in html
-    assert '[TODO: Name/Anschrift/E-Mail des Betreibers]' in html
+    # Entscheidung von Lars: keine Angaben zum Verantwortlichen, keine sichtbaren Platzhalter.
+    assert 'TODO' not in html and 'Verantwortlich' not in html and 'Kontakt' not in html
+    assert 'Entwurf' not in html
+    for number, title in enumerate(['Dein Konto', 'Anmeldung und Cookies', 'Im Spiel', 'Sprachfunk'], 1):
+        assert f'<h2>{number}. {title}</h2>' in html
     assert 'Gültig 7 Tage' in html
     assert '<script' not in html
 

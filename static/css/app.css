@@ -43,7 +43,6 @@
 .legal th,.legal td{border:1px solid #3a536d;padding:7px 9px;text-align:left;vertical-align:top}
 .legal th{background:#15263a}
 .legal code{background:#15263a;border-radius:4px;padding:1px 5px}
-.legal .draft{background:#4a3a12;border:1px solid #ffcd7d;color:#ffe9c2;border-radius:8px;padding:10px 12px}
 @media(max-width:600px){.legal table,.legal tbody,.legal tr,.legal td{display:block}.legal thead{display:none}.legal td{border-top:0}.legal tr{border-top:1px solid #3a536d;margin-bottom:8px}.legal td:first-child{font-weight:700;background:#15263a}}
 .ageGate{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:16px;background:#0a111b}
 .ageGated body>:not(#ageGate):not(script){display:none!important}
