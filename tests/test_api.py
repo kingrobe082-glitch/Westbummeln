@@ -40,6 +40,16 @@ def test_account_status_logged_out(game_client):
     assert data['developer'] is False
     assert data['discordLogin'] is False
     assert set(data) >= {'name', 'googleClientId', 'nonce', 'developer', 'discordLogin', 'discordVoiceUrl'}
+    assert data['publicRoom'] == ''
+
+
+@pytest.mark.django_db
+def test_public_room_is_announced(game_client, monkeypatch):
+    """Ist DISCORD_ROOM gesetzt, zeigt die Startseite einen Knopf für diesen festen Raum."""
+    from integrations import discord
+    monkeypatch.setattr(discord, 'ROOM', 'WESTBUMMELN')
+    monkeypatch.setattr(discord, 'ROOM_OK', True)
+    assert game_client().client.get('/account').json()['publicRoom'] == 'WESTBUMMELN'
 
 
 def test_register_logs_in(player):

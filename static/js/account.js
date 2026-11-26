@@ -1,5 +1,6 @@
 let accountBusy = false;
 let developerAccount = false;
+let publicRoomCode = '';
 function showAccount({ name, developer, hasPassword }) {
   developerAccount = Boolean(developer);
   $('passwordForm').classList.toggle('hidden', !hasPassword);
@@ -10,6 +11,8 @@ function showAccount({ name, developer, hasPassword }) {
   $('roomEntry').classList.toggle('hidden', !name);
   $('join').disabled = !name;
   $('createRoom').disabled = !name;
+  $('publicRoomRow').classList.toggle('hidden', !publicRoomCode);
+  $('publicRoom').disabled = !name;
   $('developerPanel').classList.toggle('hidden', !developer);
   if (!developer) {
     $('developerPanel').open = false;
@@ -77,6 +80,8 @@ async function loadAccount() {
   const response = await fetch('/account');
   if (!response.ok) throw new Error('Kontodienst gerade nicht erreichbar.');
   const account = await response.json();
+  publicRoomCode = account.publicRoom || '';
+  $('publicRoomCode').textContent = publicRoomCode;
   showAccount(account);
   $('discordLogin').classList.toggle('hidden', !account.discordLogin || Boolean(account.name));
   const voiceLink = $('discordVoice');
