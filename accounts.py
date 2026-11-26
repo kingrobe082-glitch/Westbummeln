@@ -28,6 +28,9 @@ def database():
             if 'email' not in [c[1] for c in db.execute('PRAGMA table_info(accounts)')]:
                 db.execute('ALTER TABLE accounts ADD COLUMN email TEXT')
             db.execute('CREATE UNIQUE INDEX IF NOT EXISTS accounts_email ON accounts(email)')
+            if 'discord_sub' not in [c[1] for c in db.execute('PRAGMA table_info(accounts)')]:
+                db.execute('ALTER TABLE accounts ADD COLUMN discord_sub TEXT')
+            db.execute('CREATE UNIQUE INDEX IF NOT EXISTS accounts_discord ON accounts(discord_sub)')
             db.execute('''CREATE TABLE IF NOT EXISTS sessions (
                 token TEXT PRIMARY KEY, account INTEGER NOT NULL REFERENCES accounts(id),
                 expires INTEGER NOT NULL
@@ -139,11 +142,45 @@ def authenticate(action, data, header):
             account, name = account_for_google(db, data, cookie_value(header, 'wb_google_nonce'))
         else:
             account, name = account_for_password(db, data, action == 'register')
-        token = secrets.token_urlsafe(32)
-        now = int(time.time())
-        db.execute('DELETE FROM sessions WHERE expires<=? OR token=?', (now, token_key(old_token)))
-        db.execute('INSERT INTO sessions VALUES (?,?,?)', (token_key(token), account, now + LIFETIME))
-        return name, token
+        return name, start_session(db, account, old_token)
+
+
+def start_session(db, account, old_token):
+    token = secrets.token_urlsafe(32)
+    now = int(time.time())
+    db.execute('DELETE FROM sessions WHERE expires<=? OR token=?', (now, token_key(old_token)))
+    db.execute('INSERT INTO sessions VALUES (?,?,?)', (token_key(token), account, now + LIFETIME))
+    return token
+
+
+def account_for_discord(db, user):
+    sub = str(user.get('id') or '')
+    if not re.fullmatch(r'\d{5,25}', sub):
+        raise ValueError('Discord-Anmeldung fehlgeschlagen.')
+    row = db.execute('SELECT id,name FROM accounts WHERE discord_sub=?', (sub,)).fetchone()
+    if row:
+        return row
+    base = re.sub(r'[^\w-]', '', str(user.get('username') or ''))[:20]
+    if len(base) < 3:
+        base = 'Funk-' + sub[-4:]
+    name = base
+    for _ in range(20):
+        try:
+            row = db.execute('INSERT INTO accounts (name,name_key,discord_sub) VALUES (?,?,?)',
+                             (name, name.casefold(), sub))
+            return row.lastrowid, name
+        except sqlite3.IntegrityError:
+            existing = db.execute('SELECT id,name FROM accounts WHERE discord_sub=?', (sub,)).fetchone()
+            if existing:
+                return existing
+            name = base[:19] + '-' + secrets.token_hex(2)
+    raise ValueError('Discord-Anmeldung fehlgeschlagen.')
+
+
+def login_discord(user, header):
+    with database() as db:
+        account, name = account_for_discord(db, user)
+        return name, start_session(db, account, cookie_value(header, COOKIE))
 
 
 def provision_developer():

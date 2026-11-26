@@ -76,11 +76,11 @@ def _account_count():
 
 def export_text():
     with accounts.database() as db:
-        rows = db.execute('SELECT id,name,name_key,salt,password,google_sub,email FROM accounts ORDER BY id').fetchall()
+        rows = db.execute('SELECT id,name,name_key,salt,password,google_sub,email,discord_sub FROM accounts ORDER BY id').fetchall()
         devs = [r[0] for r in db.execute('SELECT account FROM developers ORDER BY account')]
     data = {'version': 1, 'developers': devs, 'accounts': [
         {'id': r[0], 'name': r[1], 'name_key': r[2], 'salt': _b64(r[3]), 'password': _b64(r[4]),
-         'google_sub': r[5], 'email': r[6]} for r in rows]}
+         'google_sub': r[5], 'email': r[6], 'discord_sub': r[7]} for r in rows]}
     return json.dumps(data, sort_keys=True, indent=1)
 
 
@@ -88,9 +88,9 @@ def import_text(text):
     data = json.loads(text)
     with accounts.database() as db:
         for a in data['accounts']:
-            db.execute('INSERT OR IGNORE INTO accounts (id,name,name_key,salt,password,google_sub,email) VALUES (?,?,?,?,?,?,?)',
+            db.execute('INSERT OR IGNORE INTO accounts (id,name,name_key,salt,password,google_sub,email,discord_sub) VALUES (?,?,?,?,?,?,?,?)',
                        (a['id'], a['name'], a['name_key'], _unb64(a['salt']), _unb64(a['password']),
-                        a['google_sub'], a['email']))
+                        a.get('google_sub'), a.get('email'), a.get('discord_sub')))
         for account in data.get('developers', []):
             db.execute('INSERT OR IGNORE INTO developers VALUES (?)', (account,))
     return len(data['accounts'])

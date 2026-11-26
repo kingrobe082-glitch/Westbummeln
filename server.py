@@ -4,6 +4,8 @@ from pathlib import Path
 import json, time, secrets, re, os
 import accounts
 import backup
+import discord_bridge as discord
+from urllib.parse import parse_qs
 from threading import BoundedSemaphore
 from collections import deque
 
@@ -44,10 +46,16 @@ def safe_location(pos):
  return all((pos[0]-x)**2+(pos[1]-y)**2 >= .027**2 for x,y in STATIONS)
 
 def room(code):
- if code not in rooms:rooms[code]={'players':{},'vehicles':{v['id']:{**v,'owner':None,'status':2,'incident':None,'phase':'wache','phase_at':0} for v in FLEET},'incidents':[],'radio':[],'rev':0,'dispatcher':None,'ai_last':0,'ai_seq':0,'voice_messages':[],'voice_seq':0,'admin':None,'channels':['Leitstelle','Einsatzstelle','Abschnitt 1','Abschnitt 2','Abschnitt 3'],'roles':{'leitstelle':True,'gf':True},'weather_mode':'auto','weather':'Sonnig','weather_at':0,'weather_history':[]}
+ if code not in rooms:rooms[code]={'code':code,'players':{},'vehicles':{v['id']:{**v,'owner':None,'status':2,'incident':None,'phase':'wache','phase_at':0} for v in FLEET},'incidents':[],'radio':[],'rev':0,'dispatcher':None,'ai_last':0,'ai_seq':0,'voice_messages':[],'voice_seq':0,'admin':None,'channels':['Leitstelle','Einsatzstelle','Abschnitt 1','Abschnitt 2','Abschnitt 3'],'roles':{'leitstelle':True,'gf':True},'weather_mode':'auto','weather':'Sonnig','weather_at':0,'weather_history':[]}
  return rooms[code]
-def emit(r,author,message):
- r['radio'].append({'time':time.strftime('%H:%M:%S'),'author':author,'message':message[:400]});r['radio']=r['radio'][-100:]
+def emit(r,author,message,kind='auto',call=None):
+ entry={'time':time.strftime('%H:%M:%S'),'author':author,'message':message[:400],'kind':kind}
+ if call:entry['call']=call
+ r['radio'].append(entry);r['radio']=r['radio'][-100:]
+ if kind!='discord' and author!='Wetterdienst':discord.post_radio(r.get('code'),entry)
+def from_discord(name,text):
+ with lock:
+  r=room(discord.ROOM);emit(r,name+' (Discord)',text,kind='discord');r['rev']+=1
 def ai_mode(r):
  return len(r['players'])==1
 
@@ -137,7 +145,9 @@ class Handler(BaseHTTPRequestHandler):
    name=account[1] if account else None
    nonce=secrets.token_urlsafe(24) if accounts.GOOGLE_CLIENT_ID and not name else ''
    cookies=[accounts.make_cookie('wb_google_nonce',nonce,600,self.secure_request())] if nonce else []
-   return self.reply(200,{'name':name,'googleClientId':accounts.GOOGLE_CLIENT_ID,'nonce':nonce,'developer':bool(account and account[2])},cookies)
+   return self.reply(200,{'name':name,'googleClientId':accounts.GOOGLE_CLIENT_ID,'nonce':nonce,'developer':bool(account and account[2]),**discord.public_config(bool(name))},cookies)
+  if path=='/auth/discord':return self.discord_start()
+  if path=='/auth/discord/callback':return self.discord_callback(parse_qs(self.path.partition('?')[2]))
   if path=='/developer':
    account=accounts.current_account(self.headers.get('Cookie'))
    if not account or not account[2]:
@@ -163,13 +173,42 @@ class Handler(BaseHTTPRequestHandler):
   mime=assets.get(path)
   if not mime:return self.reply(404,{'error':'Nicht gefunden'})
   file='index.html' if path=='/' else path[1:]
-  content=(ROOT/file).read_bytes()
+  try:content=(ROOT/file).read_bytes()
+  except FileNotFoundError:return self.reply(404,{'error':'Nicht gefunden'})
   self.send_response(200)
   self.send_header('Content-Type',mime)
   self.send_header('Cache-Control','no-cache')
   self.send_header('Content-Length',str(len(content)))
   self.end_headers()
   self.wfile.write(content)
+ def redirect(self,url,cookies=()):
+  self.send_response(302);self.send_header('Location',url);self.send_header('Cache-Control','no-store');self.send_header('Content-Length','0')
+  for cookie in cookies:self.send_header('Set-Cookie',cookie)
+  self.end_headers()
+ def discord_start(self):
+  if not discord.login_enabled():return self.redirect('/?login_error=off')
+  state=secrets.token_urlsafe(24)
+  target=discord.authorize_url(state,discord.redirect_uri(self.headers.get('Host','localhost'),self.secure_request()))
+  return self.redirect(target,[accounts.make_cookie(discord.STATE_COOKIE,state,600,self.secure_request())])
+ def discord_callback(self,query):
+  secure=self.secure_request();clear=accounts.make_cookie(discord.STATE_COOKIE,'',0,secure)
+  def back(code):return self.redirect('/?login_error='+code,[clear])
+  if not discord.login_enabled():return back('off')
+  code=(query.get('code') or [''])[0];state=(query.get('state') or [''])[0]
+  if 'error' in query and not code:return back('cancel')
+  expected=accounts.cookie_value(self.headers.get('Cookie'),discord.STATE_COOKIE)
+  if not code or not state or not expected or not secrets.compare_digest(state,expected):return back('state')
+  now=time.monotonic()
+  with lock:
+   while auth_attempts and now-auth_attempts[0]>=60:auth_attempts.popleft()
+   if len(auth_attempts)>=90:return back('failed')
+   auth_attempts.append(now)
+  try:user=discord.complete_login(code,discord.redirect_uri(self.headers.get('Host','localhost'),secure))
+  except discord.LoginError as error:return back(error.code)
+  try:name,token=accounts.login_discord(user,self.headers.get('Cookie'))
+  except ValueError:return back('failed')
+  backup.mark_dirty()
+  return self.redirect('/',[accounts.make_cookie(accounts.COOKIE,token,accounts.LIFETIME,secure),clear])
  def secure_request(self):
   return self.headers.get('X-Forwarded-Proto','').split(',')[0].strip()=='https' or bool(os.environ.get('RENDER'))
 
@@ -369,7 +408,12 @@ class Handler(BaseHTTPRequestHandler):
     elif action=='radio':
      msg=str(data.get('message','')).strip()[:400]
      if not msg:raise ValueError('Funkspruch leer')
-     emit(r,p['name'],msg)
+     sent=p.setdefault('radio_times',deque())
+     while sent and now-sent[0]>10:sent.popleft()
+     if len(sent)>=5:raise ValueError('Bitte warte kurz, bevor du den nächsten Funkspruch sendest.')
+     sent.append(now)
+     vehicle=r['vehicles'].get(p['vehicle']) if p['vehicle'] else None
+     emit(r,p['name'],msg,kind='funk',call=vehicle['call'] if vehicle else None)
     else:raise ValueError('Unbekannte Aktion')
     r['rev']+=1;self.reply(200,{'state':snapshot(r)})
   except (ValueError,KeyError,TypeError,json.JSONDecodeError) as e:self.reply(400,{'error':str(e)})
@@ -377,6 +421,7 @@ class Handler(BaseHTTPRequestHandler):
  def log_message(self,*args):pass
 if __name__=='__main__':
  backup.start()
+ discord.start(from_discord)
  accounts.provision_developer()
  accounts.provision_test_account()
  backup.mark_dirty()
