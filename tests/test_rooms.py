@@ -178,6 +178,7 @@ def test_kick_frees_vehicle_and_dispatcher():
     act(r, 1, anna, 'kick', target=ben)
     assert ben not in r['players']
     assert r['vehicles']['WB-3-HLF20']['owner'] is None
+    assert r['vehicles']['WB-3-HLF20']['unattended_since'] == NOW  # KI übernimmt wie bei Verbindungsverlust
     assert r['radio'][-1]['message'] == ('Ben wurde von der Raumverwaltung entfernt. '
                                          'Florian WB 3 HLF 20 ist wieder frei.')
 
@@ -279,7 +280,7 @@ def test_http_create_join_kick(player, game_client):
     assert state['code'] == player.room
 
     second = game_client()
-    second.account('register', name='Zweite', email='zwei@example.com', password='geheim123')
+    second.account('register', name='Zweite', email='zwei@example.com', password='Funkgeraet-42')
     second.room = player.room
     second.join()
     first_id = second.id

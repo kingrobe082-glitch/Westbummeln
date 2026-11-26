@@ -7,6 +7,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from game import engine, rooms
+from westbummeln.security import ip_limit
 from westbummeln.views import json_reply, not_found, read_json
 
 ROOM_RE = re.compile(r'[A-Z0-9-]{2,16}')
@@ -20,6 +21,7 @@ def index(request):
 
 
 @never_cache
+@ip_limit('api')
 def api(request):
     if request.method != 'POST':
         return not_found(request)

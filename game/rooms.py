@@ -172,8 +172,10 @@ def _target(r, p, data):
     return target
 
 
-def _remove_player(r, target):
-    """Spieler aus dem Raum nehmen und seine Leitstelle bzw. sein Fahrzeug freigeben."""
+def _remove_player(r, target, now):
+    """Spieler aus dem Raum nehmen und seine Leitstelle bzw. sein Fahrzeug freigeben.
+
+    Wie engine.clean_offline: ein verlassenes Fahrzeug im Einsatz übernimmt später die KI."""
     tid = target['id']
     freed = []
     if r['dispatcher'] == tid:
@@ -181,8 +183,10 @@ def _remove_player(r, target):
         freed.append('Die Leitstelle')
     vid = target['vehicle']
     if vid and vid in r['vehicles']:
-        r['vehicles'][vid]['owner'] = None
-        freed.append(r['vehicles'][vid]['call'])
+        vehicle = r['vehicles'][vid]
+        vehicle['owner'] = None
+        vehicle['unattended_since'] = now
+        freed.append(vehicle['call'])
     del r['players'][tid]
     r['voice_messages'] = [m for m in r['voice_messages'] if tid not in (m['from'], m['to'])]
     return freed
@@ -192,7 +196,7 @@ def _kick(r, pid, p, data, now):
     _require_owner(r, p)
     target = _target(r, p, data)
     ban = data.get('ban') is True
-    freed = _remove_player(r, target)
+    freed = _remove_player(r, target, now)
     r['kicked'] = {k: v for k, v in r['kicked'].items() if now - v['at'] < KICK_MEMORY}
     r['kicked'][target['id']] = {'account': target['account'], 'at': now, 'banned': ban}
     if ban:

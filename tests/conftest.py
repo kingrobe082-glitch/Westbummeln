@@ -1,17 +1,17 @@
 import json
 
 import pytest
+from django.core.cache import cache
 from django.test import Client
 
-from accounts import views as account_views
 from game import rooms
 
 
 @pytest.fixture(autouse=True)
 def fresh_server_state():
-    """Spielräume und Anmeldezähler liegen im Prozessspeicher: vor jedem Test leeren."""
+    """Spielräume, IP-Limits und Login-Sperren liegen im Prozessspeicher: vor jedem Test leeren."""
     rooms.rooms.clear()
-    account_views.auth_attempts.clear()
+    cache.clear()
     yield
     rooms.rooms.clear()
 
@@ -62,6 +62,6 @@ def game_client(db):
 @pytest.fixture
 def player(db):
     client = GameClient()
-    response = client.account('register', name='Florian1', email='florian@example.com', password='geheim123')
+    response = client.account('register', name='Florian1', email='florian@example.com', password='Funkgeraet-42')
     assert response.status_code == 200, response.json()
     return client

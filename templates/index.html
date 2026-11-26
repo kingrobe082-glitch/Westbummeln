@@ -19,6 +19,16 @@
 <div id="accountSession" class="hidden">
   <span id="signedInAs"></span>
   <button id="accountLogout" type="button">Abmelden</button>
+  <details id="securityPanel">
+    <summary>Kontosicherheit</summary>
+    <form id="passwordForm" class="authFields" novalidate>
+      <label><span>Bisheriges Passwort</span><input id="oldPassword" type="password" autocomplete="current-password" maxlength="128"></label>
+      <label><span>Neues Passwort (mindestens 8 Zeichen)</span><input id="newPassword" type="password" autocomplete="new-password" maxlength="128"></label>
+      <button type="submit" id="passwordSubmit">Passwort ändern</button>
+      <p class="small">Danach sind alle anderen Geräte abgemeldet.</p>
+    </form>
+    <button id="logoutAll" type="button">Auf allen Geräten abmelden</button>
+  </details>
   <details id="developerPanel" class="hidden">
     <summary>Entwicklerübersicht</summary>
     <button id="developerRefresh" type="button">Serverstatus aktualisieren</button>
@@ -42,4 +52,5 @@
 <script src="{% static 'js/game.js' %}"></script>
 <script src="{% static 'js/voice.js' %}"></script>
 <script src="{% static 'js/account.js' %}"></script>
+<script src="{% static 'js/security.js' %}"></script>
 </body></html>

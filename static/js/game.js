@@ -50,9 +50,9 @@ function updateIncidents(markup) {
   }
 }
 
-let me=null,state=null,room='',busy=false,focusIncident='';let pendingActions=0,stateRevision=0;const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const labels={1:'Frei über Funk',2:'Auf Wache',3:'Anfahrt',4:'Einsatzstelle',5:'Sprechwunsch',6:'Nicht einsatzbereit'};function notice(s){$('notice').textContent=s}async function api(action,data={}){let res=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify({action,room,id:me,...data})});let obj=await res.json();if(!res.ok){let err=Error(obj.error||'Serverfehler');err.kicked=Boolean(obj.kicked);throw err}return obj}async function send(action,data={}){pendingActions++;stateRevision++;try{let x=await api(action,data);if(x.state){state=x.state;soundsFromState(state);render()}notice('')}catch(e){if(e.kicked)leaveRoom(e.message);else notice(e.message)}finally{pendingActions--}}
+let me=null,state=null,room='',busy=false,focusIncident='';let pendingActions=0,stateRevision=0;const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const labels={1:'Frei über Funk',2:'Auf Wache',3:'Anfahrt',4:'Einsatzstelle',5:'Sprechwunsch',6:'Nicht einsatzbereit'};function notice(s){$('notice').textContent=s}async function api(action,data={}){let res=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify({action,room,id:me,...data})});let obj=await res.json();if(!res.ok){let err=Error(obj.error||'Serverfehler');err.kicked=Boolean(obj.kicked);throw err}return obj}async function send(action,data={}){pendingActions++;stateRevision++;try{let x=await api(action,data);if(x.state){setState(x.state);soundsFromState(state);render()}notice('')}catch(e){if(e.kicked)leaveRoom(e.message);else notice(e.message)}finally{pendingActions--}}
 // Raum betreten: 'create_room' (Server vergibt den Code) oder 'join' mit eingegebenem Code.
-async function enterRoom(action){try{if(action==='join'){room=$('room').value.toUpperCase().trim();if(!room)throw Error('Bitte gib einen Raumcode ein.')}else room='';let x=await api(action);if(x.room)room=x.room;$('room').value=room;me=x.id;state=x.state;soundsFromState(state);$('login').classList.add('hidden');['rolesPanel','dashboard','mapPanel','incidentsPanel','vehiclesPanel','controlPanel','sectionsPanel','radioPanel','voicePanel'].forEach(id=>$(id).classList.remove('hidden'));notice('');setNotice('');render()}catch(e){notice(e.message)}}
+async function enterRoom(action){try{if(action==='join'){room=$('room').value.toUpperCase().trim();if(!room)throw Error('Bitte gib einen Raumcode ein.')}else room='';let x=await api(action);if(x.room)room=x.room;$('room').value=room;me=x.id;setState(x.state);soundsFromState(state);$('login').classList.add('hidden');['rolesPanel','dashboard','mapPanel','incidentsPanel','vehiclesPanel','controlPanel','sectionsPanel','radioPanel','voicePanel'].forEach(id=>$(id).classList.remove('hidden'));notice('');setNotice('');render()}catch(e){notice(e.message)}}
 $('join').onclick=()=>enterRoom('join');$('createRoom').onclick=()=>enterRoom('create_room');$('room').onkeydown=e=>{if(e.key==='Enter')$('join').click()};
 // Zurück zum Startbildschirm (Sitzung abgelaufen, Raum weg oder von der Raumverwaltung entfernt).
 function leaveRoom(message){if(typeof voiceStream!=='undefined'&&voiceStream)voiceLeave();me=null;state=null;$('login').classList.remove('hidden');['rolesPanel','dashboard','mapPanel','incidentsPanel','vehiclesPanel','controlPanel','sectionsPanel','radioPanel','voicePanel'].forEach(id=>$(id).classList.add('hidden'));$('fmePanel').classList.add('hidden');fmeKey='';$('connection').textContent='Nicht verbunden';$('connection').style.color='';loadAccount().catch(error=>setNotice(error.message,'error'));notice(message);setNotice(message,'error')}
@@ -68,8 +68,45 @@ $('bannedList').querySelectorAll('[data-unban]').forEach(b=>b.onclick=()=>send('
 $('takeLs').onclick=()=>send('take_ls', {
   replace_dispatcher: developerAccount ? state?.dispatcher : null
 });$('leaveLs').onclick=()=>send('leave_ls');$('goGf').onclick=()=>{$('vehiclesPanel').scrollIntoView({behavior:'smooth'})};$('create').onclick=()=>send('incident',{title:$('title').value,address:$('address').value});$('send').onclick=()=>{let msg=$('message').value;if(msg.trim())send('radio',{message:msg});$('message').value=''};$('message').onkeydown=e=>{if(e.key==='Enter')$('send').click()};$('release').onclick=()=>send('release');
-function position(v){let inc=state.incidents.find(i=>i.id===v.incident);let base=v.base;if(!inc)return base;let d=Math.min(1,(Date.now()/1000-v.phase_at)/12);if(v.phase==='anfahrt')return [base[0]+(inc.pos[0]-base[0])*d,base[1]+(inc.pos[1]-base[1])*d];if(v.phase==='rueckfahrt')return [inc.pos[0]+(base[0]-inc.pos[0])*d,inc.pos[1]+(base[1]-inc.pos[1])*d];return inc.pos}
-function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){let p=position(v);pins.push(`<span class="pin vehicle" title="${esc(v.call)} – ${esc(v.phase)}" style="left:${p[0]*100}%;top:${p[1]*100}%"></span>`)}$('markers').innerHTML=pins.join('');$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
+// Abstand Server-Uhr minus Browser-Uhr in Sekunden. Fahrzeugpositionen werden in Server-Zeit berechnet,
+// damit eine falsch gehende Browser-Uhr die Animation nicht verschiebt.
+let clockOffset = 0;
+
+function setState(next) {
+  state = next;
+  if (typeof next?.server_time === 'number') clockOffset = next.server_time - Date.now() / 1000;
+}
+
+function serverNow() {
+  return Date.now() / 1000 + clockOffset;
+}
+
+// Der Server legt beim Phasenwechsel Start, Ziel und Ankunftszeit (phase_until) fest.
+// Hier wird nur noch dazwischen interpoliert: (jetzt − phase_at) / (phase_until − phase_at).
+function position(v) {
+  const from = v.phase_from || v.base;
+  const to = v.phase_to || from;
+  const span = (v.phase_until ?? v.phase_at) - v.phase_at;
+  const share = span > 0 ? Math.min(1, Math.max(0, (serverNow() - v.phase_at) / span)) : 1;
+  return [from[0] + (to[0] - from[0]) * share, from[1] + (to[1] - from[1]) * share];
+}
+
+// Zwischen zwei Abfragen (1,5 s) nur die Fahrzeug-Pins verschieben, damit die Fahrt flüssig läuft.
+function animateVehicles() {
+  if (state) {
+    for (const pin of document.querySelectorAll('#markers .pin.vehicle[data-vehicle-pin]')) {
+      const vehicle = state.vehicles.find(v => v.id === pin.dataset.vehiclePin);
+      if (!vehicle || (vehicle.phase !== 'anfahrt' && vehicle.phase !== 'rueckfahrt')) continue;
+      const [x, y] = position(vehicle);
+      pin.style.left = `${x * 100}%`;
+      pin.style.top = `${y * 100}%`;
+    }
+  }
+  requestAnimationFrame(animateVehicles);
+}
+requestAnimationFrame(animateVehicles);
+
+function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){let p=position(v);pins.push(`<span class="pin vehicle" data-vehicle-pin="${esc(v.id)}" title="${esc(v.call)} – ${esc(v.phase)}" style="left:${p[0]*100}%;top:${p[1]*100}%"></span>`)}$('markers').innerHTML=pins.join('');$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
 function render(){if(!state)return;
 updateFme(state);
 $('countOpen').textContent=state.incidents.filter(i=>!i.closed).length;
@@ -101,4 +138,4 @@ function renderSections(){
 $('quickKeywords').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('title').value=b.dataset.keyword;$('address').focus()});
 ['vehicleSearch','unitFilter','incidentFilter'].forEach(id=>$(id).addEventListener(id==='vehicleSearch'?'input':'change',()=>render()));
 $('refreshList').onclick=()=>render();
-setInterval(async()=>{if(!me||busy||pendingActions)return;busy=true;const revision=stateRevision;try{let x=await api('state');if(revision!==stateRevision)return;state=x.state;soundsFromState(state);render();$('connection').style.color='#a5e7b5'}catch(e){$('connection').textContent='Verbindung unterbrochen';$('connection').style.color='#ffb2a2';if(e.kicked||/Sitzung abgelaufen|Raum nicht gefunden/.test(String(e.message)))leaveRoom(e.message)}finally{busy=false}},1500);
+setInterval(async()=>{if(!me||busy||pendingActions)return;busy=true;const revision=stateRevision;try{let x=await api('state');if(revision!==stateRevision)return;setState(x.state);soundsFromState(state);render();$('connection').style.color='#a5e7b5'}catch(e){$('connection').textContent='Verbindung unterbrochen';$('connection').style.color='#ffb2a2';if(e.kicked||/Sitzung abgelaufen|Raum nicht gefunden/.test(String(e.message)))leaveRoom(e.message)}finally{busy=false}},1500);
