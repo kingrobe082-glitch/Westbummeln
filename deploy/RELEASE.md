@@ -48,6 +48,16 @@ Den Verlauf siehst du unter **Actions → Release**. Jeder Lauf heißt `Release 
 - Einschränkung: Der Trigger hängt am Namen `CI`. Wird `name:` in `ci.yml` geändert, muss `release.yml` mitgeändert werden.
   Und `workflow_run` und `workflow_dispatch` greifen erst, wenn `release.yml` auf `main` liegt.
 
+## Erster Deploy
+
+`remote-deploy.sh` bricht ab, solange auf dem Server keine `/opt/westbummeln/.env` liegt. Die legt man
+einmalig von Hand an (RUNBOOK.md, Abschnitt 1):
+
+1. Release einmal laufen lassen (Merge auf `main` oder **Run workflow**). Der Lauf kopiert `deploy/` auf den
+   Server und endet dann rot mit „.env fehlt“. Das ist bei der Erstinstallation erwartet.
+2. Auf dem Server `cd /opt/westbummeln && ./env-init.sh planspiel.7z2.de <acme-adresse>` ausführen und `.env` ergänzen.
+3. **Actions → Release → Re-run failed jobs** (oder Run workflow). Das Image liegt schon in ghcr.io und wird nicht neu gebaut.
+
 ## Manuelles Deploy eines bestimmten Commits
 
 Im Browser: **Actions → Release → Run workflow**, Branch `main` lassen, bei *ref* den Commit eintragen
@@ -121,7 +131,8 @@ gh variable set DEPLOY_DOMAIN --repo kingrobe082-glitch/Westbummeln --body plans
 **Für den Repo-Besitzer, vor dem ersten Deploy zu setzen:**
 
 - [ ] Variable `DEPLOY_DOMAIN` = `planspiel.7z2.de` (siehe Befehl oben)
-- [ ] Secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (Werte kommen aus der Server-Einrichtung)
+- [x] Secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (laut Server-Einrichtung gesetzt)
+- [ ] Auf dem Server einmalig `.env` anlegen (siehe „Erster Deploy“)
 
 ### Optional: Freigabe vor jedem Deploy
 
