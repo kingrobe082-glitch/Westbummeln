@@ -56,3 +56,62 @@
 /* Raumcode-Zeile: Feld mit Beschriftung und "Raum beitreten" auf einer Unterkante */
 #roomEntry .row{align-items:flex-end}
 #roomEntry label{display:grid;gap:4px}
+
+/* UI-Feinschliff: Kopfzeile – Ton, Lautstärke und Verbindungsstatus auf einer Linie, ohne Überlappung */
+.headerTools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 16px}
+.headerTools>*{flex:none}
+.volume{display:flex;align-items:center;gap:8px;white-space:nowrap}
+#volume{width:110px;flex:none;min-height:40px;padding:0;border:0;background:none;accent-color:#5aa0e6;cursor:pointer}
+#connection{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1px solid #3a536d;border-radius:999px;background:#0d1d2c;color:#c0d2e4;font-size:13px;white-space:nowrap}
+#connection::before{content:'';flex:none;width:9px;height:9px;border-radius:50%;background:#e5484d;box-shadow:0 0 0 3px #e5484d33}
+#connection[data-state=ok]{color:#a5e7b5}
+#connection[data-state=ok]::before{background:#3fcf7f;box-shadow:0 0 0 3px #3fcf7f33}
+#connection[data-state=error]{color:#ffb2a2;border-color:#8a4a4a}
+
+/* Touch-Ziele mindestens 40 px */
+button,input,select{min-height:40px}
+.quick button,.tabs button,.playerActions button{min-height:40px}
+details>summary{padding:10px 0;line-height:20px;width:fit-content;cursor:pointer}
+#moderationLink{display:inline-block;padding:11px 0}
+#accountLogout{margin-left:10px}
+/* Einsatzpunkte bleiben optisch klein, bekommen aber eine größere Klickfläche */
+button.pin::after{content:'';position:absolute;inset:-9px;border-radius:50%}
+
+/* Leitstellenübersicht: Überschrift links, Kennung rechts – nicht auf halbe Breite gestreckt */
+#dashboard>.row{margin:0 0 12px;padding-bottom:9px;border-bottom:1px solid #37526c}
+#dashboard>.row>*{flex:0 1 auto}
+#dashboard>.row>h2{border:0;padding:0}
+
+/* Raster: freie Plätze auffüllen, damit Fahrzeuge (GF) neben der Karte stehen statt darunter */
+main{grid-auto-flow:row dense}
+/* Karte nicht über zwei Zeilen: sonst klafft unter ihr eine Lücke, wenn rechts der Statusbereich höher ist */
+#mapPanel{grid-row:auto}
+@media(min-width:851px){
+  /* Leitstelle: Fahrzeug- und Statusbereich sind ausgeblendet – Disposition rückt neben die Karte */
+  main:has(#vehiclesPanel.hidden):has(#controlPanel.hidden) #incidentsPanel{grid-column:2}
+}
+
+/* Abschnitte: Zeilen bündig mit dem Rest des Einsatzkastens */
+#sectionsList .item{padding-left:0;padding-right:0}
+
+/* Funk: Filter und Senden-Knopf nicht über die volle Breite strecken */
+.row>#radioFilter{flex:0 1 260px}
+.row>#send,.row>#create{flex:0 0 auto;min-width:120px}
+/* Notruf: Stichwort volle Breite, Einsatzort und Knopf darunter – sonst wird beides abgeschnitten */
+.row>#title{flex:1 1 100%}
+
+/* Handy */
+@media(max-width:600px){
+  header{position:static;padding:10px 12px}
+  h1{font-size:18px}
+  .headerTools{justify-content:flex-start;width:100%}
+  main{padding:8px;gap:8px}
+  .panel{padding:11px}
+  #rolesPanel .row>*{flex:1 1 100%}
+  .roomBadge strong{font-size:24px}
+  .row>#voiceChannel,
+  #sectionsList .row>input,#sectionsList .row>select[data-secvehicle],#sectionsList .row>select[data-leader]{flex:1 1 100%}
+  .statuses{grid-template-columns:repeat(2,1fr)}
+  #voicePanel .row>button{flex:1 1 auto}
+  .filterline>input,.filterline>select{flex:1 1 100%}
+}
