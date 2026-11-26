@@ -35,7 +35,9 @@ def check_new_password(password, user):
         raise ValueError(' '.join(error.messages)) from None
 
 
-def register(data, need_email=True):
+def register(data, need_email=False):
+    """Neues Passwortkonto. Die E-Mail ist freiwillig (das Formular fragt sie nicht mehr ab, solange es
+    keine E-Mail-Bestätigung gibt); wird eine geschickt, muss sie gültig und frei sein."""
     name = str(data.get('name', '')).strip()
     password = data.get('password')
     check_password_input(password)
