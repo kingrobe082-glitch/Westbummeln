@@ -123,7 +123,7 @@ updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($(
 function renderSections(){
  const own=state.players.find(p=>p.id===me),isLs=own?.role==='ls';
  $('sectionsPanel').classList.remove('hidden'); const overlay=$('weatherOverlay');if(overlay)overlay.className=({Regen:'rain',Nebel:'fog',Windig:'wind'})[state.weather]||'';
- $('aiInfo').textContent=state.ai_mode?(isLs?'🤖 KI-Gruppenführer aktiv: Unbesetzte Fahrzeuge können alarmiert werden und arbeiten selbstständig.':'🤖 KI-Leitstelle aktiv: Sie erstellt Einsätze und alarmiert Fahrzeuge automatisch.'):'👥 Multiplayer: KI-Automatik pausiert, solange mehrere Spieler online sind.';
+ $('aiInfo').textContent=state.ai_dispatcher?'🤖 KI-Leitstelle aktiv: Sie erstellt Einsätze und alarmiert Fahrzeuge automatisch, bis jemand die Leitstelle übernimmt.':state.ai_mode?'🤖 KI-Gruppenführer aktiv: Unbesetzte Fahrzeuge können alarmiert werden und arbeiten selbstständig.':'👥 Multiplayer: Alarmiert werden nur Fahrzeuge mit Spieler. Verliert ein Fahrzeug vor Ort seinen Spieler, übernimmt nach kurzer Zeit ein KI-Gruppenführer.';
  $('aiInfo').textContent += ` · 🌦 ${state.weather} · Fahrzeit ca. ${state.travel_time||12}s · Arbeitsfaktor ${Math.round((state.work_factor||1)*100)}%`; $('sectionsList').innerHTML=state.incidents.filter(i=>!i.closed).map(i=>{
  const sections=i.sections||{'Hauptabschnitt':{leader:'KI-Einsatzleitung',vehicles:[]}};
  const opts=Object.keys(sections).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');

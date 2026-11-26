@@ -144,8 +144,22 @@ def safe_location(pos):
     return all((pos[0] - x) ** 2 + (pos[1] - y) ** 2 >= .027 ** 2 for x, y in STATIONS)
 
 
-def ai_mode(r):
+def is_solo(r):
     return len(r['players']) == 1
+
+
+def ai_mode(r):
+    """Unbesetzte Fahrzeuge dürfen alarmiert werden; eine KI-Besatzung fährt sie."""
+    return is_solo(r)
+
+
+def ai_dispatcher(r):
+    """Die KI-Leitstelle läuft, solange kein Spieler die Leitstelle besetzt – auch im Mehrspielerbetrieb."""
+    return bool(r['players']) and not r['dispatcher']
+
+
+def _free(v):
+    return v['phase'] == 'wache' and v['status'] != 6 and not v['incident']
 
 
 def alarm(r, inc, v, now):
@@ -182,42 +196,48 @@ def _distance(a, b):
 
 
 def ai_dispatch(r, inc, v, now):
-    if v['phase'] != 'wache' or v['status'] == 6 or v['incident']:
+    if not _free(v):
         return False
     alarm(r, inc, v, now)
     emit(r, 'KI-Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
     return True
 
 
-def run_ai(r, now):
+def _ai_vehicle(r, inc):
+    """Fahrzeug für die KI-Leitstelle: das nächste freie Spielerfahrzeug.
+
+    Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn das erlaubt ist."""
+    owned = [r['vehicles'][p['vehicle']] for p in r['players'].values() if p['vehicle'] in r['vehicles']]
+    if owned:
+        return min((v for v in owned if _free(v)), key=lambda v: _distance(v['base'], inc['pos']), default=None)
     if not ai_mode(r):
+        return None
+    return next((v for v in r['vehicles'].values()
+                 if not v['owner'] and _free(v) and v['kind'] != 'KdoW'), None)
+
+
+def run_ai(r, now):
+    # Ohne menschliche Leitstelle übernimmt die KI neue Einsätze und die Alarmierung.
+    if not ai_dispatcher(r):
         return False
-    human = next(iter(r['players'].values()))
     changed = False
-    # Ohne menschliche Leitstelle übernimmt die KI die Alarmierung und neue Einsätze.
-    if human['role'] != 'ls':
-        open_incidents = [i for i in r['incidents'] if not i['closed']]
-        if now - r['ai_last'] >= 45 and len(open_incidents) < 2:
-            locations = [(name, x, y) for name, x, y in PLACES if safe_location((x, y))]
-            if locations:
-                name, x, y = locations[r['ai_seq'] % len(locations)]
-                title = AI_TITLES[r['ai_seq'] % 4]
-                r['incidents'].append(new_incident(title, name, [x, y], 'KI-Leitstelle', now))
-                r['ai_last'] = now
-                r['ai_seq'] += 1
-                emit(r, 'KI-Leitstelle', f'Neuer Einsatz: {title} – {name}.')
-                changed = True
-        for inc in r['incidents']:
-            if inc['closed'] or inc['assigned']:
-                continue
-            owned = r['vehicles'].get(human['vehicle']) if human['vehicle'] else None
-            if owned and ai_dispatch(r, inc, owned, now):
-                changed = True
-            elif not owned:
-                v = next((v for v in r['vehicles'].values()
-                          if not v['owner'] and v['phase'] == 'wache' and v['kind'] != 'KdoW'), None)
-                if v and ai_dispatch(r, inc, v, now):
-                    changed = True
+    open_incidents = [i for i in r['incidents'] if not i['closed']]
+    if now - r['ai_last'] >= 45 and len(open_incidents) < 2:
+        locations = [(name, x, y) for name, x, y in PLACES if safe_location((x, y))]
+        if locations:
+            name, x, y = locations[r['ai_seq'] % len(locations)]
+            title = AI_TITLES[r['ai_seq'] % 4]
+            r['incidents'].append(new_incident(title, name, [x, y], 'KI-Leitstelle', now))
+            r['ai_last'] = now
+            r['ai_seq'] += 1
+            emit(r, 'KI-Leitstelle', f'Neuer Einsatz: {title} – {name}.')
+            changed = True
+    for inc in r['incidents']:
+        if inc['closed'] or inc['assigned']:
+            continue
+        v = _ai_vehicle(r, inc)
+        if v and ai_dispatch(r, inc, v, now):
+            changed = True
     return changed
 
 
@@ -226,7 +246,7 @@ def ai_group_leaders(r, now):
 
     Im KI-Modus sofort. Im Mehrspielermodus erst nach UNATTENDED_DELAY Sekunden ohne Besitzer vor Ort
     (z. B. weil der GF die Verbindung verloren hat), damit der Einsatz nicht ewig offen bleibt."""
-    solo = ai_mode(r)
+    solo = is_solo(r)
     changed = False
     for inc in r['incidents']:
         if inc['closed'] or inc['working']:
@@ -367,6 +387,7 @@ def snapshot(r, now=None):
         'rev': r['rev'],
         'dispatcher': r['dispatcher'],
         'ai_mode': ai_mode(r),
+        'ai_dispatcher': ai_dispatcher(r),
         'admin': r['admin'],
         'channels': r['channels'],
         'roles': r['roles'],
@@ -594,7 +615,7 @@ def _dispatch(r, pid, p, data, now, is_developer):
         raise ValueError('Einsatz oder Fahrzeug nicht verfügbar')
     if not v['owner'] and not ai_mode(r):
         raise ValueError('Fahrzeug muss von einem Spieler besetzt sein (oder KI-Modus aktiv)')
-    if v['phase'] != 'wache' or v['status'] == 6 or v['incident']:
+    if not _free(v):
         raise ValueError('Fahrzeug ist nicht frei')
     alarm(r, inc, v, now)
     emit(r, 'Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')

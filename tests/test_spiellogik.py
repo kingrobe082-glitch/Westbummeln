@@ -224,3 +224,77 @@ def test_auto_finished_incident_releases_section_vehicles(room):
     engine.update(room, NOW + 100)
     assert inc['closed']
     assert all(not s['vehicles'] for s in inc['sections'].values())
+
+
+# ------------------------------------------------------------ Mehrere Fahrzeuge pro Einsatz
+
+def test_leitstelle_alarmiert_mehrere_spielerfahrzeuge(room):
+    ls, gf, inc = leitstelle_mit_gf(room)
+    carla = join(room, 3, 'Carla')
+    act(room, carla, 3, 'claim', vehicle='WB-1-HLF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-HLF20')
+    assert inc['assigned'] == ['WB-2-LF20', 'WB-1-HLF20']
+    assert all(room['vehicles'][vid]['phase'] == 'anfahrt' for vid in inc['assigned'])
+
+
+def test_leitstelle_allein_alarmiert_mehrere_unbesetzte_fahrzeuge(room):
+    ls = join(room, 1, 'Anna')
+    act(room, ls, 1, 'take_ls')
+    act(room, ls, 1, 'incident', title='F3 · Großbrand', address='Hauptstraße 5')
+    inc = room['incidents'][-1]
+    for vid in ('WB-1-HLF20', 'WB-1-LF20', 'WB-2-HLF20'):
+        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle=vid)
+    assert inc['assigned'] == ['WB-1-HLF20', 'WB-1-LF20', 'WB-2-HLF20']
+    assert inc['sections']['Hauptabschnitt']['vehicles'] == inc['assigned']
+
+
+# ------------------------------------------------------------ KI-Leitstelle bei unbesetzter Leitstelle
+
+def zwei_gf_ohne_leitstelle(r):
+    anna, ben = join(r, 1, 'Anna'), join(r, 2, 'Ben')
+    act(r, anna, 1, 'claim', vehicle='WB-1-HLF20')
+    act(r, ben, 2, 'claim', vehicle='WB-4-LF20')
+    return anna, ben
+
+
+def test_ki_leitstelle_laeuft_mit_mehreren_spielern_ohne_leitstelle(room):
+    zwei_gf_ohne_leitstelle(room)
+    assert engine.ai_dispatcher(room) and engine.snapshot(room, NOW)['ai_dispatcher']
+    engine.update(room, NOW)
+    inc = room['incidents'][0]
+    assert inc['creator'] == 'KI-Leitstelle'
+    # Nur Spielerfahrzeuge, und zwar das nächste zum Einsatzort.
+    nearest = min(('WB-1-HLF20', 'WB-4-LF20'),
+                  key=lambda vid: engine._distance(room['vehicles'][vid]['base'], inc['pos']))
+    assert inc['assigned'] == [nearest]
+
+
+def test_ki_leitstelle_verteilt_einsaetze_auf_freie_spielerfahrzeuge(room):
+    zwei_gf_ohne_leitstelle(room)
+    engine.update(room, NOW)
+    engine.update(room, NOW + 45)
+    first, second = room['incidents']
+    assert {*first['assigned'], *second['assigned']} == {'WB-1-HLF20', 'WB-4-LF20'}
+
+
+def test_ki_leitstelle_alarmiert_im_mehrspielerbetrieb_keine_unbesetzten(room):
+    join(room, 1, 'Anna')
+    join(room, 2, 'Ben')
+    engine.update(room, NOW)
+    assert room['incidents'][0]['creator'] == 'KI-Leitstelle'
+    assert room['incidents'][0]['assigned'] == []
+
+
+def test_ki_leitstelle_pausiert_bei_besetzter_leitstelle(room):
+    ls, gf, inc = leitstelle_mit_gf(room)
+    assert not engine.ai_dispatcher(room)
+    engine.update(room, NOW + 100)
+    assert room['incidents'] == [inc] and inc['assigned'] == []
+
+
+def test_ki_leitstelle_springt_ein_wenn_leitstelle_frei_wird(room):
+    ls, gf, inc = leitstelle_mit_gf(room)
+    act(room, ls, 1, 'leave_ls')
+    engine.update(room, NOW)
+    assert inc['assigned'] == ['WB-2-LF20']
