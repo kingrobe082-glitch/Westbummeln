@@ -53,3 +53,6 @@
 .ageGateButtons{display:grid;gap:10px;margin:18px 0 12px}
 #ageYes{background:#2f8f5b;border:0;font-weight:700;min-height:46px}
 #ageNo{min-height:42px}
+/* Raumcode-Zeile: Feld mit Beschriftung und "Raum beitreten" auf einer Unterkante */
+#roomEntry .row{align-items:flex-end}
+#roomEntry label{display:grid;gap:4px}
