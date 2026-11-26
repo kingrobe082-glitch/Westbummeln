@@ -14,6 +14,8 @@ from django.utils import timezone
 from accounts.lockout import LoginLockedError
 from accounts.services import check_password_input
 from game import rooms
+from moderation.models import ModerationEvent
+from moderation.roles import ROLES, role_of
 
 CLEANUP_INTERVAL = 3600  # Sekunden zwischen zwei Aufräumläufen im laufenden Server
 _cleanup_lock = threading.Lock()
@@ -112,9 +114,19 @@ def export_data(request):
             'registriert_am': _time(user.date_joined),
             'letzte_anmeldung': _time(user.last_login),
             'aktiv': user.is_active,
-            'entwickler': user.is_staff,
-            'administrator': user.is_superuser,
+            'rolle': ROLES[role_of(user)],
         },
+        'sperren': [
+            {'grund': ban.reason, 'beginn': _time(ban.starts_at), 'ende': _time(ban.ends_at),
+             'aufgehoben_am': _time(ban.lifted_at)}
+            for ban in user.bans.order_by('starts_at', 'pk')
+        ],
+        # Einträge im Moderationsprotokoll über dieses Konto. Wer moderiert hat, steht nicht darin:
+        # das sind Daten der Moderatorin bzw. des Moderators.
+        'moderationsprotokoll': [
+            {'zeit': _time(event.at), 'aktion': event.get_action_display(), 'raum': event.room_code or None}
+            for event in ModerationEvent.objects.filter(target=user).order_by('at', 'pk')
+        ],
         'sitzungen': [
             {'gueltig_bis': _time(session.expire_date), 'dieses_geraet': session.session_key == current_key}
             for session in sessions_of(user.pk)

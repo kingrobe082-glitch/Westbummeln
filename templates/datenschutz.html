@@ -25,12 +25,12 @@
 <thead><tr><th>Daten</th><th>Wofür</th><th>Wie lange</th></tr></thead>
 <tbody>
 <tr><td>Benutzername</td><td>Anmeldung; wird Mitspielenden im Spiel angezeigt</td><td>bis du dein Konto löschst</td></tr>
-<tr><td>E-Mail-Adresse (bei Registrierung mit Passwort)</td><td>Anmeldung mit E-Mail statt Benutzername; dieselbe Adresse kann nur ein Konto haben. Wir schicken keine E-Mails.</td><td>bis du dein Konto löschst</td></tr>
+<tr><td>E-Mail-Adresse (nur bei älteren Konten)</td><td>Bei der Registrierung fragen wir keine E-Mail-Adresse mehr ab. Wer früher eine angegeben hat, kann sich damit statt mit dem Benutzernamen anmelden. Wir schicken keine E-Mails.</td><td>bis du dein Konto löschst</td></tr>
 <tr><td>Passwort</td><td>Anmeldung. Gespeichert wird nur ein nicht umkehrbarer Hash (scrypt), nie das Passwort selbst.</td><td>bis du dein Konto löschst</td></tr>
 <tr><td>Google-Kennung (nur bei Anmeldung mit Google)</td><td>Wiedererkennen deines Google-Kontos. Name und E-Mail-Adresse von Google speichern wir nicht.</td><td>bis du dein Konto löschst</td></tr>
 <tr><td>Discord-Kennung und Discord-Benutzername (nur bei Anmeldung mit Discord)</td><td>Wiedererkennen deines Discord-Kontos; der Discord-Benutzername wird dein Spielname</td><td>bis du dein Konto löschst</td></tr>
 <tr><td>Zeitpunkt der Registrierung und der letzten Anmeldung</td><td>Verwaltung und Missbrauchsschutz</td><td>bis du dein Konto löschst</td></tr>
-<tr><td>Rechte (z.&nbsp;B. Entwicklerzugang)</td><td>Verwaltung des Spiels</td><td>bis du dein Konto löschst</td></tr>
+<tr><td>Rolle (Spieler, Moderator, Admin)</td><td>Verwaltung und Moderation des Spiels</td><td>bis du dein Konto löschst</td></tr>
 </tbody>
 </table>
 
@@ -62,6 +62,14 @@
 <li><strong>Verschlüsselung:</strong> Die Verbindung zum Spiel ist per HTTPS verschlüsselt.</li>
 </ul>
 
+<h3>Moderation</h3>
+<p>Moderatorinnen, Moderatoren und Admins können Spieler aus Räumen entfernen, Räume schließen, Konten sperren und Rollen vergeben. Dazu speichern wir:</p>
+<ul>
+<li><strong>Sperren:</strong> gesperrtes Konto, Grund, Beginn, Ende, wer gesperrt und wer die Sperre aufgehoben hat. Aufgehobene und abgelaufene Sperren bleiben als Verlauf stehen. Sie werden mit dem Konto gelöscht.</li>
+<li><strong>Moderationsprotokoll:</strong> Zeitpunkt, Aktion, betroffenes Konto und Raum, Namen der Beteiligten (bei geschlossenen Räumen auch die Namen der Spieler darin). Die Namen bleiben im Protokoll, auch wenn ein Konto gelöscht wird, damit Moderationsentscheidungen nachvollziehbar bleiben. <strong>[TODO: Aufbewahrungsfrist für das Moderationsprotokoll festlegen.]</strong></li>
+</ul>
+<p>Ein gesperrtes Konto kann sich nicht anmelden und deshalb seine Daten nicht selbst herunterladen oder löschen. Auskunft und Löschung gibt es dann über den Kontakt oben.</p>
+
 <h2>7. Datensicherungen</h2>
 <p>Damit Konten bei einem Defekt nicht verloren gehen, sichern wir die Datenbank (Konten und Sitzungen) auf demselben Server: täglich (aufbewahrt 7 Tage), wöchentlich (4 Wochen), monatlich (3 Monate) und vor jedem Update (die letzten 5). Gelöschte Konten bleiben in diesen Sicherungen, bis die Sicherungen planmäßig gelöscht werden, also bis zu etwa 3 Monate. Sicherungen werden nur benutzt, um nach einem Fehler den alten Stand wiederherzustellen. <strong>[TODO: Bei seltenen Updates bleiben die Sicherungen vor Updates länger als 3 Monate liegen; Frist festlegen. Und: Werden Kopien auf andere Rechner geladen? Wenn ja, wie lange bleiben sie?]</strong></p>
 
@@ -90,7 +98,7 @@
 <h2>11. Deine Rechte</h2>
 <ul>
 <li><strong>Auskunft und Datenkopie</strong> (Art.&nbsp;15 und 20 DSGVO): Im Kontobereich unter „Meine Daten“ kannst du jederzeit alle zu deinem Konto gespeicherten Daten als Datei herunterladen.</li>
-<li><strong>Löschung</strong> (Art.&nbsp;17 DSGVO): Im Kontobereich unter „Meine Daten“ kannst du dein Konto selbst löschen. Konto und alle Anmeldungen sind sofort gelöscht und du wirst aus allen Spielräumen entfernt. Was du bereits gefunkt hast, bleibt im Funkverlauf des Raums, bis der Raum gelöscht wird; Kopien bei Discord (falls eingeschaltet) und in Datensicherungen bleiben wie oben beschrieben.</li>
+<li><strong>Löschung</strong> (Art.&nbsp;17 DSGVO): Im Kontobereich unter „Meine Daten“ kannst du dein Konto selbst löschen. Konto und alle Anmeldungen sind sofort gelöscht und du wirst aus allen Spielräumen entfernt. Was du bereits gefunkt hast, bleibt im Funkverlauf des Raums, bis der Raum gelöscht wird; dein Name im Moderationsprotokoll, Kopien bei Discord (falls eingeschaltet) und in Datensicherungen bleiben wie oben beschrieben.</li>
 <li><strong>Berichtigung, Einschränkung, Widerspruch</strong> (Art.&nbsp;16, 18, 21 DSGVO): bitte über den Kontakt oben.</li>
 <li><strong>Beschwerde</strong> bei einer Datenschutz-Aufsichtsbehörde. <strong>[TODO: zuständige Aufsichtsbehörde eintragen.]</strong></li>
 </ul>

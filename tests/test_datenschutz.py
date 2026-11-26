@@ -222,6 +222,39 @@ def test_export_contains_account_data_without_secrets(player, game_client, djang
         assert session.session_key not in body
 
 
+def test_export_contains_moderation_data(player, django_user_model):
+    from moderation.models import Ban, ModerationEvent
+
+    user = django_user_model.objects.get(username='Florian1')
+    moderator = django_user_model.objects.create(username='Mod')
+    Ban.objects.create(user=user, created_by=moderator, reason='Spam im Funk', starts_at=timezone.now(),
+                       lifted_at=timezone.now(), lifted_by=moderator)
+    ModerationEvent.objects.create(actor=moderator, actor_name='Mod', action=ModerationEvent.KICK, target=user,
+                                   target_name='Florian1', room_code='K7M2QX')
+    response = player.client.get('/account/export')
+    assert response.status_code == 200
+    data = response.json()
+    assert data['konto']['rolle'] == 'Spieler'
+    assert [b['grund'] for b in data['sperren']] == ['Spam im Funk']
+    assert data['sperren'][0]['aufgehoben_am']
+    assert data['moderationsprotokoll'] == [
+        {'zeit': data['moderationsprotokoll'][0]['zeit'], 'aktion': 'Spieler aus Raum entfernt', 'raum': 'K7M2QX'}]
+    assert 'Mod' not in json.dumps(data['moderationsprotokoll'])  # keine Daten der Moderation
+
+
+def test_delete_removes_bans_but_keeps_protocol_name(player, django_user_model):
+    from moderation.models import Ban, ModerationEvent
+
+    user = django_user_model.objects.get(username='Florian1')
+    Ban.objects.create(user=user, reason='alt', starts_at=timezone.now(), lifted_at=timezone.now())
+    ModerationEvent.objects.create(actor_name='System', action=ModerationEvent.KICK, target=user,
+                                   target_name='Florian1')
+    assert player.account('delete_account', password=PASSWORD).status_code == 200
+    assert not Ban.objects.exists()
+    event = ModerationEvent.objects.get()
+    assert event.target is None and event.target_name == 'Florian1'
+
+
 def test_export_of_oauth_account(game_client, django_user_model):
     client, _ = oauth_client(game_client, django_user_model)
     data = client.client.get('/account/export').json()
@@ -258,6 +291,19 @@ def test_privacy_page_shows_what_is_switched_on(client, monkeypatch):
     assert 'Anmeldung mit Google eingeschaltet' in html
     assert 'Funkspiegelung eingeschaltet' in html
     assert 'Anmeldung mit Discord ausgeschaltet' in html
+
+
+def test_register_without_email(game_client, django_user_model):
+    client = game_client()
+    response = client.account('register', name='OhneMail', password=PASSWORD)
+    assert response.status_code == 200
+    assert django_user_model.objects.get(username='OhneMail').email is None
+    assert game_client().account('register', name='OhneMail2', password=PASSWORD).status_code == 200
+
+
+def test_register_form_asks_no_email(client):
+    html = client.get('/').content.decode()
+    assert 'accountEmail' not in html and 'autocomplete="email"' not in html
 
 
 def test_privacy_links_on_start_page(client):
