@@ -203,9 +203,25 @@ def provision_developer():
             raise RuntimeError('Der Entwicklername gehört bereits einem normalen Konto. Wähle einen anderen Namen.')
 
 
+def remove_test_account():
+    """Löscht das Testkonto test/test samt Sitzungen. Ein echtes Konto namens 'test' bleibt unberührt,
+    denn echte Passwörter haben mindestens 8 Zeichen und passen nie zu 'test'."""
+    with database() as db:
+        row = db.execute("SELECT id,salt,password FROM accounts WHERE name_key='test'").fetchone()
+        if not row or not row[1] or not row[2] or not compare_digest(password_hash('test', row[1]), row[2]):
+            return False
+        db.execute('DELETE FROM sessions WHERE account=?', (row[0],))
+        db.execute('DELETE FROM developers WHERE account=?', (row[0],))
+        db.execute('DELETE FROM accounts WHERE id=?', (row[0],))
+    print('Testkonto test/test entfernt.', flush=True)
+    return True
+
+
 def provision_test_account():
-    """Legt das Testkonto test/test an. Lokal automatisch, auf Render nur mit CREATE_TEST_ACCOUNT=1."""
+    """Legt das Testkonto test/test an. Lokal automatisch, auf Render nur mit CREATE_TEST_ACCOUNT=1.
+    Auf Render ohne die Variable wird ein vorhandenes Testkonto (z. B. aus dem Backup) gelöscht."""
     if os.environ.get('RENDER') and os.environ.get('CREATE_TEST_ACCOUNT') != '1':
+        remove_test_account()
         return
     with database() as db:
         if db.execute("SELECT 1 FROM accounts WHERE name_key='test'").fetchone():
