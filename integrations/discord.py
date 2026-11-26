@@ -147,7 +147,9 @@ def complete_login(code, redirect):
 
 
 def public_config(logged_in):
-    return {'discordLogin': login_enabled(), 'discordVoiceUrl': VOICE_URL if (VOICE_OK and logged_in) else ''}
+    return {'discordLogin': login_enabled(), 'discordVoiceUrl': VOICE_URL if (VOICE_OK and logged_in) else '',
+            # Der feste Raum (DISCORD_ROOM) ist öffentlich: Die Startseite zeigt dafür einen eigenen Knopf.
+            'publicRoom': ROOM if ROOM_OK else ''}
 
 
 # ---------------------------------------------------- Funkprotokoll -> Discord
