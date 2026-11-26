@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [postgres, sqlite]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: westbummeln
+          POSTGRES_PASSWORD: westbummeln
+          POSTGRES_DB: westbummeln
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U westbummeln"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgres://westbummeln:westbummeln@localhost:5432/westbummeln' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py check
+      - name: Produktions-Checks (wie auf Render)
+        env:
+          RENDER: "true"
+          DEBUG: "0"
+          SECRET_KEY: ci-nur-zum-pruefen-ci-nur-zum-pruefen-ci-nur-zum-pruefen
+          RENDER_EXTERNAL_HOSTNAME: westbummeln-multiplayer.onrender.com
+          DATABASE_URL: postgres://westbummeln:westbummeln@localhost:5432/westbummeln
+        run: |
+          python manage.py collectstatic --noinput
+          python manage.py migrate --noinput
+          python manage.py bootstrap_accounts
+          python manage.py check --deploy
+      - run: pytest -q

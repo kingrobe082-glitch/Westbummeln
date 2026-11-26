@@ -1,0 +1,13 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "westbummeln.settings"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+filterwarnings = ["ignore:No directory at:UserWarning"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["accounts/migrations", ".venv", "staticfiles", "tests/legacy_accounts_54c2a9b.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "UP"]
+ignore = ["B904"]

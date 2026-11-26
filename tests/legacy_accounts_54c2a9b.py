@@ -1,3 +1,5 @@
+# Unveränderte Kopie von accounts.py aus Commit 54c2a9b (alter Server).
+# Nur für Tests: erzeugt eine echte alte accounts.sqlite3 für import_legacy_accounts.
 from contextlib import contextmanager
 from hashlib import scrypt, sha256
 from hmac import compare_digest
