@@ -13,12 +13,11 @@ services:
     plan: free
     buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput"
     # preDeployCommand gibt es nur für bezahlte Webdienste, deshalb laufen Migrationen beim Start.
-    # gunicorn liest gunicorn.conf.py: genau 1 Worker (Spielräume im Arbeitsspeicher), Timeouts
-    # und Grenzen für Anfragezeile und Header.
+    # Genau 1 Worker: Die Spielräume liegen im Arbeitsspeicher dieses einen Prozesses.
     startCommand: >-
       python manage.py migrate --noinput &&
       python manage.py bootstrap_accounts &&
-      gunicorn westbummeln.wsgi
+      gunicorn westbummeln.wsgi --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 30
     healthCheckPath: /healthz
     envVars:
       - key: DATABASE_URL

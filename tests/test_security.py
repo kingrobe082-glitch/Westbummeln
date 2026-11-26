@@ -1,8 +1,7 @@
 """Welle 2A Sicherheit: IP-Limits, Login-Sperre, Header, Herkunftsprüfung, Passwort ändern,
-„Überall abmelden“, Sitzungs-Cookies und gunicorn-Grenzen."""
+„Überall abmelden“ und Sitzungs-Cookies."""
 import json
 import os
-import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -339,26 +338,14 @@ def test_session_cookie_flags(player, game_client, settings):
     assert cookie['samesite'] == 'Lax'
 
 
-def test_secure_settings_on_render():
-    """Auf Render (eigener Prozess, weil die Einstellungen beim Import feststehen)."""
+def test_secure_settings_in_production():
+    """In Produktion (eigener Prozess, weil die Einstellungen beim Import feststehen)."""
     code = ('import django; django.setup(); from django.conf import settings as s; '
             'print(s.SESSION_COOKIE_SECURE, s.CSRF_COOKIE_SECURE, s.SESSION_COOKIE_HTTPONLY, '
-            's.SESSION_COOKIE_SAMESITE, s.TRUSTED_PROXY_COUNT, s.SECURE_HSTS_SECONDS > 0)')
-    keep = {k: v for k, v in os.environ.items() if k not in ('DATABASE_URL', 'SECRET_KEY', 'RENDER')}
-    env = {**keep, 'DJANGO_SETTINGS_MODULE': 'westbummeln.settings', 'RENDER': 'true', 'SECRET_KEY': 'x',
-           'DATABASE_URL': 'postgres://u:p@db:5432/wb'}
+            's.SESSION_COOKIE_SAMESITE, s.TRUSTED_PROXY_COUNT)')
+    keep = {k: v for k, v in os.environ.items()
+            if k not in ('DATABASE_URL', 'SECRET_KEY', 'RENDER', 'TRUSTED_PROXY_COUNT')}
+    env = {**keep, 'DJANGO_SETTINGS_MODULE': 'westbummeln.settings', 'RENDER': 'true', 'DJANGO_ENV': 'prod',
+           'SECRET_KEY': 'x' * 50, 'DATABASE_URL': 'postgres://u:p@db:5432/wb', 'ALLOWED_HOSTS': 'example.org'}
     result = subprocess.run([sys.executable, '-c', code], cwd=ROOT, env=env, capture_output=True, text=True)
-    assert result.stdout.split() == ['True', 'True', 'True', 'Lax', '1', 'True'], result.stderr
-
-
-# -------------------------------------------------------------------- gunicorn
-
-
-def test_gunicorn_config():
-    config = runpy.run_path(str(ROOT / 'gunicorn.conf.py'))
-    assert config['workers'] == 1 and config['threads'] >= 2
-    assert config['timeout'] == 30 and config['graceful_timeout'] < config['timeout']
-    assert config['keepalive'] > 0
-    assert config['limit_request_line'] <= 4094
-    assert config['limit_request_fields'] <= 100
-    assert config['limit_request_field_size'] <= 8190
+    assert result.stdout.split() == ['True', 'True', 'True', 'Lax', '1'], result.stderr

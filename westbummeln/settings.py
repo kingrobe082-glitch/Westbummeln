@@ -133,11 +133,12 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # ------------------------------------------------------------- Sicherheit
 # Zähler für IP-Limits und Login-Sperren liegen im Arbeitsspeicher. Das passt, weil gunicorn genau
-# einen Worker startet (siehe gunicorn.conf.py); bei mehreren Workern bräuchte es einen geteilten Cache.
+# einen Worker startet; bei mehreren Workern bräuchte es einen geteilten Cache.
 CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'westbummeln'}}
 
-# Wie viele Proxys vor Django stehen und X-Forwarded-For ergänzen (Render: 1). 0 = REMOTE_ADDR nehmen.
-TRUSTED_PROXY_COUNT = int(os.environ.get('TRUSTED_PROXY_COUNT', '1' if ON_RENDER else '0'))
+# Wie viele Proxys vor Django stehen und X-Forwarded-For setzen (Produktion: 1, Caddy bzw. Render).
+# 0 = REMOTE_ADDR nehmen (lokal ohne Proxy).
+TRUSTED_PROXY_COUNT = int(os.environ.get('TRUSTED_PROXY_COUNT', '1' if SECURE_COOKIES else '0'))
 
 # Anfragen je Client-IP. /api ist großzügig: Jeder Spieler fragt alle 1,5 s den Spielstand und
 # alle 1,7 s den Sprachfunk ab (ca. 75 Anfragen pro Minute), mehrere Spieler können eine IP teilen.
@@ -151,8 +152,9 @@ RATE_LIMITS = {
 # Größter Anfragekörper. Spielaktionen und Funksignale sind höchstens 12 000 Bytes groß.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 16 * 1024
 
-# HSTS nur über HTTPS (setzt Django selbst so). Erst einen Tag, nach erfolgreichem Betrieb erhöhen.
-SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '86400' if ON_RENDER else '0'))
+# HSTS setzt in Produktion der Reverse-Proxy (Caddy). Django nur, wenn ausdrücklich gewünscht
+# (z. B. ohne Caddy) – und auch dann nur über HTTPS.
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
 SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'  # Google-Login braucht den Origin im Referer
 # Djangos Standard same-origin würde das Popup der Google-Anmeldung von der Seite abtrennen.
 SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups'
