@@ -75,6 +75,29 @@ def test_return_trip_uses_fixed_duration(room):
     assert 'phase_route' not in v
 
 
+def test_return_trip_takes_as_long_as_approach(room):
+    """Lars: „Ich bin viel zu schnell wieder an einer Wache.“ Früher dauerte jede Rückfahrt vom
+    Einsatzort pauschal travel_time, egal wie weit. Jetzt: gleiche Strecke, gleiche Fahrzeit."""
+    ls, gf, inc = leitstelle_mit_gf(room, vehicle='WB-6-LF20')
+    act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Werkstraße 3')
+    far = room['incidents'][-1]
+    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-6-LF20')
+    v = room['vehicles']['WB-6-LF20']
+    approach = v['phase_until'] - v['phase_at']
+    forward = strassen.length(v['phase_route'])
+    engine.update(room, v['phase_until'])
+    assert v['phase'] == 'vorort'
+    act(room, ls, 1, 'close', now=v['phase_until'] + 30, incident=far['id'])
+    assert v['phase'] == 'rueckfahrt'
+    assert strassen.length(v['phase_route']) == pytest.approx(forward)
+    assert v['phase_until'] - v['phase_at'] == pytest.approx(approach)
+    assert approach > engine.travel_time(room)  # langer Weg dauert länger als die Pauschale
+    engine.update(room, v['phase_at'] + approach * .9)
+    assert v['phase'] == 'rueckfahrt'  # nicht vorzeitig zurück
+    engine.update(room, v['phase_at'] + approach)
+    assert v['phase'] == 'wache'
+
+
 def test_vehicle_position_follows_route(room):
     room['weather'] = 'Nebel'
     ls, gf, inc = leitstelle_mit_gf(room)
