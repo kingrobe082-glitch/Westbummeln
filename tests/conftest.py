@@ -11,9 +11,11 @@ from game import rooms
 def fresh_server_state():
     """Spielräume, IP-Limits und Login-Sperren liegen im Prozessspeicher: vor jedem Test leeren."""
     rooms.rooms.clear()
+    rooms.closed.clear()
     cache.clear()
     yield
     rooms.rooms.clear()
+    rooms.closed.clear()
 
 
 class GameClient:

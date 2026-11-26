@@ -12,6 +12,9 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from accounts import services
 from accounts.lockout import LoginLockedError
 from integrations import discord
+from moderation.bans import check_not_banned
+from moderation.errors import BannedError
+from moderation.roles import role_of
 from westbummeln.security import ip_limit, over_limit, too_many_requests
 from westbummeln.views import json_reply, not_found, read_json
 
@@ -26,7 +29,10 @@ auth_slots = threading.BoundedSemaphore(4)
 
 def start_session(request, user):
     """Anmelden mit immer neuem Sitzungsschlüssel. Djangos login() behält den Schlüssel, wenn dasselbe
-    Konto schon angemeldet war; wie beim alten Server bekommt jeder Login trotzdem einen neuen."""
+    Konto schon angemeldet war; wie beim alten Server bekommt jeder Login trotzdem einen neuen.
+
+    Gesperrte Konten (Passwort, Google, Discord) scheitern hier mit BannedError."""
+    check_not_banned(user)
     old_key = request.session.session_key
     login(request, user, backend='accounts.backends.UsernameOrEmailBackend')
     if request.session.session_key == old_key:
@@ -51,6 +57,8 @@ def account(request):
         return account_action(request)
     except LoginLockedError as error:
         return json_reply({'error': str(error)}, 429)
+    except BannedError as error:
+        return json_reply({'error': str(error), 'banned': True}, 403)
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         return json_reply({'error': str(error)}, 400)
     except Exception:
@@ -61,14 +69,20 @@ def account_status(request):
     user = request.user if request.user.is_authenticated else None
     name = user.username if user else None
     nonce = secrets.token_urlsafe(24) if services.GOOGLE_CLIENT_ID and not name else ''
-    response = json_reply({
+    data = {
         'name': name,
         'googleClientId': services.GOOGLE_CLIENT_ID,
         'nonce': nonce,
-        'developer': bool(user and user.is_staff),
+        # „developer“ heißt fürs Frontend: darf eine besetzte Leitstelle übernehmen (Moderator, Admin).
+        'developer': bool(user and user.has_perm('moderation.take_over_dispatch')),
+        'role': role_of(user),
+        'staff': bool(user and user.is_staff),
         'hasPassword': bool(user and user.has_usable_password()),
         **discord.public_config(bool(name)),
-    })
+    }
+    if not name and 'login_notice' in request.session:
+        data['loginNotice'] = request.session.pop('login_notice')
+    response = json_reply(data)
     if nonce:
         set_cookie(response, request, GOOGLE_NONCE_COOKIE, nonce, 600)
     return response
@@ -160,9 +174,13 @@ def discord_callback(request):
         return back(error.code)
     try:
         user = services.login_with_discord(discord_user)
+        start_session(request, user)
+    except BannedError as error:
+        # Die Meldung mit Sperrende holt sich die Seite über GET /account (loginNotice).
+        request.session['login_notice'] = str(error)
+        return back('banned')
     except ValueError:
         return back('failed')
-    start_session(request, user)
     response = redirect('/')
     response.delete_cookie(discord.STATE_COOKIE, samesite='Lax')
     return response

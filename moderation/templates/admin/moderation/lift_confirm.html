@@ -1,0 +1,20 @@
+{% extends "admin/moderation/base.html" %}
+{% block content %}
+<div class="wb-moderation">
+  {% if ban %}
+    <p>Sperre für <strong>{{ target.username }}</strong> aufheben?</p>
+    <p>Gesperrt am {{ ban.starts_at|date:"d.m.Y, H:i" }} von {{ ban.created_by|default:"–" }},
+       {% if ban.ends_at %}bis {{ ban.ends_at|date:"d.m.Y, H:i" }}{% else %}dauerhaft{% endif %}.<br>
+       Grund: {{ ban.reason }}</p>
+    <form method="post">{% csrf_token %}
+      <div class="submit-row">
+        <input type="submit" class="default" value="Sperre aufheben">
+        <a class="button cancel-link" href="{% url 'admin:accounts_user_change' target.pk %}">Abbrechen</a>
+      </div>
+    </form>
+  {% else %}
+    <p>Für <strong>{{ target.username }}</strong> gibt es keine aktive Sperre.</p>
+    <p><a href="{% url 'admin:accounts_user_change' target.pk %}">Zurück zum Konto</a></p>
+  {% endif %}
+</div>
+{% endblock %}
