@@ -5,3 +5,4 @@ gunicorn>=23,<24
 whitenoise>=6.8,<7
 google-auth>=2.30,<3
 requests>=2.32,<3
+django-csp>=4.0,<5
