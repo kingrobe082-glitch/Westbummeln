@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'accounts',
     'game',
     'datenschutz',
+    'moderation',  # zuletzt: legt nach migrate die Rollen-Gruppen mit Rechten aller Apps an
 ]
 
 MIDDLEWARE = [
@@ -70,6 +71,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'moderation.middleware.ban_guard',
+    'moderation.middleware.admin_guard',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'datenschutz.middleware.session_cleanup',
@@ -161,6 +164,7 @@ RATE_LIMITS = {
     'discord': os.environ.get('RATE_LIMIT_DISCORD', '10/m'),
     'api': os.environ.get('RATE_LIMIT_API', '240/m'),
     'export': os.environ.get('RATE_LIMIT_EXPORT', '10/h'),
+    'moderation': os.environ.get('RATE_LIMIT_MODERATION', '60/m'),  # schreibende Anfragen an /admin/
 }
 
 # Größter Anfragekörper. Spielaktionen und Funksignale sind höchstens 12 000 Bytes groß.
@@ -202,6 +206,8 @@ LANGUAGE_CODE = 'de'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
+# Sperrenden und Zeiten auf der Admin-Seite zeigen wir in deutscher Ortszeit.
+DISPLAY_TIME_ZONE = 'Europe/Berlin'
 
 # ------------------------------------------------------- Statische Dateien
 STATIC_URL = '/static/'

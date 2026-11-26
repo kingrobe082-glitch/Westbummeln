@@ -36,16 +36,19 @@ def api(request):
         user = request.user
         if not user.is_authenticated:
             return json_reply({'error': 'Sitzung abgelaufen – bitte anmelden.'}, 401)
+        # Besetzte Leitstelle übernehmen dürfen Moderatoren und Admins. Nur bei Bedarf prüfen:
+        # /api wird von jedem Spieler mehrmals pro Sekunde abgefragt.
+        can_take_over = action == 'take_ls' and user.has_perm('moderation.take_over_dispatch')
         now = time.time()
         with rooms.lock:
             rooms.sweep(now)
             if action == 'create_room':
-                result = rooms.create_room(user.pk, user.username, user.is_staff, now)
+                result = rooms.create_room(user.pk, user.username, can_take_over, now)
             else:
                 r = rooms.get_room(code)
                 engine.clean_offline(r, now)
                 engine.update(r, now)
-                result = rooms.handle(r, data, user.pk, user.username, user.is_staff, now)
+                result = rooms.handle(r, data, user.pk, user.username, can_take_over, now)
             # Antwort noch unter der Sperre serialisieren, damit kein anderer Thread dazwischenfunkt.
             return json_reply(result)
     except rooms.KickedError as error:
@@ -60,6 +63,6 @@ def api(request):
 def developer(request):
     if request.method != 'GET':
         return not_found(request)
-    if not request.user.is_authenticated or not request.user.is_staff:
-        return json_reply({'error': 'Entwicklerzugang erforderlich.'}, 403)
+    if not request.user.has_perm('moderation.view_rooms'):
+        return json_reply({'error': 'Zugang nur für Moderation und Admins.'}, 403)
     return json_reply(rooms.activity())

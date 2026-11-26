@@ -1,0 +1,29 @@
+{% extends "admin/moderation/base.html" %}
+{% block content %}
+<div class="wb-moderation">
+  <p>Diese Konten werden gesperrt. Alle Sitzungen enden sofort, die Spieler werden aus allen Räumen
+     entfernt (Fahrzeug und Leitstelle werden frei, die Funkmeldung nennt keinen Grund).
+     Eine laufende Sperre wird durch die neue ersetzt.</p>
+  <ul class="wb-targets">
+    {% for target in targets %}
+      <li><strong>{{ target.username }}</strong>{% if target.email %} ({{ target.email }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+  <form method="post" data-confirm="Wirklich sperren?">{% csrf_token %}
+    {% if action %}
+      {% for target in targets %}<input type="hidden" name="_selected_action" value="{{ target.pk }}">{% endfor %}
+      <input type="hidden" name="action" value="{{ action }}">
+      <input type="hidden" name="apply" value="1">
+    {% endif %}
+    {{ form.as_div }}
+    <div class="submit-row">
+      <input type="submit" class="default" value="Sperren">
+      {% if targets|length == 1 %}
+        <a class="button cancel-link" href="{% url 'admin:accounts_user_change' targets.0.pk %}">Abbrechen</a>
+      {% else %}
+        <a class="button cancel-link" href="{% url 'admin:accounts_user_changelist' %}">Abbrechen</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

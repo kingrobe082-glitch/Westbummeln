@@ -1,0 +1,19 @@
+{% extends "admin/moderation/base.html" %}
+{% block content %}
+<div class="wb-moderation">
+  <p><strong>{{ target.username }}</strong> hat zurzeit die Rolle <strong>{{ current }}</strong>.</p>
+  <ul class="wb-help">
+    <li><strong>Spieler</strong>: keine Moderationsrechte, kein Zugang zu dieser Seite.</li>
+    <li><strong>Moderator</strong>: Konten ansehen, Spieler sperren und entsperren, aktive Räume ansehen,
+        Spieler entfernen, Räume schließen, besetzte Leitstelle übernehmen.</li>
+    <li><strong>Admin</strong>: zusätzlich Kontodaten bearbeiten, Rollen vergeben, Moderatoren und Admins sperren.</li>
+  </ul>
+  <form method="post" data-confirm="Rolle wirklich ändern?">{% csrf_token %}
+    {{ form.as_div }}
+    <div class="submit-row">
+      <input type="submit" class="default" value="Rolle speichern">
+      <a class="button cancel-link" href="{% url 'admin:accounts_user_change' target.pk %}">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

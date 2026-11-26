@@ -1,0 +1,9 @@
+{% extends "admin/change_form.html" %}
+{% block object-tools-items %}
+  {% if original %}
+    {% if can_ban %}<li><a href="{% url 'admin:accounts_user_ban' original.pk %}">Sperren</a></li>{% endif %}
+    {% if can_lift %}<li><a href="{% url 'admin:accounts_user_lift' original.pk %}">Sperre aufheben</a></li>{% endif %}
+    {% if can_assign_roles %}<li><a href="{% url 'admin:accounts_user_role' original.pk %}">Rolle ändern</a></li>{% endif %}
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

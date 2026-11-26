@@ -31,6 +31,12 @@ OWNER_ONLY = 'Nur der Raumbesitzer darf das.'
 BANNED = 'Du bist für diesen Raum gesperrt.'
 KICKED = 'Du wurdest von der Raumverwaltung aus dem Raum entfernt.'
 KICKED_BANNED = 'Du wurdest von der Raumverwaltung aus dem Raum entfernt und für diesen Raum gesperrt.'
+KICKED_MODERATION = 'Du wurdest von der Moderation aus dem Raum entfernt.'
+CLOSED = 'Dieser Raum wurde von der Moderation geschlossen.'
+
+# Von der Moderation geschlossene Räume: Code → Zeitpunkt. Wer noch drin war, erfährt beim nächsten
+# Abruf den Grund; der Code wird so lange nicht neu vergeben.
+closed = {}
 
 
 class KickedError(Exception):
@@ -65,6 +71,8 @@ def get_room(code):
         ensure_discord_room()
     r = rooms.get(code)
     if r is None:
+        if code in closed:
+            raise KickedError(CLOSED)
         raise ValueError(NOT_FOUND)
     return r
 
@@ -73,7 +81,7 @@ def new_code():
     """Zufälligen, noch freien Raumcode erzeugen."""
     while True:
         code = ''.join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
-        if code not in rooms and code != discord.ROOM:
+        if code not in rooms and code not in closed and code != discord.ROOM:
             return code
 
 
@@ -106,6 +114,9 @@ def sweep(now):
         last = max([r['last_seen'], *(p['last'] for p in r['players'].values())])
         if now - last >= limit:
             del rooms[code]
+    for code, at in list(closed.items()):
+        if now - at >= KICK_MEMORY:
+            del closed[code]
 
 
 # ------------------------------------------------------------------ Besitzer und Spieler
@@ -153,7 +164,7 @@ def _player(r, data, account_id):
     if not p or p['account'] != account_id:
         kicked = r['kicked'].get(pid)
         if kicked and kicked['account'] == account_id:
-            raise KickedError(KICKED_BANNED if kicked['banned'] else KICKED)
+            raise KickedError(kicked.get('message') or (KICKED_BANNED if kicked['banned'] else KICKED))
         raise ValueError(SESSION_EXPIRED)
     return pid, p
 
@@ -203,9 +214,13 @@ def _kick(r, pid, p, data, now):
         r['banned'][target['account']] = target['name']
     message = f'{target["name"]} wurde von der Raumverwaltung entfernt'
     message += ' und für diesen Raum gesperrt.' if ban else '.'
-    if freed:
-        message += ' ' + ' und '.join(freed) + (' sind' if len(freed) > 1 else ' ist') + ' wieder frei.'
-    engine.emit(r, 'System', message)
+    engine.emit(r, 'System', message + _freed_text(freed))
+
+
+def _freed_text(freed):
+    if not freed:
+        return ''
+    return ' ' + ' und '.join(freed) + (' sind' if len(freed) > 1 else ' ist') + ' wieder frei.'
 
 
 def _transfer_owner(r, pid, p, data, now):
@@ -246,10 +261,7 @@ def remove_account(account_id, now):
             changed = False
             for target in [p for p in r['players'].values() if p['account'] == account_id]:
                 freed = _remove_player(r, target, now)
-                message = f'{target["name"]} hat das Spiel verlassen.'
-                if freed:
-                    message += ' ' + ' und '.join(freed) + (' sind' if len(freed) > 1 else ' ist') + ' wieder frei.'
-                engine.emit(r, 'System', message)
+                engine.emit(r, 'System', f'{target["name"]} hat das Spiel verlassen.' + _freed_text(freed))
                 changed = True
             r['kicked'] = {pid: k for pid, k in r['kicked'].items() if k['account'] != account_id}
             if r['banned'].pop(account_id, None) is not None:
@@ -310,6 +322,98 @@ def handle(r, data, account_id, name, is_developer, now):
     if 'state' in result:
         result['state'].update(room_info(r, account_id))
     return result
+
+
+# ------------------------------------------------------------------ Moderation (Admin-Seite)
+
+def remove_banned_account(account_id, now):
+    """Gesperrtes Konto aus allen Räumen nehmen. Die Funkmeldung nennt keinen Grund.
+
+    Besitzt das Konto einen Raum, übernimmt ein anderer anwesender Spieler die Verwaltung.
+    Liefert die Codes der Räume, aus denen das Konto entfernt wurde."""
+    removed = []
+    with lock:
+        for r in rooms.values():
+            changed = False
+            for target in [p for p in r['players'].values() if p['account'] == account_id]:
+                freed = _remove_player(r, target, now)
+                engine.emit(r, 'System', f'{target["name"]} wurde aus dem Raum entfernt.' + _freed_text(freed))
+                removed.append(r['code'])
+                changed = True
+            if r['owner_account'] == account_id:
+                heir = next(iter(r['players'].values()), None)
+                if heir:
+                    r['owner_account'] = heir['account']
+                    r['owner_name'] = heir['name']
+                    engine.emit(r, 'System', f'{heir["name"]} verwaltet jetzt den Raum.')
+                    changed = True
+            if changed:
+                sync_admin(r)
+                r['rev'] += 1
+    return removed
+
+
+def moderation_kick(code, player_id, now):
+    """Spieler auf Anweisung der Moderation entfernen. Er kann wieder beitreten (keine Raumsperre).
+    Liefert {'name', 'account'} des entfernten Spielers."""
+    with lock:
+        r = rooms.get(code)
+        if r is None:
+            raise ValueError(NOT_FOUND)
+        target = r['players'].get(player_id)
+        if not target:
+            raise ValueError('Spieler nicht gefunden – vielleicht hat er den Raum schon verlassen.')
+        freed = _remove_player(r, target, now)
+        r['kicked'] = {k: v for k, v in r['kicked'].items() if now - v['at'] < KICK_MEMORY}
+        r['kicked'][player_id] = {'account': target['account'], 'at': now, 'banned': False,
+                                  'message': KICKED_MODERATION}
+        engine.emit(r, 'System', f'{target["name"]} wurde von der Moderation aus dem Raum entfernt.'
+                    + _freed_text(freed))
+        sync_admin(r)
+        r['rev'] += 1
+        return {'name': target['name'], 'account': target['account']}
+
+
+def close_room(code, now):
+    """Raum sofort löschen. Liefert die Namen der Spieler, die noch drin waren.
+
+    Der feste Discord-Raum wird dabei nur zurückgesetzt: Er entsteht beim nächsten Abruf leer neu."""
+    with lock:
+        r = rooms.pop(code, None)
+        if r is None:
+            raise ValueError(NOT_FOUND)
+        if not r['permanent']:
+            closed[code] = now
+        return [p['name'] for p in r['players'].values()]
+
+
+ROLE_LABELS = {'ls': 'Leitstelle', 'gf': 'Gruppenführer', 'none': '–'}
+
+
+def overview(now):
+    """Alle Räume mit Spielern für die Admin-Seite (Kopie, ohne Sperre weiterverwendbar)."""
+    with lock:
+        result = []
+        for r in sorted(rooms.values(), key=lambda room: room['code']):
+            players = []
+            for p in r['players'].values():
+                vehicle = r['vehicles'].get(p['vehicle']) if p['vehicle'] else None
+                players.append({
+                    'id': p['id'],
+                    'name': p['name'],
+                    'account': p['account'],
+                    'role': vehicle['call'] if vehicle else ROLE_LABELS.get(p['role'], p['role']),
+                    'online': now - p['last'] <= engine.OFFLINE_TIMEOUT,
+                    'owner': p['account'] == r['owner_account'],
+                })
+            result.append({
+                'code': r['code'],
+                'owner_name': r['owner_name'] or ('Discord-Raum' if r['permanent'] else '–'),
+                'permanent': r['permanent'],
+                'players': players,
+                'open_incidents': sum(1 for incident in r['incidents'] if not incident['closed']),
+            })
+        return result
 
 
 # ------------------------------------------------------------------ Discord, Statistik, Start

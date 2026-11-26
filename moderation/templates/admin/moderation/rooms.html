@@ -1,0 +1,44 @@
+{% extends "admin/moderation/base.html" %}
+{% block content %}
+<div class="wb-moderation">
+  <p class="wb-stats">{{ activity.rooms }} aktive Räume · {{ activity.players }} aktive Spieler · {{ activity.rooms_total }} Räume insgesamt</p>
+  {% for room in rooms %}
+    <section class="wb-room module">
+      <h2>Raum {{ room.code }}
+        <span class="wb-meta">Verwaltung: {{ room.owner_name }} · {{ room.players|length }} Spieler · {{ room.open_incidents }} offene Einsätze</span>
+      </h2>
+      {% if room.players %}
+        <table>
+          <thead><tr><th>Spieler</th><th>Rolle / Fahrzeug</th><th>Verbindung</th><th></th></tr></thead>
+          <tbody>
+          {% for player in room.players %}
+            <tr>
+              <td><a href="{% url 'admin:accounts_user_change' player.account %}">{{ player.name }}</a>{% if player.owner %} <span class="wb-tag">Raumbesitzer</span>{% endif %}</td>
+              <td>{{ player.role }}</td>
+              <td>{% if player.online %}online{% else %}<span class="wb-off">getrennt</span>{% endif %}</td>
+              <td>{% if can_kick %}
+                <form method="post" action="{% url 'admin:moderation_room_kick' %}" data-confirm="{{ player.name }} aus Raum {{ room.code }} entfernen?">{% csrf_token %}
+                  <input type="hidden" name="room" value="{{ room.code }}">
+                  <input type="hidden" name="player" value="{{ player.id }}">
+                  <button type="submit" class="button">Entfernen</button>
+                </form>
+              {% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="wb-empty">Niemand im Raum.</p>
+      {% endif %}
+      {% if can_close %}
+        <form method="post" action="{% url 'admin:moderation_room_close' %}" class="wb-close" data-confirm="Raum {{ room.code }} wirklich schließen? Alle Spieler fliegen raus, der Spielstand ist weg.">{% csrf_token %}
+          <input type="hidden" name="room" value="{{ room.code }}">
+          <button type="submit" class="button wb-danger">{% if room.permanent %}Raum zurücksetzen{% else %}Raum schließen{% endif %}</button>
+        </form>
+      {% endif %}
+    </section>
+  {% empty %}
+    <p>Zurzeit gibt es keine Räume.</p>
+  {% endfor %}
+</div>
+{% endblock %}
