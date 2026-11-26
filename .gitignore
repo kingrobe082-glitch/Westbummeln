@@ -6,6 +6,8 @@
 # Geheimnisse
 .env
 .env.*
+# Vorlage ohne Geheimnisse gehört ins Repo
+!.env.example
 
 # Python
 __pycache__/
