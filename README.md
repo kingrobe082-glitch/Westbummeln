@@ -60,7 +60,7 @@ GitHub Actions führt beides bei jedem Pull Request aus, einmal gegen Postgres u
 
 ## Online (eigener Server mit Docker)
 
-Das Spiel läuft auf einem eigenen Server (AWS, `63.183.198.23`) in Docker Compose:
+Das Spiel läuft unter **https://planspiel.7z2.de** auf einem eigenen Server (AWS) in Docker Compose:
 **Caddy** (HTTPS, Zertifikat automatisch) → **web** (dieses Image, gunicorn) → **db** (Postgres 17),
 dazu ein **backup**-Container mit täglicher Sicherung.
 

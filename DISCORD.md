@@ -32,7 +32,7 @@ Der Bot liest den Kanal alle 3 Sekunden mit. Nachrichten von Bots und Webhooks w
 
 ## 3. Anmeldung mit Discord
 1. In derselben Anwendung links **OAuth2**: **Client ID** und **Client Secret** kopieren.
-2. Unter **Redirects** hinzufügen: `https://<DOMAIN>/auth/discord/callback` (DOMAIN wie in `.env`, z. B. `https://63-183-198-23.sslip.io/auth/discord/callback`) und speichern.
+2. Unter **Redirects** hinzufügen: `https://planspiel.7z2.de/auth/discord/callback` (allgemein `https://<DOMAIN>/auth/discord/callback`, DOMAIN wie in `.env`) und speichern.
 3. In `.env` `DISCORD_CLIENT_ID` und `DISCORD_CLIENT_SECRET` setzen.
 4. Optional `DISCORD_GUILD_ID` (Server-ID kopieren wie die Kanal-ID) setzen.
 

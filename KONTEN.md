@@ -12,81 +12,8 @@ Wegwerf-Datenbank laufen und Konten verlieren. Schlägt ein Deploy deshalb fehl,
 Gesichert wird täglich um 03:00 nach `/opt/westbummeln/backups` (7 Tage, 4 Wochen, 3 Monate),
 zusätzlich vor jedem Deploy nach `backups/pre-deploy`. Einspielen: `deploy/RUNBOOK.md`.
 
----
-
-## Umzug der alten Konten vom Render-Server (einmalig)
-
-> Alle Spieler werden nach dem Umzug einmal abgemeldet und müssen sich neu anmelden.
-> Passwörter bleiben gültig.
-
-Voraussetzung: Der neue Server läuft (Erstinstallation in `deploy/RUNBOOK.md`) und die Startseite
-lädt unter der neuen Adresse.
-
-### 1. Alte Konten herunterladen
-
-1. Auf GitHub dein **privates** Backup-Repo des alten Servers öffnen (z. B. `westbummeln-backup`).
-2. Die Datei `accounts-backup.json` öffnen und rechts oben auf **Download raw file** klicken.
-3. Möglichst spät herunterladen: Der alte Server sichert bei jeder Registrierung und beim
-   Herunterfahren. Am besten erst den alten Dienst bei Render anhalten (**Suspend Service**), dann
-   herunterladen. Dann ist auch das letzte neue Konto dabei.
-4. Die Datei **niemals** ins öffentliche Spiel-Repo legen. Sie enthält E-Mails und Passwort-Hashes.
-
-Statt der JSON-Datei geht auch eine alte `accounts.sqlite3`.
-
-### 2. Datei auf den Server kopieren
-
-Vom PC aus in PowerShell (Pfad anpassen):
-
-```powershell
-scp "C:\Pfad\zu\accounts-backup.json" deploy@63.183.198.23:/opt/westbummeln/
-```
-
-### 3. Importieren
-
-Auf dem Server:
-
-```bash
-cd /opt/westbummeln
-./import-accounts.sh accounts-backup.json
-```
-
-Das Skript kopiert die Datei in den laufenden Webdienst, macht zuerst einen **Probelauf**, der
-nichts speichert, und fragt dann „Jetzt wirklich importieren? [j/N]“. Mit `j` wird importiert,
-danach wird die Kopie im Container gelöscht. Die Datei auf dem Server danach selbst löschen:
-
-```bash
-rm accounts-backup.json
-```
-
-Der Import kann gefahrlos mehrmals laufen. Ein zweiter Lauf meldet „Neu übernommen: 0“ und ändert
-nichts.
-
-**Was der Import macht:**
-- Konten behalten ihre alte ID, Name, E-Mail, Google- und Discord-Verknüpfung. Ist die alte ID
-  schon vergeben (z. B. durch das neue Entwicklerkonto), bekommt das Konto eine neue ID.
-- Alte Passwörter funktionieren weiter. Beim ersten Login rechnet der Server sie automatisch in
-  das neue Format um.
-- Entwickler aus der alten Datenbank werden wieder Entwickler (`is_staff`, `is_superuser`).
-- Das Testkonto `test/test` wird nie übernommen.
-- Gibt es Name oder E-Mail schon bei einem anderen Konto (zum Beispiel, weil sich jemand auf dem
-  neuen Server schon registriert hat), wird das alte Konto **übersprungen** und in der Ausgabe
-  genannt. Nichts wird überschrieben. Deshalb den Import direkt nach der Erstinstallation machen.
-
-### 4. Prüfen
-
-1. Die letzte Zeile der Ausgabe zeigt, wie viele Konten jetzt in der Datenbank sind. Die Zahl mit
-   der Anzahl der Einträge in `accounts-backup.json` vergleichen (plus Entwicklerkonto).
-2. Im Spiel mit einem alten Konto anmelden (Benutzername **oder** E-Mail).
-3. Optional unter `https://<DOMAIN>/admin/` mit dem Entwicklerkonto anmelden und unter
-   **Konten** nachsehen.
-
-### 5. Aufräumen bei Render und GitHub
-
-1. Den alten Dienst bei Render löschen, sobald der Import geklappt hat.
-2. Auf GitHub unter **Settings → Developer settings → Fine-grained tokens** den Backup-Token des
-   alten Servers löschen.
-3. Das private Backup-Repo noch ein paar Wochen als Notfall-Kopie behalten, danach löschen.
-4. Die heruntergeladene `accounts-backup.json` auf dem PC löschen.
+Konten vom früheren Render-Server gibt es nicht zu übernehmen (dort lag nur eine flüchtige
+SQLite-Datei ohne Sicherung). Der neue Server startet leer, Spieler registrieren sich neu.
 
 ---
 
@@ -95,7 +22,7 @@ nichts.
 1. In der Google Cloud Console einen OAuth-Client vom Typ **Webanwendung**
    anlegen und die Anmeldeseite konfigurieren.
 2. Als autorisierten JavaScript-Ursprung die HTTPS-Adresse des Spiels
-   eintragen, zum Beispiel `https://63-183-198-23.sslip.io` (bzw. die spätere eigene Domain).
+   eintragen: `https://planspiel.7z2.de`.
 3. Auf dem Server in `/opt/westbummeln/.env` `GOOGLE_CLIENT_ID` mit der Client-ID setzen und in
    `/opt/westbummeln` `docker compose up -d` ausführen. Ein Client-Secret ist nicht nötig.
 4. Wenn die Google-App im Testmodus ist, die gewünschten Google-Konten als

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Übernimmt die Konten des alten Render-Servers in die Datenbank auf diesem Server.
+# Liest Konten im alten Format (Backup-JSON oder accounts.sqlite3 des früheren Servers) in die
+# Datenbank auf diesem Server ein. Für die Neuinstallation nicht nötig, nur für den Fall der Fälle.
 #
 #   ./import-accounts.sh /pfad/zu/accounts-backup.json      (oder eine alte accounts.sqlite3)
 #
-# Die Datei kommt aus dem privaten GitHub-Backup-Repo des alten Servers (accounts-backup.json,
-# "Download raw file") und wird z. B. per scp nach /opt/westbummeln/ kopiert. Ablauf: Datei in den
+# Die Datei z. B. per scp nach /opt/westbummeln/ kopieren. Ablauf: Datei in den
 # laufenden web-Container kopieren, Probelauf (speichert nichts), Rückfrage, echter Import,
 # Datei im Container wieder löschen. Der Import ist idempotent: ein zweiter Lauf ändert nichts.
 set -euo pipefail

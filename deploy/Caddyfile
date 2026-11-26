@@ -1,8 +1,7 @@
 # Caddy vor Westbummeln: HTTPS (Let's Encrypt, Fallback ZeroSSL), Komprimierung, Weiterleitung an web:8000.
 #
-# DOMAIN und ACME_EMAIL kommen aus /opt/westbummeln/.env (über docker-compose.prod.yml).
-# Solange es keine eigene Domain gibt, funktioniert
-#   DOMAIN=63-183-198-23.sslip.io
+# DOMAIN und ACME_EMAIL kommen aus /opt/westbummeln/.env (über docker-compose.prod.yml),
+# im Betrieb DOMAIN=planspiel.7z2.de. Notlösung ohne Domain: DOMAIN=<IP-mit-Bindestrichen>.sslip.io
 # (sslip.io löst den Namen auf die IP im Namen auf; Caddy holt dafür ein echtes Zertifikat,
 # bei Let's-Encrypt-Rate-Limits automatisch über ZeroSSL). Mit DOMAIN=localhost nimmt Caddy
 # seine interne Test-CA (nur für lokale Tests).

@@ -1,13 +1,18 @@
 # Runbook Westbummeln-Server
 
-Server: AWS eu-central-1, t3.micro (2 vCPU, ~900 MB RAM + 2 GB Swap), Ubuntu 26.04,
-öffentliche IP **63.183.198.23**. Alles liegt in **`/opt/westbummeln`** und gehört dem Benutzer
+Spiel: **https://planspiel.7z2.de**. Server: AWS eu-central-1, t3.micro (2 vCPU, ~900 MB RAM +
+2 GB Swap), Ubuntu 26.04. Alles liegt in **`/opt/westbummeln`** und gehört dem Benutzer
 **`deploy`**. Alle Befehle unten laufen als `deploy` in diesem Ordner:
 
 ```bash
-ssh deploy@63.183.198.23
+ssh deploy@planspiel.7z2.de
 cd /opt/westbummeln
 ```
+
+Die öffentliche IP steht absichtlich nirgends fest im Repo: Ohne Elastic IP ändert sie sich bei
+Stop/Start der Instanz. Aktuelle IP: AWS-Konsole (EC2 → Instanz → „Public IPv4 address“) oder
+`nslookup planspiel.7z2.de 1.1.1.1`. Ändert sie sich, den A-Record von `planspiel.7z2.de` anpassen
+(Abschnitt 5).
 
 ## Überblick
 
@@ -43,7 +48,7 @@ Gruppe `docker`, Ordner `/opt/westbummeln` mit `backups/` (Besitzer `deploy`), F
    beim ersten Lauf. Von Hand vom PC aus (PowerShell, im Repo-Ordner):
 
    ```powershell
-   scp deploy/docker-compose.prod.yml deploy/Caddyfile deploy/remote-deploy.sh deploy/env-init.sh deploy/import-accounts.sh deploy/.env.example deploy/RUNBOOK.md deploy@63.183.198.23:/opt/westbummeln/
+   scp deploy/docker-compose.prod.yml deploy/Caddyfile deploy/remote-deploy.sh deploy/env-init.sh deploy/import-accounts.sh deploy/.env.example deploy/RUNBOOK.md deploy@planspiel.7z2.de:/opt/westbummeln/
    ```
 
    Auf dem Server danach `chmod +x *.sh`.
@@ -51,7 +56,7 @@ Gruppe `docker`, Ordner `/opt/westbummeln` mit `backups/` (Besitzer `deploy`), F
 2. **`.env` anlegen** (einmalig, überschreibt nie eine vorhandene):
 
    ```bash
-   ./env-init.sh 63-183-198-23.sslip.io deine-adresse@example.com
+   ./env-init.sh planspiel.7z2.de deine-adresse@example.com
    nano .env
    ```
 
@@ -74,14 +79,15 @@ Gruppe `docker`, Ordner `/opt/westbummeln` mit `backups/` (Besitzer `deploy`), F
 
    ```bash
    docker compose ps                       # alle "Up", web und db "(healthy)"
-   curl -s https://63-183-198-23.sslip.io/healthz    # -> ok
+   curl -s https://planspiel.7z2.de/healthz      # -> ok
    docker compose logs caddy | grep -i certificate   # "certificate obtained successfully"
    ```
 
    Danach im Browser die Startseite öffnen, registrieren, anmelden, Raum betreten.
 
-5. **Alte Konten übernehmen:** `KONTEN.md`, Abschnitt „Umzug der alten Konten“
-   (`./import-accounts.sh accounts-backup.json`).
+Alte Konten gibt es nicht zu übernehmen: Der Server startet leer, Spieler registrieren sich neu.
+(`./import-accounts.sh <datei>` liest bei Bedarf eine Kontodatei im alten Format ein, mit
+Probelauf und Rückfrage. Für die Neuinstallation wird es nicht gebraucht.)
 
 ## 2. Alltag
 
@@ -149,7 +155,7 @@ passiert ist (neue Konten), geht dabei verloren.
 eine Kopie ziehen), PowerShell:
 
 ```powershell
-scp deploy@63.183.198.23:/opt/westbummeln/backups/last/westbummeln-latest.sql.gz .
+scp deploy@planspiel.7z2.de:/opt/westbummeln/backups/last/westbummeln-latest.sql.gz .
 ```
 
 Die Dateien enthalten E-Mails und Passwort-Hashes: nie ins Repo, nicht weitergeben.
@@ -205,19 +211,37 @@ davor lief (Zeile darüber in `.deploy-history`). Läuft gerade eine neuere Vers
 **Server komplett weg:** neuen Server einrichten, Erstinstallation (Abschnitt 1) mit der alten
 `.env` aus dem Passwort-Manager, dann die vom PC kopierte Sicherung wie oben einspielen.
 
-## 5. Domain wechseln (z. B. von sslip.io auf eine eigene Domain)
+## 5. Domain, IP-Wechsel und Notlösung sslip.io
 
-1. Beim Domain-Anbieter einen **A-Record** auf `63.183.198.23` setzen und warten, bis
-   `nslookup neue-domain.de` diese IP liefert.
-2. In `.env` `DOMAIN=neue-domain.de` setzen. `ALLOWED_HOSTS` und `CSRF_TRUSTED_ORIGINS` folgen
-   über `${DOMAIN}` automatisch. Sollen alte und neue Adresse eine Zeit lang beide gehen:
-   `ALLOWED_HOSTS=${DOMAIN},63-183-198-23.sslip.io` und
-   `CSRF_TRUSTED_ORIGINS=https://${DOMAIN},https://63-183-198-23.sslip.io`.
+Die Domain ist `planspiel.7z2.de` (A-Record auf die öffentliche IP des Servers, kein AAAA-Record).
+In `.env` steht `DOMAIN=planspiel.7z2.de`; `ALLOWED_HOSTS` und `CSRF_TRUSTED_ORIGINS` folgen über
+`${DOMAIN}` automatisch.
+
+**Öffentliche IP hat sich geändert** (Instanz gestoppt/gestartet, keine Elastic IP):
+
+1. Neue IP in der AWS-Konsole ablesen.
+2. Beim Domain-Anbieter den A-Record von `planspiel.7z2.de` auf die neue IP setzen.
+3. Warten, bis `nslookup planspiel.7z2.de 1.1.1.1` die neue IP liefert. Am Server ist nichts zu
+   ändern; Caddy behält sein Zertifikat.
+4. Dauerhaft: der Instanz eine Elastic IP zuweisen, dann passiert das nicht mehr.
+
+**Andere Domain:**
+
+1. A-Record der neuen Domain auf die Server-IP setzen, mit `nslookup` prüfen.
+2. In `.env` `DOMAIN=neue-domain.de` setzen. Sollen alte und neue Adresse eine Zeit lang beide gehen:
+   `ALLOWED_HOSTS=${DOMAIN},planspiel.7z2.de` und
+   `CSRF_TRUSTED_ORIGINS=https://${DOMAIN},https://planspiel.7z2.de`.
 3. `docker compose up -d` – Caddy startet neu und holt das Zertifikat (`docker compose logs caddy`).
 4. Google: in der Cloud Console den JavaScript-Ursprung `https://neue-domain.de` ergänzen.
    Discord: Redirect `https://neue-domain.de/auth/discord/callback` ergänzen (`DISCORD.md`).
 5. Die alte Adresse auf die neue umleiten: im `Caddyfile` im Repo einen Block
-   `63-183-198-23.sslip.io { redir https://neue-domain.de{uri} permanent }` ergänzen und deployen.
+   `planspiel.7z2.de { redir https://neue-domain.de{uri} permanent }` ergänzen und deployen.
+
+**Notlösung ohne funktionierende Domain** (DNS kaputt, Domain abgelaufen): sslip.io löst
+`<IP-mit-Bindestrichen>.sslip.io` auf diese IP auf, z. B. `1-2-3-4.sslip.io` → `1.2.3.4`.
+In `.env` `DOMAIN=<IP-mit-Bindestrichen>.sslip.io` setzen und `docker compose up -d`; Caddy holt
+dafür ein echtes Zertifikat. Google- und Discord-Anmeldung funktionieren unter dieser Adresse erst,
+wenn sie dort ebenfalls eingetragen ist. Danach wieder auf `planspiel.7z2.de` zurückstellen.
 
 ## 6. Speicher
 
@@ -239,6 +263,6 @@ Wird ein Container wegen seiner Grenze beendet, steht in `docker inspect <contai
 | Action rot, „ROLLBACK auf …“ | Neue Version startet nicht. `docker compose logs --tail=200 web` zeigt den Grund. Die alte Version läuft weiter. |
 | `web` startet nicht, Log: „… fehlt“ | Pflichtwert in `.env` fehlt (`SECRET_KEY`, `DATABASE_URL`, `ALLOWED_HOSTS`). |
 | Browser: 400 Bad Request | Aufgerufener Name steht nicht in `ALLOWED_HOSTS`. |
-| Kein Zertifikat | Port 80 und 443 müssen aus dem Internet erreichbar sein (ufw **und** AWS-Security-Group), DNS muss auf 63.183.198.23 zeigen. Log: `docker compose logs caddy`. Bei Let's-Encrypt-Limits weicht Caddy auf ZeroSSL aus. |
+| Kein Zertifikat | Port 80 und 443 müssen aus dem Internet erreichbar sein (ufw **und** AWS-Security-Group), der A-Record von `DOMAIN` muss auf die aktuelle öffentliche IP zeigen (Abschnitt 5). Log: `docker compose logs caddy`. Bei Let's-Encrypt-Limits weicht Caddy auf ZeroSSL aus. |
 | „docker compose config schlägt fehl“ | `.env` nicht lesbar (`ls -l .env`, Besitzer muss `deploy` sein) oder Pflichtwert fehlt. |
 | Platte voll | `docker system df`, `docker image prune -a` (löscht alle nicht laufenden Images), alte Sicherungen in `backups/pre-deploy` löschen. |

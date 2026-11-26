@@ -1,7 +1,7 @@
-"""Wird bei jedem Start auf Render nach migrate ausgeführt (siehe render.yaml).
+"""Wird bei jedem Start des Webdienstes nach migrate ausgeführt (siehe entrypoint.sh).
 
 - legt das Entwicklerkonto aus DEVELOPER_USERNAME/DEVELOPER_PASSWORD an,
-- legt lokal das Testkonto test/test an bzw. löscht es auf Render (außer CREATE_TEST_ACCOUNT=1),
+- legt lokal das Testkonto test/test an bzw. löscht es in Produktion (außer CREATE_TEST_ACCOUNT=1),
 - räumt abgelaufene Sitzungen auf.
 """
 from django.contrib.sessions.models import Session
