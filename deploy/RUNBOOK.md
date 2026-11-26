@@ -34,8 +34,14 @@ Internet ──80/443──▶ caddy ──web:8000──▶ web (gunicorn, 1 Wo
 - Die Daten liegen in Docker-Volumes: `westbummeln_db-data` (Datenbank) und
   `westbummeln_caddy-data` (Zertifikate). **Nie** `docker compose down -v` ausführen: `-v` löscht
   die Datenbank.
-- Spielräume liegen im Arbeitsspeicher von `web`. Ein Neustart von `web` beendet laufende
-  Einsätze, Konten bleiben erhalten.
+- Spielräume liegen im Arbeitsspeicher von `web`. Beim Herunterfahren und alle 30 s (bei Änderungen)
+  sichert `web` sie nach `/app/state/rooms.json` im Volume `westbummeln_room-state` und lädt sie beim
+  Start wieder (`game/persistence.py`). Ein Deploy oder Neustart unterbricht ein Spiel deshalb nur
+  kurz („Server startet neu …“), Räume, Einsätze und Spieler bleiben. Nach einem Absturz fehlen
+  höchstens die letzten 30 s. Ist die Datei unlesbar (z. B. Rollback auf eine ältere Version mit
+  anderem Format), startet `web` mit leeren Räumen und legt sie als `rooms.json.broken` daneben.
+  Alle laufenden Spiele bewusst beenden: `docker compose stop web`,
+  `docker compose run --rm --no-deps --entrypoint rm web /app/state/rooms.json`, `docker compose up -d`.
 - `.env` enthält `COMPOSE_FILE=docker-compose.prod.yml`, deshalb reicht überall `docker compose …`.
 
 ## 1. Erstinstallation

@@ -229,6 +229,10 @@ ROOM_MAX_PER_ACCOUNT = int(os.environ.get('ROOM_MAX_PER_ACCOUNT', '2'))  # eigen
 ROOM_MAX_PLAYERS = int(os.environ.get('ROOM_MAX_PLAYERS', '20'))  # Spieler pro Raum
 ROOM_MAX_TOTAL = int(os.environ.get('ROOM_MAX_TOTAL', '200'))  # Räume insgesamt
 ROOM_EMPTY_TTL = int(os.environ.get('ROOM_EMPTY_TTL', '1800'))  # Sekunden, bis ein leerer Raum gelöscht wird
+# Hier sichert der Serverprozess alle Räume beim Herunterfahren und alle 30 s (game/persistence.py),
+# damit ein Deploy laufende Spiele nicht beendet. Im Container liegt die Datei auf dem Volume
+# room-state (docker-compose.prod.yml). Leer = abgeschaltet.
+ROOM_STATE_FILE = os.environ.get('ROOM_STATE_FILE', str(BASE_DIR / 'state' / 'rooms.json')).strip()
 
 LOGGING = {
     'version': 1,
