@@ -15,6 +15,7 @@ function showAccount({ name, developer, hasPassword }) {
     $('developerPanel').open = false;
     $('developerStatus').textContent = '';
   }
+  if (typeof updatePrivacyPanel === 'function') updatePrivacyPanel({ name, hasPassword });
 }
 
 let authMode = 'login';
@@ -28,6 +29,7 @@ function setAuthMode(mode) {
   $('tabLogin').classList.toggle('active', mode === 'login');
   $('tabRegister').classList.toggle('active', mode === 'register');
   $('emailRow').classList.toggle('hidden', mode !== 'register');
+  $('registerHint').classList.toggle('hidden', mode !== 'register');
   $('nameLabel').textContent = mode === 'register' ? 'Benutzername (3–24 Zeichen)' : 'Benutzername oder E-Mail';
   $('accountPassword').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
   $('accountSubmit').textContent = mode === 'register' ? 'Konto erstellen' : 'Anmelden';

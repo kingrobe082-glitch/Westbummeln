@@ -11,6 +11,7 @@
       <label id="emailRow" class="hidden"><span>E-Mail-Adresse</span><input id="accountEmail" type="email" autocomplete="email" maxlength="254"></label>
       <label><span>Passwort</span><input id="accountPassword" type="password" autocomplete="current-password" maxlength="128"></label>
       <button type="submit" id="accountSubmit">Anmelden</button>
+      <p id="registerHint" class="small formHint hidden">Mit der Registrierung speichern wir deinen Benutzernamen, deine E-Mail-Adresse und einen Hash deines Passworts. Mehr dazu in den <a href="/datenschutz">Datenschutzhinweisen</a>.</p>
     </div>
   </form>
   <div id="googleButton"></div>
@@ -28,6 +29,15 @@
       <p class="small">Danach sind alle anderen Geräte abgemeldet.</p>
     </form>
     <button id="logoutAll" type="button">Auf allen Geräten abmelden</button>
+  </details>
+  <details id="privacyPanel">
+    <summary>Meine Daten</summary>
+    <button id="exportData" type="button">Meine Daten herunterladen</button>
+    <form id="deleteForm" class="authFields" novalidate>
+      <p class="small">Konto löschen: Dein Konto und alle Anmeldungen werden sofort und endgültig gelöscht, und du verlässt alle Spielräume. Das lässt sich nicht rückgängig machen. Was gelöscht wird und was bleibt, steht in den <a href="/datenschutz">Datenschutzhinweisen</a>.</p>
+      <label><span id="deleteLabel">Passwort zur Bestätigung</span><input id="deleteConfirm" type="password" autocomplete="current-password" maxlength="128"></label>
+      <button type="submit" id="deleteSubmit" class="danger">Konto endgültig löschen</button>
+    </form>
   </details>
   <details id="developerPanel" class="hidden">
     <summary>Entwicklerübersicht</summary>
@@ -48,9 +58,11 @@
 </section>
 <section class="panel hidden" id="controlPanel"><h2>📟 Mein Fahrzeug & Status</h2><div id="myVehicle">Kein Fahrzeug besetzt</div><div class="statuses" id="statuses"></div><button id="release" style="margin-top:9px">Fahrzeug verlassen</button><h3>👥 Mitspieler</h3><div id="players"></div><div id="bannedList" class="hidden"></div></section>
 <section class="panel wide hidden" id="sectionsPanel"><h2>🧭 Einsatzabschnitte & KI</h2><div id="aiInfo" class="small"></div><div id="sectionsList"></div></section><section class="panel wide hidden" id="voicePanel"><h2>🎙️ Sprachfunk · Digitalfunk Westbummeln</h2><p class="small">Funk ist freiwillig. Mikrofon erst nach Klick auf „Sprachfunk einschalten“. Sprechtaste halten, um zu senden. Nur Spieler auf demselben Kanal hören dich.</p><div class="row"><select id="voiceChannel"><option value="leitstelle">📻 Leitstellenfunk</option><option value="einsatz1">🚒 Einsatzstelle 1</option><option value="einsatz2">🚒 Einsatzstelle 2</option><option value="abschnitt1">🧭 Abschnitt 1</option><option value="abschnitt2">🧭 Abschnitt 2</option><option value="abschnitt3">🧭 Abschnitt 3</option></select><button id="voiceJoin">🎤 Sprachfunk einschalten</button><button id="voiceLeave" disabled>Funk verlassen</button></div><button id="voicePtt" disabled style="width:100%;font-weight:bold;touch-action:none;user-select:none">🎙️ Zum Sprechen gedrückt halten</button><a id="discordVoice" class="discordBtn hidden" target="_blank" rel="noopener noreferrer" href="#">🎧 Discord-Sprachkanal öffnen</a><p id="voiceStatus" class="small" aria-live="polite">Sprachfunk aus</p><div id="voicePeers" class="small"></div><div id="voiceAudio" class="hidden"></div></section><section class="panel wide hidden" id="radioPanel"><h2>📻 Gemeinsamer Funkkanal</h2><div class="row"><select id="radioFilter" aria-label="Funkverkehr filtern"><option value="all">Alles anzeigen</option><option value="funk">Nur Funksprüche</option><option value="auto">Nur Meldungen</option></select></div><div id="log" aria-live="polite"></div><div class="row"><input id="message" maxlength="400" placeholder="Funkspruch eingeben"><button id="send">Senden</button></div></section></main>
+<footer class="siteFooter small"><a href="/datenschutz">Datenschutz</a></footer>
 <script src="{% static 'js/app.js' %}"></script>
 <script src="{% static 'js/game.js' %}"></script>
 <script src="{% static 'js/voice.js' %}"></script>
 <script src="{% static 'js/account.js' %}"></script>
 <script src="{% static 'js/security.js' %}"></script>
+<script src="{% static 'js/privacy.js' %}"></script>
 </body></html>

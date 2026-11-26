@@ -11,14 +11,18 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 
 from accounts import services
 from accounts.lockout import LoginLockedError
+from datenschutz import services as datenschutz
 from integrations import discord
 from westbummeln.security import ip_limit, over_limit, too_many_requests
 from westbummeln.views import json_reply, not_found, read_json
 
 GOOGLE_NONCE_COOKIE = 'wb_google_nonce'
-ACTIONS = ('register', 'login', 'google', 'logout', 'change_password', 'logout_all')
+ACTIONS = ('register', 'login', 'google', 'logout', 'change_password', 'logout_all', 'delete_account')
 # Welches IP-Limit aus settings.RATE_LIMITS für welche Kontoaktion gilt.
-ACTION_LIMITS = {'login': 'login', 'google': 'login', 'change_password': 'login', 'register': 'register'}
+ACTION_LIMITS = {'login': 'login', 'google': 'login', 'change_password': 'login', 'register': 'register',
+                 'delete_account': 'login'}
+# Kontoaktionen, die eine Anmeldung voraussetzen.
+SIGNED_IN_ACTIONS = ('change_password', 'logout_all', 'delete_account')
 
 # Höchstens 4 gleichzeitige Passwortprüfungen: scrypt braucht viel Speicher.
 auth_slots = threading.BoundedSemaphore(4)
@@ -82,7 +86,7 @@ def account_action(request):
     if action == 'logout':
         logout(request)
         return json_reply({'name': None})
-    if action in ('change_password', 'logout_all') and not request.user.is_authenticated:
+    if action in SIGNED_IN_ACTIONS and not request.user.is_authenticated:
         return json_reply({'error': 'Sitzung abgelaufen – bitte anmelden.'}, 401)
     if action == 'logout_all':
         services.logout_everywhere(request.user)
@@ -96,6 +100,10 @@ def account_action(request):
         if action == 'change_password':
             user = services.change_password(request, data)
             return json_reply({'name': user.username})
+        if action == 'delete_account':
+            datenschutz.delete_account(request, data)
+            logout(request)  # leert die Sitzung; Django löscht dann das Sitzungscookie
+            return json_reply({'name': None, 'deleted': True})
         if action == 'google':
             user = services.login_with_google(data, request.COOKIES.get(GOOGLE_NONCE_COOKIE, ''))
         elif action == 'register':

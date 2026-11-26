@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'accounts',
     'game',
+    'datenschutz',
 ]
 
 MIDDLEWARE = [
@@ -71,6 +72,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'datenschutz.middleware.session_cleanup',
 ]
 
 ROOT_URLCONF = 'westbummeln.urls'
@@ -158,6 +160,7 @@ RATE_LIMITS = {
     'register': os.environ.get('RATE_LIMIT_REGISTER', '5/h'),
     'discord': os.environ.get('RATE_LIMIT_DISCORD', '10/m'),
     'api': os.environ.get('RATE_LIMIT_API', '240/m'),
+    'export': os.environ.get('RATE_LIMIT_EXPORT', '10/h'),
 }
 
 # Größter Anfragekörper. Spielaktionen und Funksignale sind höchstens 12 000 Bytes groß.
