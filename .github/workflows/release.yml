@@ -181,7 +181,8 @@ jobs:
         if: steps.vorhanden.outputs.bauen == 'true'
         uses: docker/metadata-action@v6
         with:
-          context: git
+          # Standard-Kontext (workflow): Mit "git" bricht die Action bei ausgechecktem SHA
+          # (detached HEAD) ab. Tags sind fest vorgegeben, die revision setzen wir unten selbst.
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=${{ needs.vorbereiten.outputs.tag }}
