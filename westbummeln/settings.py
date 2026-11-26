@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from csp.constants import NONE, SELF, UNSAFE_INLINE
 from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -49,6 +50,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'westbummeln.middleware.health_check',
     'django.middleware.security.SecurityMiddleware',
+    'csp.middleware.CSPMiddleware',
+    'westbummeln.security.security_headers',
+    'westbummeln.security.request_guard',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -110,7 +114,10 @@ PASSWORD_HASHERS = [
     'accounts.hashers.LegacyScryptHasher',
 ]
 AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 8}},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 SESSION_COOKIE_AGE = 7 * 86400
@@ -123,6 +130,55 @@ SESSION_COOKIE_SECURE = SECURE_COOKIES
 CSRF_COOKIE_SECURE = SECURE_COOKIES
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# ------------------------------------------------------------- Sicherheit
+# Zähler für IP-Limits und Login-Sperren liegen im Arbeitsspeicher. Das passt, weil gunicorn genau
+# einen Worker startet (siehe gunicorn.conf.py); bei mehreren Workern bräuchte es einen geteilten Cache.
+CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'westbummeln'}}
+
+# Wie viele Proxys vor Django stehen und X-Forwarded-For ergänzen (Render: 1). 0 = REMOTE_ADDR nehmen.
+TRUSTED_PROXY_COUNT = int(os.environ.get('TRUSTED_PROXY_COUNT', '1' if ON_RENDER else '0'))
+
+# Anfragen je Client-IP. /api ist großzügig: Jeder Spieler fragt alle 1,5 s den Spielstand und
+# alle 1,7 s den Sprachfunk ab (ca. 75 Anfragen pro Minute), mehrere Spieler können eine IP teilen.
+RATE_LIMITS = {
+    'login': os.environ.get('RATE_LIMIT_LOGIN', '10/m'),
+    'register': os.environ.get('RATE_LIMIT_REGISTER', '5/h'),
+    'discord': os.environ.get('RATE_LIMIT_DISCORD', '10/m'),
+    'api': os.environ.get('RATE_LIMIT_API', '240/m'),
+}
+
+# Größter Anfragekörper. Spielaktionen und Funksignale sind höchstens 12 000 Bytes groß.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 16 * 1024
+
+# HSTS nur über HTTPS (setzt Django selbst so). Erst einen Tag, nach erfolgreichem Betrieb erhöhen.
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '86400' if ON_RENDER else '0'))
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'  # Google-Login braucht den Origin im Referer
+# Djangos Standard same-origin würde das Popup der Google-Anmeldung von der Seite abtrennen.
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups'
+X_FRAME_OPTIONS = 'DENY'
+PERMISSIONS_POLICY = 'microphone=(self), camera=(), geolocation=(), payment=(), usb=()'
+
+# Content-Security-Policy (django-csp). Google-Pfade wie von Google für „Sign in with Google“ angegeben.
+# 'unsafe-inline' gilt nur für Styles, nie für Skripte: Das Spiel positioniert Kartenpunkte und
+# Fortschrittsbalken mit style="left:…%", und Googles Anmeldeskript hängt beim Zeichnen des Buttons einen
+# eigenen <style>-Block an (ohne ihn zerfällt der Button). Dessen Inhalt ändert sich mit Googles Updates,
+# ein fester Hash würde den Button irgendwann still kaputtmachen. Über CSS lässt sich kein Code ausführen.
+GOOGLE_GSI = 'https://accounts.google.com/gsi/'
+CONTENT_SECURITY_POLICY = {
+    'DIRECTIVES': {
+        'default-src': [SELF],
+        'script-src': [SELF, GOOGLE_GSI + 'client'],
+        'style-src': [SELF, UNSAFE_INLINE, GOOGLE_GSI + 'style'],
+        'img-src': [SELF, 'data:'],
+        'connect-src': [SELF, GOOGLE_GSI],
+        'frame-src': [GOOGLE_GSI],
+        'object-src': [NONE],
+        'base-uri': [NONE],
+        'form-action': [SELF],
+        'frame-ancestors': [NONE],
+    },
+}
 
 # ----------------------------------------------------------- Sprache, Zeit
 LANGUAGE_CODE = 'de'
