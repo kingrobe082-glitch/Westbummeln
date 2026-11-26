@@ -11,6 +11,8 @@ import secrets
 import time
 from collections import deque
 
+from game import strassen
+
 # Koordinaten beziehen sich auf die vollständige Originalkarte inklusive Legende.
 BASE = {1: (.235, .55), 2: (.466, .51), 3: (.565, .215), 4: (.827, .46), 5: (.548, .80), 6: (.276, .15)}
 FLEET = [
@@ -48,6 +50,11 @@ SNAPSHOT_CLOSED = 20  # so viele abgeschlossene Einsätze sieht das Frontend
 KEEP_CLOSED = 50  # so viele abgeschlossene Einsätze bleiben im Speicher
 WEATHER = ['Sonnig', 'Bewölkt', 'Regen', 'Nebel', 'Windig']
 TRAVEL_TIME = {'Sonnig': 12, 'Bewölkt': 13, 'Regen': 17, 'Nebel': 20, 'Windig': 15}
+# Fahrten folgen dem Straßennetz (game.strassen). TRAVEL_TIME gilt für eine mittellange Route
+# (Mittel über alle Wachen und Einsatzorte); kürzere und längere Routen dauern anteilig kürzer oder
+# länger, aber höchstens halb bzw. doppelt so lange, damit das Spiel nicht zäh wird.
+ROUTE_REFERENCE = .9
+ROUTE_FACTOR = (.5, 2)
 WORK_FACTOR = {'Sonnig': 1, 'Bewölkt': 1, 'Regen': .85, 'Nebel': .8, 'Windig': .9}
 AI_TITLES = ['F1 · Kleinbrand', 'TH1 · Verkehrsunfall', 'F2 · Wohnungsbrand', 'BMA · Brandmeldeanlage']
 VOICE_SIGNALS = ('offer', 'answer', 'candidate', 'bye', 'channel')
@@ -155,25 +162,45 @@ def alarm(r, inc, v, now):
     sections = inc.setdefault('sections', default_sections())
     if not any(v['id'] in section['vehicles'] for section in sections.values()):
         sections['Hauptabschnitt']['vehicles'].append(v['id'])
-    _start_trip(v, 'anfahrt', list(v['base']), list(inc['pos']), travel_time(r), now)
+    route = strassen.route(v['base'], inc['pos'])
+    _start_trip(v, 'anfahrt', route, trip_duration(r, route), now)
     v.update(status=3, incident=inc['id'])
 
 
-def _start_trip(v, phase, start, target, duration, now):
-    """Fahrt beginnen. Ziel und Ankunftszeit stehen ab jetzt fest; ein Wetterwechsel ändert sie nicht."""
-    v.update(phase=phase, phase_at=now, phase_until=now + duration, phase_from=start, phase_to=target)
+def trip_duration(r, route):
+    """Fahrzeit in Sekunden für eine Route, abhängig vom aktuellen Wetter."""
+    factor = strassen.length(route) / ROUTE_REFERENCE
+    return travel_time(r) * min(ROUTE_FACTOR[1], max(ROUTE_FACTOR[0], factor))
+
+
+def _start_trip(v, phase, route, duration, now):
+    """Fahrt entlang route beginnen. Weg und Ankunftszeit stehen ab jetzt fest; ein Wetterwechsel ändert sie nicht."""
+    v.update(phase=phase, phase_at=now, phase_until=now + duration, phase_from=list(route[0]),
+             phase_to=list(route[-1]), phase_route=route)
 
 
 def _stop(v, phase, pos, now):
     v.update(phase=phase, phase_at=now, phase_until=now, phase_from=list(pos), phase_to=list(pos))
+    v.pop('phase_route', None)
+
+
+def _trip_share(v, now):
+    """Zurückgelegter Anteil der laufenden Fahrt (0–1) nach der Zeit."""
+    duration = v.get('phase_until', v['phase_at']) - v['phase_at']
+    return 1 if duration <= 0 else min(1, max(0, (now - v['phase_at']) / duration))
 
 
 def vehicle_position(v, now):
-    """Position auf der Karte (0–1) zum Zeitpunkt now, linear zwischen phase_from und phase_to."""
+    """Position auf der Karte (0–1) zum Zeitpunkt now.
+
+    Entlang phase_route, falls vorhanden; Fahrten aus älteren Räumen ohne Route linear zwischen
+    phase_from und phase_to."""
+    share = _trip_share(v, now)
+    route = v.get('phase_route')
+    if route and len(route) > 1:
+        return strassen.along(route, share)[0]
     start = v.get('phase_from') or list(v['base'])
     target = v.get('phase_to') or start
-    duration = v.get('phase_until', v['phase_at']) - v['phase_at']
-    share = 1 if duration <= 0 else min(1, max(0, (now - v['phase_at']) / duration))
     return [start[0] + (target[0] - start[0]) * share, start[1] + (target[1] - start[1]) * share]
 
 
@@ -339,12 +366,27 @@ def _finish_incident(r, inc, now):
 
 
 def _send_home(r, v, now):
-    """Rückfahrt ab der aktuellen Position; bricht die Anfahrt ab, dauert sie anteilig kürzer."""
-    start = vehicle_position(v, now)
-    base = list(v['base'])
-    full = _distance(v.get('phase_to') or start, base) if v['phase'] == 'anfahrt' else 0
-    share = _distance(start, base) / full if full else 1
-    _start_trip(v, 'rueckfahrt', start, base, travel_time(r) * share, now)
+    """Rückfahrt ab der aktuellen Position.
+
+    Bricht die Anfahrt ab, fährt das Fahrzeug den bisherigen Weg zurück und braucht dafür anteilig
+    so lange, wie es schon unterwegs war. Vom Einsatzort aus geht es über den kürzesten Weg heim."""
+    route = v.get('phase_route')
+    if v['phase'] == 'anfahrt' and route and len(route) > 1:
+        share = _trip_share(v, now)
+        _, walked = strassen.along(route, share)
+        back = walked[::-1] if len(walked) > 1 else [walked[0], walked[0]]
+        duration = trip_duration(r, route) * (strassen.length(walked) / (strassen.length(route) or 1))
+    elif v['phase'] == 'anfahrt':
+        # Anfahrt aus einem älteren Raum ohne Route: wie früher gerade zurück.
+        start = vehicle_position(v, now)
+        base = list(v['base'])
+        full = _distance(v.get('phase_to') or start, base)
+        back = [start, base]
+        duration = travel_time(r) * (_distance(start, base) / full if full else 1)
+    else:
+        back = strassen.route(vehicle_position(v, now), v['base'])
+        duration = trip_duration(r, back)
+    _start_trip(v, 'rueckfahrt', back, duration, now)
     v['status'] = 1
 
 

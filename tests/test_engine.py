@@ -1,7 +1,7 @@
 """Spiellogik ohne Django: gleiche Abläufe und Meldungen wie im alten server.py."""
 import pytest
 
-from game import engine
+from game import engine, strassen
 
 NOW = 1_000_000.0
 
@@ -152,3 +152,64 @@ def test_radio_hook_receives_entries(room, monkeypatch):
     monkeypatch.setattr(engine, 'radio_hook', lambda code, entry: seen.append((code, entry['message'])))
     join(room, 1, 'Anna')
     assert seen == [('WB', 'Anna ist beigetreten.')]
+
+
+# ------------------------------------------------------------ Straßennetz
+
+def test_street_network_is_connected():
+    seen, todo = {0}, [0]
+    while todo:
+        for other, _ in strassen.NEIGHBOURS[todo.pop()]:
+            if other not in seen:
+                seen.add(other)
+                todo.append(other)
+    assert len(seen) == len(strassen.NODES)
+
+
+def test_every_station_reaches_every_place_over_streets():
+    for base in engine.BASE.values():
+        for name, x, y in engine.PLACES:
+            route = strassen.route(base, (x, y))
+            assert route[0] == list(base) and route[-1] == [x, y], name
+            # Nur Hofeinfahrt und letzter Meter liegen neben der Straße, alles dazwischen auf dem Netz.
+            for point in route[1:-1]:
+                assert strassen._project(point)[0] < 1e-3, (name, point)
+            assert strassen.distance(route[0], route[1]) < .08, name
+            assert strassen.distance(route[-2], route[-1]) < .08, name
+
+
+def test_route_uses_streets_instead_of_straight_line():
+    lz6, werkstrasse = engine.BASE[6], engine.locate('Werkstraße')
+    route = strassen.route(lz6, werkstrasse)
+    assert strassen.length(route) > strassen.distance(lz6, werkstrasse) * 1.2
+    # Die Luftlinie führt mitten durch die Häuser am Marktplatz; die Route meidet das Zentrum.
+    assert all(strassen._project(p)[0] < 1e-3 for p in route[1:-1])
+
+
+def test_route_is_shortest_path():
+    """Von FW Altstadt zur Kirchstraße geht es über die Gasse, nicht außen herum."""
+    route = strassen.route(engine.BASE[2], engine.locate('Kirchstraße'))
+    assert list(strassen.JUNCTIONS['kirch_w']) in route
+    assert list(strassen.JUNCTIONS['schul_o']) not in route
+
+
+def test_along_route_interpolates_by_length():
+    route = [[0, 0], [0, .3], [.2, .3]]  # 0,3 nach unten, dann 0,2 × 1,5 = 0,3 nach rechts
+    assert strassen.length(route) == pytest.approx(.6)
+    assert strassen.along(route, .25)[0] == pytest.approx([0, .15])
+    assert strassen.along(route, .75)[0] == pytest.approx([.1, .3])
+    point, walked = strassen.along(route, .75)
+    assert walked == [[0, 0], [0, .3], point]
+    assert strassen.along(route, 0)[0] == [0, 0]
+    assert strassen.along(route, 1)[0] == pytest.approx([.2, .3])
+
+
+def test_trip_duration_grows_with_route_length(room):
+    short = [[0, 0], [0, engine.ROUTE_REFERENCE * .8]]
+    medium = [[0, 0], [0, engine.ROUTE_REFERENCE]]
+    tiny = [[0, 0], [0, .01]]
+    huge = [[0, 0], [0, 5]]
+    assert engine.trip_duration(room, medium) == 12
+    assert engine.trip_duration(room, short) == pytest.approx(12 * .8)
+    assert engine.trip_duration(room, tiny) == 12 * engine.ROUTE_FACTOR[0]
+    assert engine.trip_duration(room, huge) == 12 * engine.ROUTE_FACTOR[1]

@@ -81,13 +81,37 @@ function serverNow() {
   return Date.now() / 1000 + clockOffset;
 }
 
-// Der Server legt beim Phasenwechsel Start, Ziel und Ankunftszeit (phase_until) fest.
+// Seitenverhältnis der Karte (1536 × 1024), damit Strecken wie auf dem Server (game/strassen.py) zählen.
+const MAP_ASPECT = 1.5;
+
+function mapDistance(a, b) {
+  return Math.hypot((a[0] - b[0]) * MAP_ASPECT, a[1] - b[1]);
+}
+
+// Punkt nach dem Anteil share der Gesamtlänge einer Route [[x, y], …].
+function routePoint(route, share) {
+  const total = route.slice(1).reduce((sum, point, i) => sum + mapDistance(route[i], point), 0);
+  let remaining = Math.min(1, Math.max(0, share)) * total;
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1], b = route[i], step = mapDistance(a, b);
+    if (step >= remaining) {
+      const t = step ? remaining / step : 1;
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    remaining -= step;
+  }
+  return route[route.length - 1];
+}
+
+// Der Server legt beim Phasenwechsel Weg (phase_route) und Ankunftszeit (phase_until) fest.
 // Hier wird nur noch dazwischen interpoliert: (jetzt − phase_at) / (phase_until − phase_at).
+// Fahrten aus älteren Räumen ohne Route laufen weiter gerade von phase_from nach phase_to.
 function position(v) {
-  const from = v.phase_from || v.base;
-  const to = v.phase_to || from;
   const span = (v.phase_until ?? v.phase_at) - v.phase_at;
   const share = span > 0 ? Math.min(1, Math.max(0, (serverNow() - v.phase_at) / span)) : 1;
+  if (Array.isArray(v.phase_route) && v.phase_route.length > 1) return routePoint(v.phase_route, share);
+  const from = v.phase_from || v.base;
+  const to = v.phase_to || from;
   return [from[0] + (to[0] - from[0]) * share, from[1] + (to[1] - from[1]) * share];
 }
 
