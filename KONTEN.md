@@ -12,33 +12,70 @@ deshalb fehl, läuft bei Render die vorherige Version einfach weiter.
 
 ## Umzug auf Postgres (einmalig, Schritt für Schritt)
 
-> **Wichtig:** Schritte 1 und 2 **vor** dem Mergen des Django-Umbaus erledigen.
+> **Wichtig:** Schritt 1 und 2 **vor** dem Mergen des Django-Umbaus erledigen.
 > Alle Spieler werden nach dem Umzug einmal abgemeldet und müssen sich neu anmelden.
 > Passwörter bleiben gültig.
 
-### 1. Datenbank anlegen (vor dem Merge)
+### 1. Herausfinden: Wird der Dienst über einen Blueprint verwaltet?
 
-1. In Render deinen Webdienst `westbummeln-multiplayer` öffnen und unter **Settings** nachsehen,
-   in welcher **Region** er läuft (z. B. Oregon oder Frankfurt).
-2. Oben **New → Postgres** wählen.
-3. **Name:** genau `westbummeln-db` eintippen.
-4. **Region:** dieselbe wie beim Webdienst. Das ist wichtig, sonst können sich die beiden intern
-   nicht erreichen. Steht in `render.yaml` keine `region`, ist es Oregon.
-5. **Instance Type:** **Basic-256mb**. Nicht „Free“ nehmen: Die kostenlose Datenbank wird nach
+Im Render-Dashboard links auf **Blueprints** klicken.
+- Steht dort ein Blueprint, zu dem `westbummeln-multiplayer` gehört, gilt **Fall A (mit Blueprint)**.
+- Ist die Liste leer oder fehlt der Dienst darin, gilt **Fall B (ohne Blueprint)**.
+
+In beiden Fällen heißt die Datenbank genau **`westbummeln-db`**. So steht sie auch im
+`databases:`-Block der `render.yaml`. Nicht umbenennen, sonst legt Render eine zweite an.
+
+Die Region der Datenbank muss zur Region des Webdienstes passen (Webdienst → **Settings** →
+**Region**). Steht in `render.yaml` keine `region`, legt Render beides in **Oregon** an. Läuft der
+Webdienst woanders (z. B. Frankfurt), in `render.yaml` bei der Datenbank **und** beim Webdienst
+`region: frankfurt` eintragen.
+
+### 2A. Mit Blueprint: Render legt die Datenbank selbst an
+
+1. Unter **Billing** eine **Zahlungsmethode** hinterlegen. Ohne sie kann Render die bezahlte
+   Datenbank (Basic-256mb, ca. 6 $/Monat) nicht anlegen und der Sync schlägt fehl.
+2. Die Datenbank **nicht** zusätzlich von Hand anlegen. Beim Sync nach dem Merge liest Render den
+   `databases:`-Block, legt `westbummeln-db` an, setzt `DATABASE_URL` und `SECRET_KEY` beim
+   Webdienst und deployt neu.
+3. Nach dem Merge unter **Blueprints** den Sync öffnen und prüfen:
+   - `westbummeln-db` erscheint genau einmal.
+   - Beim Webdienst stehen unter **Environment** `DATABASE_URL` und `SECRET_KEY`.
+4. War die Datenbank beim ersten Deploy noch nicht fertig, startet die neue Version nicht. Die alte
+   läuft dann weiter. Warten, bis die Datenbank **Available** zeigt, dann beim Webdienst
+   **Manual Deploy → Deploy latest commit** klicken.
+
+Hast du `westbummeln-db` schon vorher von Hand angelegt, ist das kein Problem. Laut Render-Doku
+übernimmt der Blueprint eine vorhandene Datenbank mit gleichem Namen, statt eine zweite
+anzulegen. Prüfe nach dem Sync trotzdem, dass es nur **eine** `westbummeln-db` gibt. Gibt es zwei,
+die leere, später angelegte löschen und `DATABASE_URL` beim Webdienst auf die richtige setzen.
+
+### 2B. Ohne Blueprint: Datenbank von Hand anlegen und verbinden
+
+Die Datenbank anlegen:
+
+1. Oben **New → Postgres** wählen.
+2. **Name:** genau `westbummeln-db`.
+3. **Region:** dieselbe wie beim Webdienst. Sonst erreichen sich die beiden intern nicht.
+4. **Instance Type:** **Basic-256mb**. Nicht „Free“ nehmen: Die kostenlose Datenbank wird nach
    30 Tagen gelöscht.
-6. **Create Database** klicken und warten, bis oben **Available** steht (ein paar Minuten).
+5. **Create Database** klicken und warten, bis oben **Available** steht (ein paar Minuten).
 
-### 2. Datenbank mit dem Webdienst verbinden (vor dem Merge)
+Dann mit dem Webdienst verbinden:
 
-1. In der neuen Datenbank auf **Connect** klicken und die **Internal Database URL** kopieren.
+1. In der Datenbank auf **Connect** klicken und die **Internal Database URL** kopieren.
 2. Im Webdienst **Environment** öffnen und diese Variablen anlegen:
    - `DATABASE_URL` = die eben kopierte Internal Database URL
    - `SECRET_KEY` = eine lange Zufallszeichenkette (Render bietet dafür **Generate** an)
 3. **Save Changes** klicken. Der alte Server ignoriert diese Variablen, es passiert also noch nichts.
+4. Ohne Blueprint übernimmt Render die neuen Befehle aus `render.yaml` nicht von selbst. Deshalb
+   **direkt nach dem Merge** beim Webdienst unter **Settings** von Hand eintragen:
+   - **Build Command:** `pip install -r requirements.txt && python manage.py collectstatic --noinput`
+   - **Start Command:** `python manage.py migrate --noinput && python manage.py bootstrap_accounts && gunicorn westbummeln.wsgi --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 30`
+   - **Health Check Path:** `/healthz`
 
-Wird der Dienst als **Blueprint** verwaltet, übernimmt `render.yaml` diese Verbindung nach dem
-Merge ebenfalls. Dann bei **Blueprints** prüfen, dass `westbummeln-db` mit der eben angelegten
-Datenbank verknüpft ist und keine zweite angelegt wurde.
+   Der automatische Deploy direkt nach dem Merge schlägt mit den alten Befehlen fehl, weil
+   `server.py` nicht mehr existiert. Das ist harmlos, die alte Version läuft weiter. Nach dem
+   Eintragen **Save Changes** und dann **Manual Deploy → Deploy latest commit** klicken.
 
 ### 3. Mergen und Deploy abwarten
 
