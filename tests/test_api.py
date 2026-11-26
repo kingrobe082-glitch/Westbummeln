@@ -118,12 +118,13 @@ def test_api_rejects_large_body(player):
 
 
 def test_game_round_over_http(player, game_client):
-    state = player.join()
+    state = player.create()
     assert state['players'][0]['name'] == 'Florian1'
-    rooms.rooms['WESTBUMMELN']['weather_mode'] = 'manual'
+    rooms.rooms[player.room]['weather_mode'] = 'manual'
 
     second = game_client()
     second.account('register', name='Zweite', email='zwei@example.com', password='geheim123')
+    second.room = player.room
     second.join()
 
     assert player.api('take_ls').status_code == 200
@@ -148,9 +149,10 @@ def test_game_round_over_http(player, game_client):
 
 
 def test_player_id_from_other_account_is_rejected(player, game_client):
-    player.join()
+    player.create()
     other = game_client()
     other.account('register', name='Fremd', email='fremd@example.com', password='geheim123')
+    other.room = player.room
     other.id = player.id
     response = other.api('state')
     assert response.json() == {'error': 'Sitzung abgelaufen – bitte neu beitreten'}
@@ -159,8 +161,8 @@ def test_player_id_from_other_account_is_rejected(player, game_client):
 def test_developer_view(player, django_user_model):
     assert player.client.get('/developer').status_code == 403
     django_user_model.objects.filter(username='Florian1').update(is_staff=True)
-    player.join()
-    assert player.client.get('/developer').json() == {'rooms': 1, 'players': 1}
+    player.create()
+    assert player.client.get('/developer').json() == {'rooms': 1, 'players': 1, 'rooms_total': 1}
 
 
 def test_discord_login_disabled_redirects():

@@ -45,6 +45,14 @@ class GameClient:
         self.id = response.json()['id']
         return response.json()['state']
 
+    def create(self):
+        """Neuen Raum erstellen; der Client ist danach Besitzer und schon beigetreten."""
+        response = self.api('create_room')
+        assert response.status_code == 200, response.json()
+        self.room = response.json()['room']
+        self.id = response.json()['id']
+        return response.json()['state']
+
 
 @pytest.fixture
 def game_client(db):
