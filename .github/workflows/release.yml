@@ -25,9 +25,6 @@ on:
         required: false
         default: false
         type: boolean
-  # NUR ZUM TESTEN, wird vor dem Merge entfernt: baut ein Image mit Tag test-<sha>, ohne Deploy.
-  push:
-    branches: [umbau/release, umbau/release-test]
 
 permissions:
   contents: read
@@ -96,10 +93,7 @@ jobs:
           SHA: ${{ steps.sha.outputs.sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = "push" ]; then
-            # Testlauf auf dem Release-Branch: nur bauen, kein latest, kein Deploy.
-            { echo "tag=test-$SHA"; echo "latest=false"; echo "deploy=false"; } >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT" = "workflow_run" ]; then
+          if [ "$EVENT" = "workflow_run" ]; then
             { echo "tag=$SHA"; echo "latest=true"; echo "deploy=true"; } >> "$GITHUB_OUTPUT"
           else
             # Manuelles Deploy (auch Rollback): latest bleibt beim Stand von main.
