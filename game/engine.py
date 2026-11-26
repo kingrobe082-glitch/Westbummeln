@@ -4,7 +4,7 @@ Ein Raum ist ein dict (siehe new_room). Alle Funktionen hier erwarten, dass der 
 Raumsperre hält (game.rooms.lock). Fehler im Spiel werden als ValueError mit deutscher Meldung
 gemeldet; die Meldungen gehen unverändert an das Frontend.
 
-Die Logik ist 1:1 aus dem alten server.py übernommen, nur lesbarer aufgeteilt.
+Die Logik stammt aus dem alten server.py; Welle 2C hat Fahrzeiten, Einsatzliste und KI-Übernahme korrigiert.
 """
 import json
 import secrets
@@ -43,6 +43,9 @@ PLACES = [
 # Feuerwachen und Gerätehäuser dürfen keine Einsatzorte sein.
 STATIONS = [*BASE.values(), (.38, .16), (.90, .37), (.88, .23), (.27, .84), (.92, .84)]
 OFFLINE_TIMEOUT = 30
+UNATTENDED_DELAY = 20  # Sekunden, bis die KI ein unbesetztes Fahrzeug vor Ort übernimmt
+SNAPSHOT_CLOSED = 20  # so viele abgeschlossene Einsätze sieht das Frontend
+KEEP_CLOSED = 50  # so viele abgeschlossene Einsätze bleiben im Speicher
 WEATHER = ['Sonnig', 'Bewölkt', 'Regen', 'Nebel', 'Windig']
 TRAVEL_TIME = {'Sonnig': 12, 'Bewölkt': 13, 'Regen': 17, 'Nebel': 20, 'Windig': 15}
 WORK_FACTOR = {'Sonnig': 1, 'Bewölkt': 1, 'Regen': .85, 'Nebel': .8, 'Windig': .9}
@@ -118,7 +121,9 @@ def clean_offline(r, now):
         if r['admin'] == pid:
             r['admin'] = next((other for other in r['players'] if other != pid), None)
         if p['vehicle'] and p['vehicle'] in r['vehicles']:
-            r['vehicles'][p['vehicle']]['owner'] = None
+            vehicle = r['vehicles'][p['vehicle']]
+            vehicle['owner'] = None
+            vehicle['unattended_since'] = now
         del r['players'][pid]
         r['voice_messages'] = [m for m in r['voice_messages'] if m['from'] != pid and m['to'] != pid]
         emit(r, 'System', f'{p["name"]} wegen Verbindungsverlust entfernt (30 Sekunden offline).')
@@ -147,8 +152,33 @@ def alarm(r, inc, v, now):
     """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI)."""
     if v['id'] not in inc['assigned']:
         inc['assigned'].append(v['id'])
-    inc.setdefault('sections', default_sections())['Hauptabschnitt']['vehicles'].append(v['id'])
-    v.update(phase='anfahrt', phase_at=now, status=3, incident=inc['id'])
+    sections = inc.setdefault('sections', default_sections())
+    if not any(v['id'] in section['vehicles'] for section in sections.values()):
+        sections['Hauptabschnitt']['vehicles'].append(v['id'])
+    _start_trip(v, 'anfahrt', list(v['base']), list(inc['pos']), travel_time(r), now)
+    v.update(status=3, incident=inc['id'])
+
+
+def _start_trip(v, phase, start, target, duration, now):
+    """Fahrt beginnen. Ziel und Ankunftszeit stehen ab jetzt fest; ein Wetterwechsel ändert sie nicht."""
+    v.update(phase=phase, phase_at=now, phase_until=now + duration, phase_from=start, phase_to=target)
+
+
+def _stop(v, phase, pos, now):
+    v.update(phase=phase, phase_at=now, phase_until=now, phase_from=list(pos), phase_to=list(pos))
+
+
+def vehicle_position(v, now):
+    """Position auf der Karte (0–1) zum Zeitpunkt now, linear zwischen phase_from und phase_to."""
+    start = v.get('phase_from') or list(v['base'])
+    target = v.get('phase_to') or start
+    duration = v.get('phase_until', v['phase_at']) - v['phase_at']
+    share = 1 if duration <= 0 else min(1, max(0, (now - v['phase_at']) / duration))
+    return [start[0] + (target[0] - start[0]) * share, start[1] + (target[1] - start[1]) * share]
+
+
+def _distance(a, b):
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** .5
 
 
 def ai_dispatch(r, inc, v, now):
@@ -188,20 +218,34 @@ def run_ai(r, now):
                           if not v['owner'] and v['phase'] == 'wache' and v['kind'] != 'KdoW'), None)
                 if v and ai_dispatch(r, inc, v, now):
                     changed = True
-    # KI-Fahrzeugführer übernehmen Maßnahmen selbst, wenn kein menschlicher GF am Einsatz arbeitet.
+    return changed
+
+
+def ai_group_leaders(r, now):
+    """KI-Fahrzeugführer starten Maßnahmen, wenn kein menschlicher GF am Fahrzeug sitzt.
+
+    Im KI-Modus sofort. Im Mehrspielermodus erst nach UNATTENDED_DELAY Sekunden ohne Besitzer vor Ort
+    (z. B. weil der GF die Verbindung verloren hat), damit der Einsatz nicht ewig offen bleibt."""
+    solo = ai_mode(r)
+    changed = False
     for inc in r['incidents']:
         if inc['closed'] or inc['working']:
             continue
-        ai_on_site = [
-            r['vehicles'][vid] for vid in inc['assigned']
-            if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort'
-            and not r['vehicles'][vid]['owner']
-        ]
-        if ai_on_site:
-            inc['working'] = True
-            inc['updated'] = now
+        on_site = [r['vehicles'][vid] for vid in inc['assigned']
+                   if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort'
+                   and not r['vehicles'][vid]['owner']]
+        if solo and on_site:
             emit(r, 'KI-Gruppenführer', f'{inc["title"]}: Mannschaft beginnt Maßnahmen.')
-            changed = True
+        else:
+            waited = [v for v in on_site
+                      if now - max(v['phase_at'], v.get('unattended_since', 0)) >= UNATTENDED_DELAY]
+            if not waited:
+                continue
+            emit(r, 'KI-Gruppenführer', f'KI übernimmt {waited[0]["call"]}: {inc["title"]} – '
+                                        'Mannschaft beginnt Maßnahmen.')
+        inc['working'] = True
+        inc['updated'] = now
+        changed = True
     return changed
 
 
@@ -222,22 +266,42 @@ def update(r, now=None):
         emit(r, 'Wetterdienst', f'Wetterwechsel: {r["weather"]}.')
         changed = True
     for v in r['vehicles'].values():
-        elapsed = now - v['phase_at']
-        if v['phase'] == 'anfahrt' and elapsed >= travel_time(r):
-            v.update(phase='vorort', phase_at=now, status=4)
+        if v['phase'] not in ('anfahrt', 'rueckfahrt'):
+            continue
+        # Fahrten aus älteren Räumen ohne phase_until enden wie früher nach der aktuellen Fahrzeit.
+        if now < v.get('phase_until', v['phase_at'] + travel_time(r)):
+            continue
+        if v['phase'] == 'anfahrt':
+            _stop(v, 'vorort', v.get('phase_to') or v['base'], now)
+            v['status'] = 4
             emit(r, v['call'], 'Status 4 – Einsatzstelle erreicht.')
-            changed = True
-        elif v['phase'] == 'rueckfahrt' and elapsed >= travel_time(r):
-            v.update(phase='wache', phase_at=now, status=2, incident=None)
+        else:
+            _stop(v, 'wache', v['base'], now)
+            v.update(status=2, incident=None)
             emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
-            changed = True
+        changed = True
+    if ai_group_leaders(r, now):
+        changed = True
     for inc in r['incidents']:
         if inc['closed'] or not inc['working']:
             continue
         if _progress_incident(r, inc, now):
             changed = True
     if changed:
+        _prune_incidents(r)
         r['rev'] += 1
+
+
+def _prune_incidents(r):
+    """Alle offenen Einsätze behalten, von den abgeschlossenen nur die zuletzt beendeten."""
+    keep = {id(i) for i in _latest_closed(r['incidents'], KEEP_CLOSED)}
+    r['incidents'] = [i for i in r['incidents'] if not i['closed'] or id(i) in keep]
+
+
+def _latest_closed(incidents, count):
+    closed = [i for i in incidents if i['closed']]
+    closed.sort(key=lambda i: i.get('closed_at', 0))
+    return closed[-count:] if count else []
 
 
 def _progress_incident(r, inc, now):
@@ -257,27 +321,48 @@ def _progress_incident(r, inc, now):
                 section['progress'] = min(100, section.get('progress', 0) + elapsed * section_speed)
     inc['updated'] = now
     if inc['progress'] >= 100:
-        inc['closed'] = True
-        inc['progress'] = 100
+        _finish_incident(r, inc, now)
         emit(r, 'Leitstelle', f'Einsatz {inc["title"]} abgearbeitet – Rückfahrt eingeleitet.')
-        _send_home(r, inc, now)
         changed = True
     return changed
 
 
-def _send_home(r, inc, now):
+def _finish_incident(r, inc, now):
+    """Einsatz abschließen, Abschnitte leeren und alle noch zugeordneten Fahrzeuge heimschicken."""
+    inc.update(closed=True, progress=100, closed_at=now)
+    for section in inc.get('sections', {}).values():
+        section['vehicles'] = []
     for vid in inc['assigned']:
         v = r['vehicles'].get(vid)
-        if v and v['incident'] == inc['id']:
-            v.update(phase='rueckfahrt', phase_at=now, status=1)
+        if v and v['incident'] == inc['id'] and v['phase'] in ('anfahrt', 'vorort'):
+            _send_home(r, v, now)
 
 
-def snapshot(r):
+def _send_home(r, v, now):
+    """Rückfahrt ab der aktuellen Position; bricht die Anfahrt ab, dauert sie anteilig kürzer."""
+    start = vehicle_position(v, now)
+    base = list(v['base'])
+    full = _distance(v.get('phase_to') or start, base) if v['phase'] == 'anfahrt' else 0
+    share = _distance(start, base) / full if full else 1
+    _start_trip(v, 'rueckfahrt', start, base, travel_time(r) * share, now)
+    v['status'] = 1
+
+
+def _snapshot_incident(inc):
+    if not inc['closed']:
+        return inc
+    return {key: value for key, value in inc.items() if key != 'sections'}
+
+
+def snapshot(r, now=None):
+    now = time.time() if now is None else now
+    shown = {id(i) for i in _latest_closed(r['incidents'], SNAPSHOT_CLOSED)}
     return {
+        'server_time': now,
         'players': [{'id': p['id'], 'name': p['name'], 'vehicle': p['vehicle'], 'role': p['role']}
                     for p in r['players'].values()],
         'vehicles': list(r['vehicles'].values()),
-        'incidents': r['incidents'][-40:],
+        'incidents': [_snapshot_incident(i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
         'radio': r['radio'][-100:],
         'rev': r['rev'],
         'dispatcher': r['dispatcher'],
@@ -307,24 +392,24 @@ def handle(r, data, account_id, account_name, is_developer, now):
         raise ValueError('Sitzung abgelaufen – bitte neu beitreten')
     p['last'] = now
     if action == 'state':
-        return {'state': snapshot(r)}
+        return {'state': snapshot(r, now)}
     if action == 'settings':
         _settings(r, pid, data, now)
         emit(r, 'System', 'Raumeinstellungen aktualisiert.')
         r['rev'] += 1
-        return {'state': snapshot(r)}
+        return {'state': snapshot(r, now)}
     if action == 'voice_signal':
         return _voice_signal(r, pid, data)
     if action == 'voice_poll':
         since = max(0, int(data.get('since', 0)))
         messages = [m for m in r['voice_messages'] if m['to'] == pid and m['seq'] > since]
-        return {'messages': messages, 'seq': r['voice_seq'], 'players': snapshot(r)['players']}
+        return {'messages': messages, 'seq': r['voice_seq'], 'players': snapshot(r, now)['players']}
     handler = ACTIONS.get(action)
     if handler is None:
         raise ValueError('Unbekannte Aktion')
     if handler(r, pid, p, data, now, is_developer) is not UNCHANGED:
         r['rev'] += 1
-    return {'state': snapshot(r)}
+    return {'state': snapshot(r, now)}
 
 
 def _join(r, account_id, name, now):
@@ -335,7 +420,7 @@ def _join(r, account_id, name, now):
                          'last': now}
     emit(r, 'System', f'{name} ist beigetreten.')
     r['rev'] += 1
-    return {'id': pid, 'state': snapshot(r)}
+    return {'id': pid, 'state': snapshot(r, now)}
 
 
 def _settings(r, pid, data, now):
@@ -574,8 +659,10 @@ def _close(r, pid, p, data, now, is_developer):
     inc = _find_incident(r, data)
     if not inc:
         raise ValueError('Einsatz nicht gefunden')
-    inc.update(closed=True, progress=100)
-    _send_home(r, inc, now)
+    if inc['closed']:
+        raise ValueError('Einsatz ist bereits abgeschlossen')
+    _finish_incident(r, inc, now)
+    _prune_incidents(r)
     emit(r, 'Leitstelle', f'Einsatz {inc["title"]} beendet, Rückfahrt.')
 
 
