@@ -14,11 +14,22 @@ Compose-Datei, Caddyfile und `remote-deploy.sh` liegen ebenfalls in `deploy/`, d
 |---|---|
 | Instanz | AWS EC2 t3.micro, eu-central-1 (Frankfurt), 2 vCPU, ~900 MB RAM, 28 GB Disk |
 | System | Ubuntu 26.04 LTS („resolute“) |
-| Öffentliche IP | `63.183.198.23` (ohne Elastic IP ändert sie sich bei Stop/Start – siehe unten) |
+| Öffentliche IP | `63.184.64.49` (Elastic IP, fest) |
 | Hostname / Zeitzone | `westbummeln` / `Europe/Berlin` |
-| Admin-Zugang | `ssh -i "C:\Users\Lars\Downloads\lars-devvi.pem" ubuntu@63.183.198.23` (sudo ohne Passwort) |
-| Deploy-Zugang | `ssh -i "C:\Users\Lars\.ssh\westbummeln_deploy" deploy@63.183.198.23` (kein sudo, Gruppe docker) |
+| Admin-Zugang | `ssh -i "C:\Users\Lars\Downloads\lars-devvi.pem" ubuntu@63.184.64.49` (sudo ohne Passwort) |
+| Deploy-Zugang | `ssh -i "C:\Users\Lars\.ssh\westbummeln_deploy" deploy@63.184.64.49` (kein sudo, Gruppe docker) |
 | App-Ordner | `/opt/westbummeln` (Besitzer `deploy`, 750), darin `backups/` |
+
+## Stand 26.11.2026
+
+- [x] `host-setup.sh` gelaufen (Zweitlauf ohne Änderungen): Docker 29.10.1 aus dem offiziellen Repo,
+      Compose v5.8.0, Swap 2 GB, ufw aktiv, sshd gehärtet, fail2ban aktiv, Hostname/Zeitzone gesetzt
+- [x] Neue Verbindungen als `ubuntu` und `deploy` geprüft, Passwort-Login abgelehnt,
+      `docker run --rm hello-world` als `deploy` ok, scp als `deploy` ok, `deploy` hat kein sudo
+- [x] Von außen erreichbar: 80/tcp und 443/tcp (Probe-Container). 443/udp nicht getestet.
+- [x] GitHub-Secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` gesetzt
+- [ ] Security Group: prüfen, dass 22/tcp für GitHub Actions offen ist (0.0.0.0/0) und 443/udp erlaubt ist
+- [ ] Compose-Stack ausrollen (Release-Pipeline)
 
 ## Was `deploy/host-setup.sh` einrichtet
 
@@ -53,8 +64,8 @@ Das Skript ist idempotent: erneutes Ausführen bringt den Server wieder auf den 
 Von Lars' PC (Git-Bash oder PowerShell), im Repo-Ordner:
 
 ```bash
-scp -i "C:\Users\Lars\Downloads\lars-devvi.pem" deploy/host-setup.sh "C:\Users\Lars\.ssh\westbummeln_deploy.pub" ubuntu@63.183.198.23:/tmp/
-ssh -i "C:\Users\Lars\Downloads\lars-devvi.pem" ubuntu@63.183.198.23 "sudo bash /tmp/host-setup.sh /tmp/westbummeln_deploy.pub"
+scp -i "C:\Users\Lars\Downloads\lars-devvi.pem" deploy/host-setup.sh "C:\Users\Lars\.ssh\westbummeln_deploy.pub" ubuntu@63.184.64.49:/tmp/
+ssh -i "C:\Users\Lars\Downloads\lars-devvi.pem" ubuntu@63.184.64.49 "sudo bash /tmp/host-setup.sh /tmp/westbummeln_deploy.pub"
 ```
 
 Ohne das zweite Argument bleibt `authorized_keys` von `deploy` unverändert.
@@ -92,7 +103,7 @@ cat /etc/docker/daemon.json
 Als `deploy` (vom PC aus):
 
 ```bash
-ssh -i "C:\Users\Lars\.ssh\westbummeln_deploy" deploy@63.183.198.23 "docker run --rm hello-world"
+ssh -i "C:\Users\Lars\.ssh\westbummeln_deploy" deploy@63.184.64.49 "docker run --rm hello-world"
 ```
 
 ## Deploy-Schlüssel und GitHub-Secrets
@@ -104,27 +115,30 @@ ssh -i "C:\Users\Lars\.ssh\westbummeln_deploy" deploy@63.183.198.23 "docker run 
 
   | Secret | Wert |
   |---|---|
-  | `DEPLOY_HOST` | `63.183.198.23` |
+  | `DEPLOY_HOST` | `63.184.64.49` |
   | `DEPLOY_USER` | `deploy` |
   | `DEPLOY_SSH_KEY` | Inhalt von `C:\Users\Lars\.ssh\westbummeln_deploy` (komplett, inkl. BEGIN/END-Zeilen) |
-  | `DEPLOY_KNOWN_HOSTS` | Ausgabe von `ssh-keyscan -t ed25519 63.183.198.23` |
+  | `DEPLOY_KNOWN_HOSTS` | Ausgabe von `ssh-keyscan -t ed25519 63.184.64.49` |
 
-  Setzen per CLI (braucht Admin-Rechte am Repo), ohne dass der Schlüssel im Terminal erscheint:
+  Alle vier sind seit 26.11.2026 gesetzt (mit Lars' Schreibrechten, Admin war nicht nötig).
+  Neu setzen per CLI, ohne dass der Schlüssel im Terminal erscheint:
 
   ```bash
-  gh secret set DEPLOY_HOST -R kingrobe082-glitch/Westbummeln --body 63.183.198.23
+  gh secret set DEPLOY_HOST -R kingrobe082-glitch/Westbummeln --body 63.184.64.49
   gh secret set DEPLOY_USER -R kingrobe082-glitch/Westbummeln --body deploy
   gh secret set DEPLOY_SSH_KEY -R kingrobe082-glitch/Westbummeln < ~/.ssh/westbummeln_deploy
-  ssh-keyscan -t ed25519 63.183.198.23 > /tmp/wb_known_hosts
+  ssh-keyscan -t ed25519 63.184.64.49 > /tmp/wb_known_hosts
   gh secret set DEPLOY_KNOWN_HOSTS -R kingrobe082-glitch/Westbummeln < /tmp/wb_known_hosts
   ```
 
 - **Schlüssel tauschen**: neues Paar erzeugen, `host-setup.sh` mit dem neuen `.pub` laufen lassen
   (fügt ihn hinzu), Secret `DEPLOY_SSH_KEY` ersetzen, einen Deploy testen, dann die alte Zeile
   aus `/home/deploy/.ssh/authorized_keys` löschen.
-- **IP geändert** (Stop/Start ohne Elastic IP): `DEPLOY_HOST` und `DEPLOY_KNOWN_HOSTS` neu setzen,
-  DNS-Eintrag anpassen. Besser: eine Elastic IP zuweisen (kostenlos, solange sie an einer laufenden
-  Instanz hängt) – dann bleibt die Adresse fest.
+- **Feste Adresse**: `63.184.64.49` ist eine **Elastic IP** (seit 26.11.2026) und bleibt bei
+  Stop/Start gleich. Ohne Elastic IP bekäme die Instanz bei jedem Stop/Start eine neue öffentliche
+  Adresse (so ist die erste Adresse `63.183.198.23` verloren gegangen). Wird die Elastic IP je
+  gelöst oder die Instanz ersetzt: `DEPLOY_HOST` und `DEPLOY_KNOWN_HOSTS` neu setzen und den
+  DNS-Eintrag anpassen.
 
 ## AWS Security Group
 
@@ -141,7 +155,7 @@ Test, ob 80 von außen ankommt (danach Container wieder weg):
 
 ```bash
 sudo docker run --rm -d -p 80:80 --name probe caddy:2-alpine caddy respond --listen :80 "ok"
-# vom PC:  curl http://63.183.198.23/   → ok
+# vom PC:  curl http://63.184.64.49/   → ok
 sudo docker rm -f probe
 ```
 
