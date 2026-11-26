@@ -20,6 +20,7 @@ Stop/Start der Instanz. Aktuelle IP: AWS-Konsole (EC2 → Instanz → „Public 
 Internet ──80/443──▶ caddy ──web:8000──▶ web (gunicorn, 1 Worker, 8 Threads) ──▶ db (Postgres 17)
                      (HTTPS, Zertifikat)                                         ▲
                                                                      backup ─────┘ täglich 03:00
+                                                       offsite ──▶ S3 Irland (Kopie der Sicherungen, 04:00)
 ```
 
 | Datei in `/opt/westbummeln` | Woher | Inhalt |
@@ -146,13 +147,19 @@ passiert ist (neue Konten), geht dabei verloren.
 | `backups/monthly/` | monatlich | 3 Monate |
 | `backups/last/` | letzte Sicherung mit Uhrzeit | wie daily |
 | `backups/pre-deploy/` | vor jedem Deploy (`*.dump`, pg_dump-Custom-Format) | letzte 5 |
+| S3-Bucket (Irland), `westbummeln/daily/`, `westbummeln/pre-deploy/` | Kopie von `daily/` und `pre-deploy/`, Container `offsite`, 04:00 | 90 Tage (+30 Tage alte Fassungen) |
+| EBS-Snapshots (Frankfurt) | ganze Platte, Data Lifecycle Manager, 02:30 UTC | 7 Tage |
 
 `*-latest.sql.gz` ist jeweils ein Verweis auf die neueste Datei.
 
 **Sofort sichern:** `docker compose exec backup /backup.sh`
 
-**Auf den PC holen** (die Sicherungen liegen auf derselben Platte wie die Datenbank, ab und zu
-eine Kopie ziehen), PowerShell:
+**Außerhalb des Servers:** S3-Kopie und EBS-Snapshots, Einrichtung, Prüfung, Kosten und Restore
+in [BACKUP-OFFSITE.md](BACKUP-OFFSITE.md). Stand der S3-Kopie: `docker compose logs --tail=20 offsite`
+(„OK“), `docker compose ps offsite` (healthy). Sofort nach S3 kopieren:
+`docker compose exec offsite sh /offsite-backup.sh once`.
+
+**Auf den PC holen** (zusätzlich, z. B. vor größeren Umbauten), PowerShell:
 
 ```powershell
 scp deploy@planspiel.7z2.de:/opt/westbummeln/backups/last/westbummeln-latest.sql.gz .
@@ -208,8 +215,16 @@ docker compose exec -T db pg_restore -U westbummeln -d westbummeln --clean --if-
 davor lief (Zeile darüber in `.deploy-history`). Läuft gerade eine neuere Version, erst mit
 `IMAGE_TAG=<passender-sha> ./remote-deploy.sh` zurückrollen, dann einspielen.
 
+**Sicherung aus S3:** In der S3-Konsole herunterladen (der Server selbst darf S3 nicht lesen),
+mit `scp` nach `backups/` kopieren, dann wie oben einspielen. Schritt für Schritt:
+[BACKUP-OFFSITE.md](BACKUP-OFFSITE.md), „Zurückholen aus S3“.
+
+**Platte kaputt oder Server verbastelt:** Root-Volume aus einem EBS-Snapshot ersetzen
+([BACKUP-OFFSITE.md](BACKUP-OFFSITE.md), „Ganzen Server aus einem Snapshot zurückholen“).
+
 **Server komplett weg:** neuen Server einrichten, Erstinstallation (Abschnitt 1) mit der alten
-`.env` aus dem Passwort-Manager, dann die vom PC kopierte Sicherung wie oben einspielen.
+`.env` aus dem Passwort-Manager, dann die neueste Sicherung aus S3 (oder vom PC) wie oben
+einspielen. Die IAM-Rolle `westbummeln-offsite-backup` an die neue Instanz hängen.
 
 ## 5. Domain, IP-Wechsel und Notlösung sslip.io
 
@@ -251,7 +266,8 @@ wenn sie dort ebenfalls eingetragen ist. Danach wieder auf `planspiel.7z2.de` zu
 | db | 256 MB (`shared_buffers=64MB`, `max_connections=30`, `work_mem=2MB`) | ~75 MB |
 | caddy | 64 MB | ~20 MB |
 | backup | 64 MB | ~2 MB (beim Sichern kurz mehr) |
-| **Summe** | **734 MB** | **~190 MB** |
+| offsite | 64 MB | ~4 MB (beim Kopieren kurz mehr) |
+| **Summe** | **798 MB** | **~195 MB** |
 
 Wird ein Container wegen seiner Grenze beendet, steht in `docker inspect <container>` bei
 `State.OOMKilled` `true`, und Docker startet ihn neu.

@@ -6,7 +6,7 @@
 # Compose liest dieselbe .env auch für die ${…}-Platzhalter in dieser Datei.
 #
 # Nach außen offen sind nur 80/443 von Caddy. web und db veröffentlichen keine Ports.
-# Speichergrenzen (Summe ~740 MB, typisch belegt ~300 MB): siehe RUNBOOK.md.
+# Speichergrenzen (Summe ~800 MB, typisch belegt ~300 MB): siehe RUNBOOK.md.
 name: westbummeln
 
 services:
@@ -129,6 +129,33 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    mem_limit: 64m
+    logging: *logging
+
+  # Zweite Kopie der Sicherungen in S3 (andere Region), täglich 04:00 und beim Start.
+  # Aus, solange S3_BACKUP_BUCKET in .env leer ist. Einrichtung und Restore: BACKUP-OFFSITE.md.
+  # Keine Schlüssel in .env: rclone nutzt die IAM-Rolle der EC2-Instanz (IMDSv2).
+  offsite:
+    image: rclone/rclone:1.76.0
+    restart: unless-stopped
+    init: true
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"   # liest die Dumps (chmod 600, Besitzer deploy)
+    entrypoint: ["sh", "/offsite-backup.sh"]
+    environment:
+      S3_BACKUP_BUCKET: ${S3_BACKUP_BUCKET:-}
+      S3_BACKUP_REGION: ${S3_BACKUP_REGION:-eu-west-1}
+      HOME: /tmp
+      TZ: Europe/Berlin
+    volumes:
+      - ./backups:/backups:ro
+      - ./offsite-backup.sh:/offsite-backup.sh:ro
+    networks:
+      - frontend   # braucht Internet (S3) und die Metadaten-Adresse der Instanz, nicht die Datenbank
+    healthcheck:
+      test: ["CMD", "sh", "/offsite-backup.sh", "health"]
+      interval: 10m
+      timeout: 10s
+      start_period: 10m
     mem_limit: 64m
     logging: *logging
 
