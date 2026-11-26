@@ -1,46 +1,50 @@
 # Westbummeln-Konten
 
-Benutzername und Passwort funktionieren nach dem Start von `python server.py`.
-Für den Beitritt zu einem Spielraum ist ein Konto erforderlich.
+Die Konten liegen in einer **Postgres-Datenbank** auf dem eigenen Server (Container `db` in
+`/opt/westbummeln`, Daten im Docker-Volume `westbummeln_db-data`). Lokal und in den Tests nimmt das
+Spiel automatisch eine SQLite-Datei (`db.sqlite3`), wenn keine `DATABASE_URL` gesetzt ist.
 
-## Google auf Render aktivieren
+In Produktion (`DJANGO_ENV=prod`) startet der Dienst absichtlich **nicht**, wenn `DATABASE_URL`,
+`SECRET_KEY` oder `ALLOWED_HOSTS` fehlen. So kann er nie unbemerkt mit einer leeren
+Wegwerf-Datenbank laufen und Konten verlieren. Schlägt ein Deploy deshalb fehl, rollt
+`remote-deploy.sh` auf die vorherige Version zurück.
+
+Gesichert wird täglich um 03:00 nach `/opt/westbummeln/backups` (7 Tage, 4 Wochen, 3 Monate),
+zusätzlich vor jedem Deploy nach `backups/pre-deploy`. Einspielen: `deploy/RUNBOOK.md`.
+
+Konten vom früheren Render-Server gibt es nicht zu übernehmen (dort lag nur eine flüchtige
+SQLite-Datei ohne Sicherung). Der neue Server startet leer, Spieler registrieren sich neu.
+
+---
+
+## Google-Anmeldung aktivieren
 
 1. In der Google Cloud Console einen OAuth-Client vom Typ **Webanwendung**
    anlegen und die Anmeldeseite konfigurieren.
 2. Als autorisierten JavaScript-Ursprung die HTTPS-Adresse des Spiels
-   eintragen, zum Beispiel `https://westbummeln-multiplayer.onrender.com`.
-3. Auf Render die Umgebungsvariable `GOOGLE_CLIENT_ID` mit der Client-ID
-   setzen und neu deployen. Der Build installiert die Abhängigkeiten aus
-   `requirements.txt`. Für diesen Anmeldeablauf ist kein Client-Secret nötig.
+   eintragen: `https://planspiel.7z2.de`.
+3. Auf dem Server in `/opt/westbummeln/.env` `GOOGLE_CLIENT_ID` mit der Client-ID setzen und in
+   `/opt/westbummeln` `docker compose up -d` ausführen. Ein Client-Secret ist nicht nötig.
 4. Wenn die Google-App im Testmodus ist, die gewünschten Google-Konten als
    Testnutzer eintragen. Anschließend im Browser den Google-Button prüfen.
 
 Google-Spieler erhalten einen automatisch erzeugten Funknamen. Ein Google-Konto
 wird erst bei der ersten erfolgreichen Anmeldung im Spiel angelegt.
 
-## Kontodaten auf Render behalten
-
-Die Konten liegen standardmäßig in `accounts.sqlite3` neben dem Servercode.
-Der Render-Free-Dienst hat keinen persistenten Datenträger. Für dauerhafte
-Konten einen Render-Dienst mit persistentem Datenträger einsetzen und
-`ACCOUNT_DB_PATH` z. B. auf `/var/data/accounts.sqlite3` setzen, sofern der
-Datenträger unter `/var/data` eingehängt ist. Die Datenbank ist für eine einzelne
-Serverinstanz vorgesehen.
-
-
 ## Eigenes Entwicklerkonto
 
-Auf Render die geheimen Umgebungsvariablen `DEVELOPER_USERNAME` und
-`DEVELOPER_PASSWORD` für den Dienst setzen, bevor du die Version veröffentlichst.
+Auf dem Server in `/opt/westbummeln/.env` die Variablen `DEVELOPER_USERNAME` und
+`DEVELOPER_PASSWORD` setzen (am besten schon bei der Erstinstallation).
 Wähle einen freien Benutzernamen und ein eigenes Passwort mit 16–128 Zeichen.
-Der Server legt das Konto beim ersten Start an. Melde dich über das normale
-Anmeldeformular an. Die Entwicklerübersicht erscheint direkt darunter.
+Der Server legt das Konto bei jedem Start an, falls es noch fehlt
+(`python manage.py bootstrap_accounts`). Melde dich über das normale
+Anmeldeformular an. Die Entwicklerübersicht erscheint direkt darunter. Das
+Entwicklerkonto darf sich auch unter `/admin/` anmelden.
 
 Ein bereits vorhandenes normales Konto wird nicht zum Entwicklerkonto.
 Bei einer Namenskollision startet der Dienst mit einer Fehlermeldung.
 Die Variablen dienen der Ersteinrichtung. Ein später geänderter Wert setzt das
-Passwort eines bestehenden Entwicklerkontos nicht zurück. Für lokale Tests
-kannst du dieselben Variablen vor dem Start des Servers setzen.
+Passwort eines bestehenden Entwicklerkontos nicht zurück.
 
 Im Spiel kannst du mit dem Entwicklerkonto über **Besetzte Leitstelle
 übernehmen** die Leitstellenrolle übernehmen. Der bisherige
@@ -51,45 +55,18 @@ musst du es zuerst regulär verlassen.
 ## E-Mail-Adresse und Testkonto
 
 Beim Erstellen eines Kontos werden Benutzername, E-Mail-Adresse und Passwort
-gespeichert (Passwort nur als scrypt-Hash). Die E-Mail-Adresse muss eindeutig
-sein. Anmelden kann man sich mit Benutzername **oder** E-Mail-Adresse. Alte
-Konten ohne E-Mail funktionieren weiter; die Datenbank wird automatisch erweitert.
+gespeichert (Passwort nur als scrypt-Hash). Benutzername und E-Mail-Adresse sind
+eindeutig, beim Namen zählt Groß-/Kleinschreibung nicht. Anmelden kann man sich
+mit Benutzername **oder** E-Mail-Adresse.
 
-Testkonto: Benutzername `test`, Passwort `test`. Es wird beim lokalen Start von
-`python server.py` automatisch angelegt. Auf Render nur, wenn die Variable
+Testkonto: Benutzername `test`, Passwort `test`. Es wird lokal mit
+`python manage.py bootstrap_accounts` angelegt. Auf dem Server nur, wenn die Variable
 `CREATE_TEST_ACCOUNT=1` gesetzt ist. Danach wieder entfernen, denn ein Konto mit
 so einem Passwort darf nicht dauerhaft öffentlich erreichbar sein. Ohne die
-Variable löscht der Server auf Render beim Start ein vorhandenes Testkonto
-(auch eines, das aus dem GitHub-Backup zurückgeholt wurde), und die Löschung
-wird mit dem nächsten Backup übernommen.
+Variable löscht der Server beim Start ein vorhandenes Testkonto.
 
-## Automatisches Backup auf GitHub (kostenlos, für Render Free)
+## Anmeldung und Sitzungen
 
-Der Server sichert die Konten nach jeder Registrierung in ein **privates**
-GitHub-Repo und holt sie beim Start zurück, wenn die Datenbank leer ist.
-
-1. Auf GitHub ein neues **privates** Repo anlegen (z. B. `westbummeln-backup`),
-   mit einer README, damit der Branch `main` existiert.
-2. Unter Settings → Developer settings → Fine-grained tokens ein Token nur für
-   dieses Repo erstellen, Berechtigung **Contents: Read and write**.
-3. Auf Render die Variablen `BACKUP_GITHUB_TOKEN` (Token) und
-   `BACKUP_GITHUB_REPO` (z. B. `meinname/westbummeln-backup`) setzen, neu deployen.
-
-Im Log erscheint „Backup: N Konten wiederhergestellt“. Das Repo enthält E-Mails
-und Passwort-Hashes, es muss privat bleiben. Nicht gesichert werden angemeldete
-Sitzungen (nach einem Neustart melden sich Spieler neu an) und laufende Spiele.
-
-### Was im Render-Log steht (Backup)
-
-| Zeile | Bedeutung |
-|---|---|
-| `Backup: bereit.` | Zugriff aufs Repo klappt, Sicherung ist aktiv. |
-| `Backup: Repo erreichbar, noch keine Sicherung vorhanden.` | Normal beim allerersten Start. |
-| `Backup: N Konten wiederhergestellt.` | Nach einem Neustart wurden die Konten zurückgeholt. |
-| `Backup: N Konten gesichert.` | Nach einer Registrierung wurde gespeichert. |
-| `Backup: KEIN ZUGRIFF auf GitHub. Status 404 ...` | Token oder Repo-Name falsch (GitHub meldet 404, auch wenn der Token keinen Zugriff hat). Variablen prüfen. |
-| `Status 401` | Token ungültig oder abgelaufen. |
-| `Status 403` | Token darf nicht schreiben: Contents auf Read and write stellen. |
-| `Backup: GitHub nicht erreichbar ...` | Kurzer Ausfall beim Start. Es wird nichts überschrieben, der Server versucht es erneut. |
-
-Eine leere Datenbank überschreibt nie eine vorhandene Sicherung.
+Die Anmeldung läuft über Django-Sitzungen (Cookie `sessionid`, `HttpOnly`,
+`SameSite=Lax`, auf dem Server nur über HTTPS) und gilt 7 Tage. Alle Formulare und
+Spielaktionen sind mit Djangos CSRF-Schutz gesichert.

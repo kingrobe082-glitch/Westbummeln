@@ -6,6 +6,8 @@
 # Geheimnisse
 .env
 .env.*
+# Vorlage ohne Geheimnisse gehört ins Repo
+!.env.example
 
 # Python
 __pycache__/
@@ -13,3 +15,6 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+
+# Django
+staticfiles/

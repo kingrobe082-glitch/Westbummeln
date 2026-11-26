@@ -1,4 +1,6 @@
-"""Discord-Anbindung für Westbummeln. Nur Standardbibliothek, keine zusätzlichen Pakete.
+"""Discord-Anbindung für Westbummeln. Nur Standardbibliothek, kein Django-Import.
+
+Die Hintergrund-Threads startet westbummeln/wsgi.py über game.rooms.start_background().
 
 Drei voneinander unabhängige Funktionen, jede wird über Umgebungsvariablen eingeschaltet:
 
@@ -176,7 +178,7 @@ def post_radio(room_code, entry):
 def _send(content):
     body = {'content': content[:1990], 'username': 'Westbummeln Funk',
             'allowed_mentions': {'parse': []}, 'flags': 4}
-    for attempt in range(4):
+    for _ in range(4):
         try:
             status, data = _http('POST', WEBHOOK_URL, body=body)
         except OSError as error:
@@ -264,8 +266,11 @@ def _poll_problem(status, data):
     if status == 429:
         return min(float(data.get('retry_after', 5) or 5), 60)
     if status in (401, 403, 404):
-        hint = {401: 'Bot-Token ungültig.', 403: 'Der Bot darf den Kanal nicht lesen (Rechte „Kanal ansehen“ und '
-                '„Nachrichtenverlauf lesen“ geben).', 404: 'Kanal nicht gefunden (Kanal-ID prüfen, Bot zum Server einladen).'}[status]
+        hint = {
+            401: 'Bot-Token ungültig.',
+            403: 'Der Bot darf den Kanal nicht lesen (Rechte „Kanal ansehen“ und „Nachrichtenverlauf lesen“ geben).',
+            404: 'Kanal nicht gefunden (Kanal-ID prüfen, Bot zum Server einladen).',
+        }[status]
         _log_once('poll-status', f'Kanal lesen: Status {status}. {hint}', 120)
         return 60
     _log_once('poll-status', f'Kanal lesen: unerwarteter Status {status}.', 120)
@@ -278,12 +283,14 @@ def start(on_message):
     if login_enabled():
         print('Discord: Anmeldung aktiv' + (' (nur Mitglieder des Servers).' if GUILD_ID else '.'), flush=True)
     if WEBHOOK_URL and not WEBHOOK_OK:
-        print('Discord: DISCORD_WEBHOOK_URL sieht falsch aus (muss mit https://discord.com/api/webhooks/ beginnen).', flush=True)
+        print('Discord: DISCORD_WEBHOOK_URL sieht falsch aus '
+              '(muss mit https://discord.com/api/webhooks/ beginnen).', flush=True)
     if WEBHOOK_OK:
         print('Discord: Funkprotokoll wird gespiegelt' + (f' (Raum {ROOM}).' if ROOM else ' (alle Räume).'), flush=True)
         threading.Thread(target=_sender, daemon=True).start()
     if BOT_TOKEN and not BOT_OK:
-        print('Discord: Bot nicht gestartet. DISCORD_CHANNEL_ID (Zahl) und DISCORD_ROOM (Raumcode) werden gebraucht.', flush=True)
+        print('Discord: Bot nicht gestartet. DISCORD_CHANNEL_ID (Zahl) und DISCORD_ROOM (Raumcode) '
+              'werden gebraucht.', flush=True)
     if BOT_OK:
         threading.Thread(target=_poller, args=(on_message,), daemon=True).start()
     if VOICE_URL and not VOICE_OK:

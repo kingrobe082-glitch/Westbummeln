@@ -1,0 +1,26 @@
+.git
+.github
+.claude
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+staticfiles
+
+# Kontodaten und Geheimnisse nie ins Image
+*.sqlite3
+*.sqlite3-journal
+*.db
+*.json.bak
+.env
+.env.*
+accounts-backup*.json
+
+# Für den Betrieb nicht nötig
+deploy
+tests
+requirements-dev.txt
+*.md
+render.yaml
