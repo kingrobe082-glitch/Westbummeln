@@ -50,7 +50,7 @@ def test_register_logs_in(player):
 def test_login_with_username_and_with_email(player, game_client):
     for name in ('florian1', 'FLORIAN@example.com'):
         client = game_client()
-        response = client.account('login', name=name, password='geheim123')
+        response = client.account('login', name=name, password='Funkgeraet-42')
         assert response.status_code == 200, response.json()
         assert response.json() == {'name': 'Florian1'}
         assert client.client.get('/account').json()['name'] == 'Florian1'
@@ -62,16 +62,17 @@ def test_wrong_password(player, game_client):
     assert response.json() == {'error': 'Benutzername oder Passwort stimmt nicht.'}
 
 
-def test_register_errors_are_german(player, game_client):
+def test_register_errors_are_german(player, game_client, settings):
+    settings.RATE_LIMITS = {**settings.RATE_LIMITS, 'register': '100/h'}  # hier geht es um die Meldungen
     client = game_client()
     cases = [
-        ({'name': 'ab', 'email': 'a@b.de', 'password': 'geheim123'},
+        ({'name': 'ab', 'email': 'a@b.de', 'password': 'Funkgeraet-42'},
          'Benutzername: 3–24 Buchstaben, Zahlen, Unterstriche oder Bindestriche.'),
         ({'name': 'Neu', 'email': 'a@b.de', 'password': 'kurz'}, 'Das Passwort braucht mindestens 8 Zeichen.'),
-        ({'name': 'Neu', 'email': 'kaputt', 'password': 'geheim123'}, 'Bitte gib eine gültige E-Mail-Adresse ein.'),
-        ({'name': 'Neu', 'email': 'florian@example.com', 'password': 'geheim123'},
+        ({'name': 'Neu', 'email': 'kaputt', 'password': 'Funkgeraet-42'}, 'Bitte gib eine gültige E-Mail-Adresse ein.'),
+        ({'name': 'Neu', 'email': 'florian@example.com', 'password': 'Funkgeraet-42'},
          'Diese E-Mail-Adresse ist bereits registriert.'),
-        ({'name': 'FLORIAN1', 'email': 'neu@example.com', 'password': 'geheim123'},
+        ({'name': 'FLORIAN1', 'email': 'neu@example.com', 'password': 'Funkgeraet-42'},
          'Dieser Benutzername oder diese E-Mail ist bereits vergeben.'),
     ]
     for fields, message in cases:
@@ -123,7 +124,7 @@ def test_game_round_over_http(player, game_client):
     rooms.rooms['WESTBUMMELN']['weather_mode'] = 'manual'
 
     second = game_client()
-    second.account('register', name='Zweite', email='zwei@example.com', password='geheim123')
+    second.account('register', name='Zweite', email='zwei@example.com', password='Funkgeraet-42')
     second.join()
 
     assert player.api('take_ls').status_code == 200
@@ -150,7 +151,7 @@ def test_game_round_over_http(player, game_client):
 def test_player_id_from_other_account_is_rejected(player, game_client):
     player.join()
     other = game_client()
-    other.account('register', name='Fremd', email='fremd@example.com', password='geheim123')
+    other.account('register', name='Fremd', email='fremd@example.com', password='Funkgeraet-42')
     other.id = player.id
     response = other.api('state')
     assert response.json() == {'error': 'Sitzung abgelaufen – bitte neu beitreten'}
