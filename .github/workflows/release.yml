@@ -1,0 +1,345 @@
+# Automatisches Release: Merge auf main -> CI grün -> Image bauen -> Deploy auf den Server.
+# Ablauf, Rollback und benötigte Secrets: deploy/RELEASE.md
+name: Release
+
+run-name: Release ${{ github.event.workflow_run.head_sha || inputs.ref || github.sha }}
+
+on:
+  # Läuft, sobald der Workflow "CI" (ci.yml) auf main fertig ist. Ob er grün war und
+  # wirklich von einem Push auf main in diesem Repo kam, prüft der Job "vorbereiten".
+  # Achtung: Wird ci.yml umbenannt (name: CI), muss die Liste hier mitgeändert werden.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Manuelles Deploy, z. B. für einen Rollback auf einen älteren Commit.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit-SHA (auch kurz), Tag oder Branch. Leer = Stand des gewählten Branches"
+        required: false
+        default: ""
+        type: string
+      rebuild:
+        description: "Image neu bauen, auch wenn es für diesen Commit schon in ghcr.io liegt"
+        required: false
+        default: false
+        type: boolean
+  # NUR ZUM TESTEN, wird vor dem Merge entfernt: baut auf umbau/release ein Image mit Tag test-<sha>, ohne Deploy.
+  push:
+    branches: [umbau/release]
+    paths:
+      - .github/workflows/release.yml
+      - Dockerfile
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: ghcr.io/kingrobe082-glitch/westbummeln
+  DEPLOY_PATH: /opt/westbummeln
+
+jobs:
+  vorbereiten:
+    name: Vorbereiten
+    # Bei workflow_run nur nach grüner CI für einen Push auf main in diesem Repo.
+    # (Ein Fork-PR von einem Branch namens "main" hat zwar head_branch == main,
+    # aber event == pull_request und ein anderes head_repository.)
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      tag: ${{ steps.modus.outputs.tag }}
+      latest: ${{ steps.modus.outputs.latest }}
+      deploy: ${{ steps.modus.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Commit bestimmen
+        id: sha
+        env:
+          EVENT: ${{ github.event_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            workflow_run) ref="$RUN_SHA" ;;
+            *)            ref="${INPUT_REF:-$GITHUB_SHA}" ;;
+          esac
+          sha=""
+          for kandidat in "$ref" "origin/$ref"; do
+            if sha=$(git rev-parse --verify --quiet --end-of-options "${kandidat}^{commit}"); then
+              break
+            fi
+          done
+          if [ -z "$sha" ]; then
+            echo "::error title=Unbekannter Commit::'$ref' ist weder ein Commit noch ein Tag oder Branch in diesem Repo."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::warning title=Nicht auf main::Commit $sha ist nicht in main enthalten. Er wird trotzdem gebaut und deployt."
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Commit: $sha" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Modus festlegen
+        id: modus
+        env:
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "push" ]; then
+            # Testlauf auf dem Release-Branch: nur bauen, kein latest, kein Deploy.
+            { echo "tag=test-$SHA"; echo "latest=false"; echo "deploy=false"; } >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "workflow_run" ]; then
+            { echo "tag=$SHA"; echo "latest=true"; echo "deploy=true"; } >> "$GITHUB_OUTPUT"
+          else
+            # Manuelles Deploy (auch Rollback): latest bleibt beim Stand von main.
+            { echo "tag=$SHA"; echo "latest=false"; echo "deploy=true"; } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Secrets prüfen
+        if: steps.modus.outputs.deploy == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          fehlt=0
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Secret fehlt::Das Repository-Secret $name ist nicht gesetzt (Settings -> Secrets and variables -> Actions). Siehe deploy/RELEASE.md."
+              fehlt=1
+            fi
+          done
+          if [ -n "${DEPLOY_SSH_KEY:-}" ] && ! printf '%s' "$DEPLOY_SSH_KEY" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+            echo "::error title=Secret ungültig::DEPLOY_SSH_KEY sieht nicht wie ein privater SSH-Schlüssel aus (erwartet: kompletter Inhalt inkl. '-----BEGIN OPENSSH PRIVATE KEY-----')."
+            fehlt=1
+          fi
+          if [ "$fehlt" -ne 0 ]; then
+            echo "Deploy abgebrochen: Secrets fehlen oder sind ungültig. Es wurde nichts gebaut und nichts auf den Server übertragen." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Alle Deploy-Secrets sind gesetzt."
+
+  build:
+    name: Image bauen
+    needs: vorbereiten
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SHA: ${{ needs.vorbereiten.outputs.sha }}
+      TAG: ${{ needs.vorbereiten.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.vorbereiten.outputs.sha }}
+          persist-credentials: false
+
+      - name: Dockerfile vorhanden?
+        run: |
+          if [ ! -f Dockerfile ]; then
+            echo "::error title=Dockerfile fehlt::Commit $SHA enthält kein Dockerfile im Repo-Root. Ohne Dockerfile kann kein Image gebaut werden."
+            exit 1
+          fi
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Gibt es das Image schon?
+        id: vorhanden
+        env:
+          REBUILD: ${{ inputs.rebuild || false }}
+        run: |
+          if [ "$REBUILD" != "true" ] && docker buildx imagetools inspect "$IMAGE_NAME:$TAG" > /dev/null 2>&1; then
+            echo "Image $IMAGE_NAME:$TAG existiert schon, Build wird übersprungen." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "bauen=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "bauen=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v4
+        if: steps.vorhanden.outputs.bauen == 'true'
+
+      - id: meta
+        if: steps.vorhanden.outputs.bauen == 'true'
+        uses: docker/metadata-action@v6
+        with:
+          context: git
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ needs.vorbereiten.outputs.tag }}
+            type=raw,value=latest,enable=${{ needs.vorbereiten.outputs.latest == 'true' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.vorbereiten.outputs.sha }}
+            org.opencontainers.image.title=Westbummeln
+            org.opencontainers.image.description=Feuerwehr-Leitstelle (Django)
+
+      - uses: docker/build-push-action@v7
+        if: steps.vorhanden.outputs.bauen == 'true'
+        with:
+          # Pfad-Kontext: baut genau den ausgecheckten Commit (der Git-Kontext würde bei
+          # workflow_run den aktuellen Stand von main statt head_sha nehmen).
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy (Produktion)
+    needs: [vorbereiten, build]
+    if: needs.vorbereiten.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      SHA: ${{ needs.vorbereiten.outputs.sha }}
+    steps:
+      - name: Ist der Commit noch aktuell?
+        id: aktuell
+        env:
+          EVENT: ${{ github.event_name }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Automatische Deploys nur für den neuesten Stand von main. Ist main schon weiter,
+          # deployt der Lauf des neueren Commits. So überholt ein langsamer alter Lauf
+          # nie einen neueren Deploy.
+          if [ "$EVENT" = "workflow_run" ]; then
+            main_sha=$(git ls-remote "$REPO_URL" refs/heads/main | cut -f1)
+            if [ "$main_sha" != "$SHA" ]; then
+              echo "::notice title=Deploy übersprungen::main steht schon auf $main_sha, dieser Lauf ($SHA) ist veraltet."
+              echo "Deploy übersprungen: main ist schon bei $main_sha." >> "$GITHUB_STEP_SUMMARY"
+              echo "go=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "go=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        if: steps.aktuell.outputs.go == 'true'
+        with:
+          ref: ${{ needs.vorbereiten.outputs.sha }}
+          persist-credentials: false
+
+      - name: Deploy-Dateien prüfen
+        if: steps.aktuell.outputs.go == 'true'
+        run: |
+          if [ ! -f deploy/remote-deploy.sh ]; then
+            echo "::error title=deploy/ fehlt::Commit $SHA enthält kein deploy/remote-deploy.sh. Dieser Commit lässt sich nicht deployen."
+            exit 1
+          fi
+
+      - name: SSH einrichten
+        id: ssh
+        if: steps.aktuell.outputs.go == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          ( umask 077; printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key )
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host server
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            Port $DEPLOY_SSH_PORT
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            StrictHostKeyChecking yes
+            BatchMode yes
+            ConnectTimeout 20
+            ServerAliveInterval 30
+          EOF
+          chmod 600 ~/.ssh/config
+          if ! ssh server true; then
+            echo "::error title=SSH-Verbindung fehlgeschlagen::Keine Verbindung als DEPLOY_USER zu DEPLOY_HOST. Prüfen: Schlüssel in authorized_keys des Servers, Host-Key in DEPLOY_KNOWN_HOSTS (ssh-keyscan), Port/Firewall."
+            exit 1
+          fi
+
+      - name: deploy/ auf den Server kopieren
+        if: steps.aktuell.outputs.go == 'true'
+        run: |
+          set -euo pipefail
+          # Absichtlich lokal expandiert (DEPLOY_PATH ist fest, der Rest kommt über stdin).
+          # shellcheck disable=SC2029
+          # tar über ssh statt rsync/scp: braucht auf dem Server nur tar, schließt .env und
+          # backups/ aus und lässt Dateien, die nur auf dem Server liegen, unangetastet.
+          tar -C deploy --exclude='.env' --exclude='./backups' -czf - . \
+            | ssh server "mkdir -p '$DEPLOY_PATH' && tar -xzf - --no-same-owner --no-overwrite-dir -C '$DEPLOY_PATH'"
+
+      - name: Server bei ghcr.io anmelden (kurzlebiges Token)
+        if: steps.aktuell.outputs.go == 'true'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          # Token über stdin, damit es weder in der Prozessliste noch im Log auftaucht.
+          # Es verfällt mit dem Ende dieses Jobs. GHCR_USER wird lokal expandiert (gewollt).
+          # shellcheck disable=SC2029
+          printf '%s\n' "$GHCR_TOKEN" | ssh server "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+
+      - name: remote-deploy.sh ausführen
+        if: steps.aktuell.outputs.go == 'true'
+        # SHA ist eine von git rev-parse geprüfte 40-stellige Hex-ID, lokales Expandieren ist gewollt.
+        run: |
+          # shellcheck disable=SC2029
+          ssh server "cd '$DEPLOY_PATH' && IMAGE_TAG='$SHA' ./remote-deploy.sh"
+
+      - name: Server bei ghcr.io abmelden
+        if: always() && steps.ssh.outcome == 'success'
+        run: ssh server 'docker logout ghcr.io' || true
+
+      - name: Healthcheck von außen
+        if: steps.aktuell.outputs.go == 'true' && vars.DEPLOY_DOMAIN != ''
+        env:
+          DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
+        run: |
+          curl -fsS --retry 6 --retry-delay 5 --retry-all-errors --max-time 10 "https://$DOMAIN/healthz"
+          echo
+          echo "Deploy von $SHA erfolgreich, https://$DOMAIN/healthz antwortet." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Hinweis ohne Domain
+        if: steps.aktuell.outputs.go == 'true' && vars.DEPLOY_DOMAIN == ''
+        run: echo "::notice title=Kein externer Healthcheck::Repo-Variable DEPLOY_DOMAIN ist nicht gesetzt, der Check von außen wurde übersprungen."
+
+      - name: SSH-Schlüssel löschen
+        if: always()
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/config
