@@ -1,0 +1,8 @@
+# Shell-Skripte und Server-Konfiguration laufen unter Linux: immer mit LF auschecken,
+# auch unter Windows mit core.autocrlf=true (sonst bricht "#!/bin/sh\r" im Container).
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+Caddyfile     text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+.env.example  text eol=lf

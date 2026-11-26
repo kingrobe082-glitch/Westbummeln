@@ -56,21 +56,21 @@ def test_provision_developer_refuses_normal_account(monkeypatch, django_user_mod
         services.provision_developer()
 
 
-def test_test_account_local_and_on_render(monkeypatch, django_user_model):
-    monkeypatch.delenv('RENDER', raising=False)
+def test_test_account_local_and_in_production(monkeypatch, settings, django_user_model):
+    settings.PRODUCTION = False
     services.provision_test_account()
     assert authenticate(None, username='test', password='test')
-    monkeypatch.setenv('RENDER', 'true')
+    settings.PRODUCTION = True
     monkeypatch.delenv('CREATE_TEST_ACCOUNT', raising=False)
     services.provision_test_account()
     assert not django_user_model.objects.filter(username='test').exists()
 
 
-def test_real_account_named_test_survives(monkeypatch, django_user_model):
+def test_real_account_named_test_survives(settings, django_user_model):
     user = django_user_model(username='test')
     user.set_password('richtigespasswort')
     user.save()
-    monkeypatch.setenv('RENDER', 'true')
+    settings.PRODUCTION = True
     services.provision_test_account()
     assert django_user_model.objects.filter(username='test').exists()
 

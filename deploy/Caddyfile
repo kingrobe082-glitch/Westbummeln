@@ -1,0 +1,44 @@
+# Caddy vor Westbummeln: HTTPS (Let's Encrypt, Fallback ZeroSSL), Komprimierung, Weiterleitung an web:8000.
+#
+# DOMAIN und ACME_EMAIL kommen aus /opt/westbummeln/.env (über docker-compose.prod.yml).
+# Solange es keine eigene Domain gibt, funktioniert
+#   DOMAIN=63-183-198-23.sslip.io
+# (sslip.io löst den Namen auf die IP im Namen auf; Caddy holt dafür ein echtes Zertifikat,
+# bei Let's-Encrypt-Rate-Limits automatisch über ZeroSSL). Mit DOMAIN=localhost nimmt Caddy
+# seine interne Test-CA (nur für lokale Tests).
+#
+# Sicherheits-Header: Django setzt alle App-Header (CSP, COOP, Referrer-Policy, X-Frame-Options,
+# nosniff, Permissions-Policy). Caddy setzt nur HSTS und entfernt den Server-Header.
+
+{
+	email {$ACME_EMAIL}
+	# Keine Admin-API nach außen; im Container nur lokal.
+	admin localhost:2019
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# Erst 1 Tag; wenn alles stabil über HTTPS läuft, auf 1 Jahr (31536000) erhöhen.
+		# Kein includeSubDomains/preload: sslip.io und spätere Domain gehören nicht komplett uns.
+		Strict-Transport-Security "max-age=86400"
+		-Server
+		-Via
+		# erst nach der Antwort von Django anwenden, damit ein Django-Wert ersetzt statt verdoppelt wird
+		defer
+	}
+
+	# Das Spiel schickt nur kleine JSON-Anfragen (Django begrenzt selbst auf wenige KB).
+	request_body {
+		max_size 1MB
+	}
+
+	reverse_proxy web:8000 {
+		# Caddy setzt X-Forwarded-For (echte Client-IP, eingehende Werte werden verworfen),
+		# X-Forwarded-Proto und X-Forwarded-Host selbst. Während web neu startet (Deploy,
+		# Neustart), versucht Caddy es bis zu 15 s weiter, statt sofort 502 zu antworten.
+		lb_try_duration 15s
+		lb_try_interval 500ms
+	}
+}
