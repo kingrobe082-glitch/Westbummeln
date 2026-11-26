@@ -8,8 +8,13 @@ import secrets
 from hmac import compare_digest
 
 from django.conf import settings
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate, get_user_model, update_session_auth_hash
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import F
+
+from accounts.lockout import LoginLockedError
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
 EMAIL_RE = re.compile(r'[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}')
@@ -20,6 +25,14 @@ TEST_NAME = 'test'
 def check_password_input(password):
     if not isinstance(password, str) or not 1 <= len(password) <= 128:
         raise ValueError('Bitte gib ein Passwort mit höchstens 128 Zeichen ein.')
+
+
+def check_new_password(password, user):
+    """Passwortregeln aus AUTH_PASSWORD_VALIDATORS, Meldungen auf Deutsch."""
+    try:
+        validate_password(password, user)
+    except ValidationError as error:
+        raise ValueError(' '.join(error.messages)) from None
 
 
 def register(data, need_email=True):
@@ -38,6 +51,7 @@ def register(data, need_email=True):
     if email and get_user_model().objects.filter(email=email).exists():
         raise ValueError('Diese E-Mail-Adresse ist bereits registriert.')
     user = get_user_model()(username=name, email=email)
+    check_new_password(password, user)
     user.set_password(password)
     try:
         with transaction.atomic():
@@ -54,9 +68,38 @@ def login_with_password(request, data):
     password = data.get('password')
     check_password_input(password)
     user = authenticate(request, username=name, password=password)
+    if getattr(request, 'login_locked', False):
+        raise LoginLockedError
     if user is None:
         raise ValueError('Benutzername oder Passwort stimmt nicht.')
     return user
+
+
+def change_password(request, data):
+    """Neues Passwort setzen. Das alte ist nötig und zählt für die Sperre nach Fehlversuchen.
+    Alle anderen Sitzungen enden (der Sitzungs-Hash hängt am Passwort), diese bleibt angemeldet
+    und bekommt einen neuen Sitzungsschlüssel."""
+    user = request.user
+    if not user.has_usable_password():
+        raise ValueError('Dieses Konto meldet sich über Google oder Discord an und hat kein Passwort.')
+    old = data.get('old_password')
+    new = data.get('new_password')
+    check_password_input(old)
+    check_password_input(new)
+    if authenticate(request, username=user.username, password=old) is None:
+        if getattr(request, 'login_locked', False):
+            raise LoginLockedError
+        raise ValueError('Das bisherige Passwort stimmt nicht.')
+    check_new_password(new, user)
+    user.set_password(new)
+    user.save(update_fields=['password'])
+    update_session_auth_hash(request, user)
+    return user
+
+
+def logout_everywhere(user):
+    """Beendet alle Sitzungen des Kontos auf allen Geräten, auch die aktuelle."""
+    get_user_model().objects.filter(pk=user.pk).update(session_version=F('session_version') + 1)
 
 
 def verify_google(credential):

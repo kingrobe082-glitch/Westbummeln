@@ -1,7 +1,9 @@
 let accountBusy = false;
 let developerAccount = false;
-function showAccount({ name, developer }) {
+function showAccount({ name, developer, hasPassword }) {
   developerAccount = Boolean(developer);
+  $('passwordForm').classList.toggle('hidden', !hasPassword);
+  if (!name) $('securityPanel').open = false;
   $('accountControls').classList.toggle('hidden', Boolean(name));
   $('accountSession').classList.toggle('hidden', !name);
   $('signedInAs').textContent = name ? 'Angemeldet als ' + name : '';
