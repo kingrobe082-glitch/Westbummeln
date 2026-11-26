@@ -1,0 +1,61 @@
+/* Mini-Fahrzeuge auf der Einsatzkarte (static/js/fahrzeuge.js).
+   Die Grafik dreht sich in Fahrtrichtung (--hd), das Namensschild bleibt waagerecht.
+   --ox/--oy: Versatz, wenn mehrere Fahrzeuge an derselben Stelle stehen (berechnet in fahrzeuge.js). */
+.map{container-type:inline-size}
+/* Einsatzpunkte liegen immer über den Fahrzeugen */
+#markers .pin:not(.vehicle){z-index:3}
+
+#markers .pin.veh{
+  --k:1;
+  --w:calc(var(--bw)*var(--k));--h:calc(var(--bh)*var(--k));
+  position:absolute;z-index:auto;display:block;width:0;height:0;min-height:0;padding:0;
+  border:0;border-radius:0;background:none;box-shadow:none;outline:0;color:#fff;
+  /* Versatz über margin statt transform: so entsteht kein eigener Stapelkontext
+     und alle Namensschilder liegen über allen Fahrzeuggrafiken. */
+  transform:none;margin:var(--oy,0px) 0 0 var(--ox,0px);
+  transition:margin .25s ease-out;
+}
+.veh-hlf{--bw:34px;--bh:14px;--lx:76.5%;--ly:28.6%;--lw:5.9%;--lh:42.9%}
+.veh-lf{--bw:29px;--bh:13px;--lx:72.4%;--ly:28.8%;--lw:6.9%;--lh:42.3%}
+.veh-kdow{--bw:24px;--bh:12px;--lx:36.4%;--ly:29.5%;--lw:9.1%;--lh:41%}
+
+.veh-body{
+  position:absolute;z-index:1;left:0;top:0;width:var(--w);height:var(--h);
+  background:center/100% 100% no-repeat;
+  transform:translate(-50%,-50%) rotate(var(--hd,0deg));
+  filter:drop-shadow(0 0 .7px #fff) drop-shadow(0 1px 2px #000d);
+}
+.veh-hlf .veh-body{background-image:url("../img/fahrzeuge/hlf.svg")}
+.veh-lf .veh-body{background-image:url("../img/fahrzeuge/lf.svg")}
+.veh-kdow .veh-body{background-image:url("../img/fahrzeuge/kdow.svg")}
+/* Blaulicht: leuchtet über dem dunklen Lichtbalken der Grafik */
+.veh-light{
+  position:absolute;left:var(--lx);top:var(--ly);width:var(--lw);height:var(--lh);
+  border-radius:2px;background:#79c3ff;box-shadow:0 0 4px 1px #3d9bffcc;opacity:0;
+}
+.veh.blaulicht .veh-light{animation:veh-blaulicht 1s ease-in-out infinite}
+@keyframes veh-blaulicht{0%,40%{opacity:1}55%,100%{opacity:.12}}
+
+/* Namensschild: unter der (gedrehten) Grafik, immer waagerecht */
+.veh-label{
+  position:absolute;z-index:2;left:0;
+  top:calc(var(--rs,0)*var(--w)/2 + var(--rc,1)*var(--h)/2 + 2px);
+  transform:translateX(-50%);
+  padding:1px 4px;border-radius:4px;background:#0b1420c7;border:1px solid #ffffff2e;
+  font:600 10px/1.25 system-ui,Arial,sans-serif;letter-spacing:.02em;white-space:nowrap;color:#fff;
+}
+.veh-rueckfahrt .veh-label{color:#d4e2f0}
+
+/* Handy: kleinere Fahrzeuge und Schilder; auf sehr schmalen Karten nur die Grafik */
+@media(max-width:600px){
+  #markers .pin.veh{--k:.8}
+  .veh-label{font-size:9px;padding:0 3px}
+}
+@container (max-width:300px){
+  .veh-label{display:none}
+}
+
+@media(prefers-reduced-motion:reduce){
+  #markers .pin.veh{transition:none}
+  .veh.blaulicht .veh-light{animation:none;opacity:1}
+}

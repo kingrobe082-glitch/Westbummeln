@@ -101,12 +101,13 @@ function animateVehicles() {
       pin.style.left = `${x * 100}%`;
       pin.style.top = `${y * 100}%`;
     }
+    WBFahrzeuge.layout($('markers'));
   }
   requestAnimationFrame(animateVehicles);
 }
 requestAnimationFrame(animateVehicles);
 
-function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){let p=position(v);pins.push(`<span class="pin vehicle" data-vehicle-pin="${esc(v.id)}" title="${esc(v.call)} – ${esc(v.phase)}" style="left:${p[0]*100}%;top:${p[1]*100}%"></span>`)}$('markers').innerHTML=pins.join('');$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
+function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){pins.push(WBFahrzeuge.marker(v,position(v)))}$('markers').innerHTML=pins.join('');WBFahrzeuge.layout($('markers'));$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
 function render(){if(!state)return;
 updateFme(state);
 $('countOpen').textContent=state.incidents.filter(i=>!i.closed).length;
