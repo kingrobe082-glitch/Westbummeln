@@ -293,6 +293,8 @@ jobs:
           # shellcheck disable=SC2029
           # tar über ssh statt rsync/scp: braucht auf dem Server nur tar, schließt .env und
           # backups/ aus und lässt Dateien, die nur auf dem Server liegen, unangetastet.
+          # "." nimmt auch Punktdateien mit (.env.example braucht env-init.sh, .gitattributes).
+          # --no-overwrite-dir: Rechte von /opt/westbummeln (750) bleiben.
           tar -C deploy --exclude='.env' --exclude='./backups' -czf - . \
             | ssh server "mkdir -p '$DEPLOY_PATH' && tar -xzf - --no-same-owner --no-overwrite-dir -C '$DEPLOY_PATH'"
 

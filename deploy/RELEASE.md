@@ -23,8 +23,9 @@ Merge auf main ──► CI (ci.yml, Postgres + SQLite) ──► Release (relea
    Liegt das Image für diesen SHA schon in ghcr.io (z. B. bei einem Rollback), wird der Build übersprungen.
 4. **deploy** (immer nur einer gleichzeitig, `concurrency: deploy-production`):
    1. Prüft, ob der Commit noch der neueste auf `main` ist. Wenn nicht, wird übersprungen, weil der neuere Lauf deployt.
-   2. Kopiert den Inhalt von `deploy/` aus genau diesem Commit nach `/opt/westbummeln`. `.env` und
-      `backups/` werden nie übertragen oder überschrieben.
+   2. Kopiert den Inhalt von `deploy/` aus genau diesem Commit nach `/opt/westbummeln`, einschließlich
+      Punktdateien wie `.env.example` (braucht `env-init.sh`). Eine echte `.env` und `backups/` werden nie
+      übertragen oder überschrieben. Dateien, die nur auf dem Server liegen, bleiben, und `/opt/westbummeln` behält seine Rechte.
    3. Meldet den Server mit dem kurzlebigen `GITHUB_TOKEN` des Jobs bei ghcr.io an. Das Token verfällt am Jobende,
       auf dem Server liegt kein dauerhaftes Passwort.
    4. Führt `cd /opt/westbummeln && IMAGE_TAG=<sha> ./remote-deploy.sh` aus. Das Skript zieht das Image,
