@@ -190,6 +190,8 @@ CONTENT_SECURITY_POLICY = {
         'img-src': [SELF, 'data:'],
         'connect-src': [SELF, GOOGLE_GSI],
         'frame-src': [GOOGLE_GSI],
+        'manifest-src': [SELF],  # /manifest.webmanifest
+        'worker-src': [SELF],  # Service Worker /sw.js
         'object-src': [NONE],
         'base-uri': [NONE],
         'form-action': [SELF],

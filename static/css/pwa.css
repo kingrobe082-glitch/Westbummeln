@@ -1,0 +1,11 @@
+/* Progressive Web App: Update-Hinweis, Installieren-Knopf, Offline-Seite. */
+.pwaBar{position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:50;display:flex;gap:10px;align-items:center;max-width:calc(100vw - 24px);background:#15263a;border:1px solid #41617e;border-radius:10px;padding:8px 10px 8px 14px;box-shadow:0 6px 24px #000a;font-size:13px}
+.pwaBar button{min-height:34px;padding:6px 10px;white-space:nowrap}
+.pwaBar .pwaClose{background:transparent;border-color:transparent;padding:6px 8px}
+.pwaInstall{display:block;margin-top:10px}
+.pwaOfflineMain{display:grid;place-items:center;min-height:100vh;grid-template-columns:1fr}
+.pwaOfflineBox{max-width:440px;text-align:center;padding:28px 22px}
+.pwaOfflineBox img{display:block;margin:0 auto 12px;border-radius:20px}
+.pwaOfflineBox h1{margin-bottom:12px}
+.pwaButton{display:inline-block;margin-top:6px;border:1px solid #54718e;border-radius:8px;background:#263f59;color:#fff;padding:9px 16px;text-decoration:none}
+.pwaButton:hover{background:#385e7d}

@@ -179,7 +179,8 @@ def test_security_headers(client):
     for directive in ("default-src 'self'", "script-src 'self' https://accounts.google.com/gsi/client",
                       "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
                       "frame-ancestors 'none'", "object-src 'none'",
-                      "connect-src 'self' https://accounts.google.com/gsi/", "img-src 'self' data:"):
+                      "connect-src 'self' https://accounts.google.com/gsi/", "img-src 'self' data:",
+                      "manifest-src 'self'", "worker-src 'self'"):
         assert directive in csp
     directives = dict(part.strip().split(' ', 1) for part in csp.split(';'))
     assert [name for name, value in directives.items() if 'unsafe' in value] == ['style-src']  # nie bei Skripten
