@@ -5,17 +5,28 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from django.contrib.sessions.models import Session
 from django.test import RequestFactory
 
+import westbummeln.security
 from accounts import lockout
 from westbummeln.security import client_ip
 
 pytestmark = pytest.mark.django_db
 ROOT = Path(__file__).resolve().parent.parent
 LIMIT_MESSAGE = 'Zu viele Anfragen. Bitte warte kurz und versuche es dann erneut.'
+
+
+@pytest.fixture
+def fixed_limit_window(monkeypatch):
+    """Die IP-Limits zählen in festen Zeitfenstern (int(time // Periode)). Fällt eine Testserie
+    zufällig über eine Fenstergrenze, beginnt die Zählung neu und der Test schlägt sporadisch fehl.
+    Deshalb steht die Uhr des Limiters in den Limit-Tests still (nicht global: andere Tests
+    stellen die Uhr selbst vor und brauchen dann neue Fenster)."""
+    monkeypatch.setattr(westbummeln.security, 'time', SimpleNamespace(time=lambda: 1_800_000_000.0))
 
 
 def post_from(client, path, data, ip='10.0.0.1', **extra):
@@ -42,6 +53,7 @@ def test_client_ip_uses_last_proxy_hop(settings):
 # ------------------------------------------------------------------- IP-Limits
 
 
+@pytest.mark.usefixtures("fixed_limit_window")
 def test_login_limit_is_per_ip(game_client):
     client = game_client()
     for number in range(10):
@@ -53,6 +65,7 @@ def test_login_limit_is_per_ip(game_client):
     assert login(client, 'niemand99', 'falsch123', ip='10.0.0.2').status_code == 400
 
 
+@pytest.mark.usefixtures("fixed_limit_window")
 def test_register_limit(game_client):
     client = game_client()
     for number in range(5):
@@ -64,6 +77,7 @@ def test_register_limit(game_client):
     assert response.status_code == 429
 
 
+@pytest.mark.usefixtures("fixed_limit_window")
 def test_api_limit_returns_json(player, settings):
     settings.RATE_LIMITS = {**settings.RATE_LIMITS, 'api': '3/m'}
     player.create()
@@ -80,6 +94,7 @@ def test_api_limit_is_generous_enough_for_polling(settings):
     assert period == 'm' and amount >= 3 * 75
 
 
+@pytest.mark.usefixtures("fixed_limit_window")
 def test_discord_callback_limit(client, settings):
     settings.RATE_LIMITS = {**settings.RATE_LIMITS, 'discord': '0/m'}
     response = client.get('/auth/discord/callback?code=x&state=y')
