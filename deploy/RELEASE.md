@@ -100,7 +100,7 @@ Repository-Secrets und -Variablen kann nur jemand mit Admin-Rechten auf dem Repo
 | `DEPLOY_USER` | Secret | ja | SSH-Benutzer, `deploy` |
 | `DEPLOY_SSH_KEY` | Secret | ja | Privater SSH-Schlüssel (komplett, inkl. `-----BEGIN OPENSSH PRIVATE KEY-----`). Nur für Deploys, ohne Passphrase. Der öffentliche Teil steht in `~deploy/.ssh/authorized_keys`. |
 | `DEPLOY_KNOWN_HOSTS` | Secret | ja | Host-Key-Zeile(n) des Servers für `known_hosts`, z. B. Ausgabe von `ssh-keyscan -t ed25519 <DEPLOY_HOST>`. Fingerprint mit `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` auf dem Server abgleichen. Bei einem anderen Port als 22 lautet die Zeile `[host]:port …`. |
-| `DEPLOY_DOMAIN` | Variable | nein | Öffentliche Domain ohne `https://`, z. B. `westbummeln.example.de`. Ist sie gesetzt, prüft der Lauf am Ende `https://<domain>/healthz`. |
+| `DEPLOY_DOMAIN` | Variable | nein | Öffentliche Domain ohne `https://`, für Produktion `planspiel.7z2.de`. Ist sie gesetzt, prüft der Lauf am Ende `https://<domain>/healthz`. |
 | `DEPLOY_SSH_PORT` | Variable | nein | SSH-Port, Standard `22` |
 
 Ändert sich die IP des Servers, müssen `DEPLOY_HOST` und `DEPLOY_KNOWN_HOSTS` neu gesetzt werden. Workflow und Doku enthalten bewusst keine IP.
@@ -114,8 +114,13 @@ gh secret set DEPLOY_SSH_KEY --repo kingrobe082-glitch/Westbummeln < deploy_key
 ```
 
 ```powershell
-gh variable set DEPLOY_DOMAIN --repo kingrobe082-glitch/Westbummeln --body westbummeln.example.de
+gh variable set DEPLOY_DOMAIN --repo kingrobe082-glitch/Westbummeln --body planspiel.7z2.de
 ```
+
+**Für den Repo-Besitzer, vor dem ersten Deploy zu setzen:**
+
+- [ ] Variable `DEPLOY_DOMAIN` = `planspiel.7z2.de` (siehe Befehl oben)
+- [ ] Secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (Werte kommen aus der Server-Einrichtung)
 
 ### Optional: Freigabe vor jedem Deploy
 
