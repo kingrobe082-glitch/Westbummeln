@@ -14,6 +14,7 @@ Compose-Datei, Caddyfile und `remote-deploy.sh` liegen ebenfalls in `deploy/`, d
 |---|---|
 | Instanz | AWS EC2 t3.micro, eu-central-1 (Frankfurt), 2 vCPU, ~900 MB RAM, 28 GB Disk |
 | System | Ubuntu 26.04 LTS („resolute“) |
+| Domain | `planspiel.7z2.de` (A-Record → `63.184.64.49`, kein AAAA-Record) |
 | Öffentliche IP | `63.184.64.49` (Elastic IP, fest) |
 | Hostname / Zeitzone | `westbummeln` / `Europe/Berlin` |
 | Admin-Zugang | `ssh -i "C:\Users\Lars\Downloads\lars-devvi.pem" ubuntu@63.184.64.49` (sudo ohne Passwort) |
@@ -27,6 +28,7 @@ Compose-Datei, Caddyfile und `remote-deploy.sh` liegen ebenfalls in `deploy/`, d
 - [x] Neue Verbindungen als `ubuntu` und `deploy` geprüft, Passwort-Login abgelehnt,
       `docker run --rm hello-world` als `deploy` ok, scp als `deploy` ok, `deploy` hat kein sudo
 - [x] Von außen erreichbar: 80/tcp und 443/tcp (Probe-Container). 443/udp nicht getestet.
+- [x] Domain `planspiel.7z2.de` zeigt auf den Server: `curl http://planspiel.7z2.de/` erreicht den Probe-Container
 - [x] GitHub-Secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` gesetzt
 - [ ] Security Group: prüfen, dass 22/tcp für GitHub Actions offen ist (0.0.0.0/0) und 443/udp erlaubt ist
 - [ ] Compose-Stack ausrollen (Release-Pipeline)
@@ -156,6 +158,7 @@ Test, ob 80 von außen ankommt (danach Container wieder weg):
 ```bash
 sudo docker run --rm -d -p 80:80 --name probe caddy:2-alpine caddy respond --listen :80 "ok"
 # vom PC:  curl http://63.184.64.49/   → ok
+#          curl http://planspiel.7z2.de/   → ok   (prüft zusätzlich den DNS-Eintrag)
 sudo docker rm -f probe
 ```
 
