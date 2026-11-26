@@ -29,20 +29,27 @@ def api(request):
         return json_reply({'error': 'JSON erforderlich'}, 415)
     try:
         data = read_json(request, 'Anfrage zu groß')
-        code = str(data.get('room', 'WB')).upper().strip()
-        if not ROOM_RE.fullmatch(code):
+        action = data.get('action')
+        code = str(data.get('room') or '').upper().strip()
+        if action != 'create_room' and not ROOM_RE.fullmatch(code):
             raise ValueError('Ungültiger Raumcode')
         user = request.user
         if not user.is_authenticated:
             return json_reply({'error': 'Sitzung abgelaufen – bitte anmelden.'}, 401)
         now = time.time()
         with rooms.lock:
-            r = rooms.get_room(code)
-            engine.clean_offline(r, now)
-            engine.update(r, now)
-            result = engine.handle(r, data, user.pk, user.username, user.is_staff, now)
+            rooms.sweep(now)
+            if action == 'create_room':
+                result = rooms.create_room(user.pk, user.username, user.is_staff, now)
+            else:
+                r = rooms.get_room(code)
+                engine.clean_offline(r, now)
+                engine.update(r, now)
+                result = rooms.handle(r, data, user.pk, user.username, user.is_staff, now)
             # Antwort noch unter der Sperre serialisieren, damit kein anderer Thread dazwischenfunkt.
             return json_reply(result)
+    except rooms.KickedError as error:
+        return json_reply({'error': str(error), 'kicked': True}, 403)
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         return json_reply({'error': str(error)}, 400)
     except Exception:

@@ -20,6 +20,12 @@
 .radio-funk{border-left:3px solid #4aa3ff;padding-left:8px}
 .radio-discord{border-left:3px solid #5865f2;background:#5865f21f;padding-left:8px}
 .radio-auto{opacity:.85}
+.roomBadge{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.roomBadge strong{font:700 28px ui-monospace,Consolas,monospace;letter-spacing:.18em;background:#0d1d2c;border:1px solid #54718e;border-radius:8px;padding:4px 12px;user-select:all}
+.roomBadge button{flex:0 0 auto}
+.playerActions{display:flex;gap:6px;flex-wrap:wrap}
+.playerActions button{min-height:30px;padding:4px 8px;font-size:12px}
+.playerActions .danger{background:#7a2a2a;border-color:#c45b5b}
 #securityPanel{margin:10px 0}
 #securityPanel summary{cursor:pointer;margin-bottom:8px}
 #logoutAll{margin-top:10px}

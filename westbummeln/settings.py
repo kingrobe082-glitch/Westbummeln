@@ -213,6 +213,12 @@ STORAGES = {
     },
 }
 
+# Spielräume (liegen im Speicher). Alle Grenzen sind per Umgebungsvariable änderbar.
+ROOM_MAX_PER_ACCOUNT = int(os.environ.get('ROOM_MAX_PER_ACCOUNT', '2'))  # eigene Räume pro Konto
+ROOM_MAX_PLAYERS = int(os.environ.get('ROOM_MAX_PLAYERS', '20'))  # Spieler pro Raum
+ROOM_MAX_TOTAL = int(os.environ.get('ROOM_MAX_TOTAL', '200'))  # Räume insgesamt
+ROOM_EMPTY_TTL = int(os.environ.get('ROOM_EMPTY_TTL', '1800'))  # Sekunden, bis ein leerer Raum gelöscht wird
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
