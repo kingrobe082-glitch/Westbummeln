@@ -128,12 +128,13 @@ def test_old_sqlite_without_email_and_discord_columns(tmp_path, django_user_mode
 def test_id_taken_by_new_developer_gets_new_id(legacy_sqlite, django_user_model):
     """Startet der neue Server vor dem Import und legt das Entwicklerkonto mit ID 1 an,
     geht kein altes Konto verloren: Anna bekommt eine neue ID, die alte Chefin ist schon da."""
-    django_user_model.objects.create(username='Chefin', is_staff=True, is_superuser=True)
+    # ID fest auf 1: Auf Postgres laufen Sequenzen über Tests hinweg weiter.
+    django_user_model.objects.create(pk=1, username='Chefin', is_staff=True, is_superuser=True)
     output = run_import(legacy_sqlite)
     assert 'Neu übernommen: 4' in output
     assert 'Konto 5 (Chefin)' in output  # gleicher Name, anderes Konto: übersprungen und gemeldet
     anna = django_user_model.objects.get(username='Anna')
-    assert anna.pk != 1
+    assert anna.pk == 5  # hinter die höchste übernommene ID (4), Chefin (5) wurde übersprungen
     assert authenticate(None, username='Anna', password='annapass1') == anna
     assert 'Neu übernommen: 0' in run_import(legacy_sqlite)
 
