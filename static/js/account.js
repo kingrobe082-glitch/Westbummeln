@@ -9,6 +9,7 @@ function showAccount({ name, developer, hasPassword }) {
   $('signedInAs').textContent = name ? 'Angemeldet als ' + name : '';
   $('roomEntry').classList.toggle('hidden', !name);
   $('join').disabled = !name;
+  $('createRoom').disabled = !name;
   $('developerPanel').classList.toggle('hidden', !developer);
   if (!developer) {
     $('developerPanel').open = false;
@@ -129,7 +130,8 @@ $('developerRefresh').onclick = async () => {
     const response = await fetch('/developer');
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Serverstatus gerade nicht verfügbar.');
-    status.textContent = data.rooms + ' aktive Räume · ' + data.players + ' aktive Spieler';
+    status.textContent = data.rooms + ' aktive Räume · ' + data.players + ' aktive Spieler · '
+      + data.rooms_total + ' Räume insgesamt';
   } catch (error) {
     status.textContent = error.message;
   }

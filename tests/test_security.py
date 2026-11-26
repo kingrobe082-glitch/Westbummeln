@@ -66,7 +66,7 @@ def test_register_limit(game_client):
 
 def test_api_limit_returns_json(player, settings):
     settings.RATE_LIMITS = {**settings.RATE_LIMITS, 'api': '3/m'}
-    player.join()
+    player.create()
     for _ in range(2):
         assert player.api('state').status_code == 200
     response = player.api('state')
@@ -213,7 +213,7 @@ def test_foreign_origin_is_refused(player, headers):
 
 
 def test_own_origin_is_accepted(player):
-    response = player.client.post('/api', json.dumps({'action': 'join', 'room': 'WB'}), content_type='application/json',
+    response = player.client.post('/api', json.dumps({'action': 'create_room'}), content_type='application/json',
                                   headers={'X-CSRFToken': player.token(), 'Origin': 'http://testserver',
                                            'Sec-Fetch-Site': 'same-origin'})
     assert response.status_code == 200

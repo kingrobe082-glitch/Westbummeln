@@ -14,7 +14,7 @@ jobs:
         database: [postgres, sqlite]
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: westbummeln
           POSTGRES_PASSWORD: westbummeln
@@ -38,12 +38,11 @@ jobs:
       - run: ruff check .
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py check
-      - name: Produktions-Checks (wie auf Render)
+      - name: Produktions-Checks (wie im Docker-Container auf dem Server)
         env:
-          RENDER: "true"
-          DEBUG: "0"
+          DJANGO_ENV: prod
           SECRET_KEY: ci-nur-zum-pruefen-ci-nur-zum-pruefen-ci-nur-zum-pruefen
-          RENDER_EXTERNAL_HOSTNAME: westbummeln-multiplayer.onrender.com
+          ALLOWED_HOSTS: westbummeln.example
           DATABASE_URL: postgres://westbummeln:westbummeln@localhost:5432/westbummeln
         run: |
           python manage.py collectstatic --noinput
