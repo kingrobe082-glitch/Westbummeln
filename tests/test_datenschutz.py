@@ -306,6 +306,21 @@ def test_register_form_asks_no_email(client):
     assert 'accountEmail' not in html and 'autocomplete="email"' not in html
 
 
+def test_start_page_asks_for_age_first(client):
+    html = client.get('/').content.decode()
+    gate = html.index('id="ageGate"')
+    gate_script = html.index('js/agegate.js')
+    assert gate < gate_script < html.index('<header>')  # läuft, bevor der Rest der Seite gezeichnet wird
+    assert 'Bist du 18 Jahre oder älter?' in html
+    assert 'id="ageYes"' in html and 'id="ageNo"' in html
+
+
+def test_privacy_page_has_no_age_gate(client):
+    html = client.get('/datenschutz').content.decode()
+    assert 'ageGate' not in html
+    assert 'nur für Personen ab 18 Jahren' in html
+
+
 def test_privacy_links_on_start_page(client):
     html = client.get('/').content.decode()
     assert '<footer class="siteFooter small"><a href="/datenschutz">Datenschutz</a></footer>' in html
