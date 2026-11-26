@@ -58,7 +58,10 @@ Konten ohne E-Mail funktionieren weiter; die Datenbank wird automatisch erweiter
 Testkonto: Benutzername `test`, Passwort `test`. Es wird beim lokalen Start von
 `python server.py` automatisch angelegt. Auf Render nur, wenn die Variable
 `CREATE_TEST_ACCOUNT=1` gesetzt ist. Danach wieder entfernen, denn ein Konto mit
-so einem Passwort darf nicht dauerhaft öffentlich erreichbar sein.
+so einem Passwort darf nicht dauerhaft öffentlich erreichbar sein. Ohne die
+Variable löscht der Server auf Render beim Start ein vorhandenes Testkonto
+(auch eines, das aus dem GitHub-Backup zurückgeholt wurde), und die Löschung
+wird mit dem nächsten Backup übernommen.
 
 ## Automatisches Backup auf GitHub (kostenlos, für Render Free)
 

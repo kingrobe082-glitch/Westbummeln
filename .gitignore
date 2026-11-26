@@ -1,0 +1,15 @@
+# Kontodatenbank (enthält E-Mails und Passwort-Hashes) – nie ins öffentliche Repo
+*.sqlite3
+*.sqlite3-journal
+*.db
+
+# Geheimnisse
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
