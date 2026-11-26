@@ -31,26 +31,51 @@ SQLite-Datei ohne Sicherung). Der neue Server startet leer, Spieler registrieren
 Google-Spieler erhalten einen automatisch erzeugten Funknamen. Ein Google-Konto
 wird erst bei der ersten erfolgreichen Anmeldung im Spiel angelegt.
 
-## Eigenes Entwicklerkonto
+## Erster Admin (früher „Entwicklerkonto“)
 
 Auf dem Server in `/opt/westbummeln/.env` die Variablen `DEVELOPER_USERNAME` und
 `DEVELOPER_PASSWORD` setzen (am besten schon bei der Erstinstallation).
 Wähle einen freien Benutzernamen und ein eigenes Passwort mit 16–128 Zeichen.
 Der Server legt das Konto bei jedem Start an, falls es noch fehlt
-(`python manage.py bootstrap_accounts`). Melde dich über das normale
-Anmeldeformular an. Die Entwicklerübersicht erscheint direkt darunter. Das
-Entwicklerkonto darf sich auch unter `/admin/` anmelden.
+(`python manage.py bootstrap_accounts`). Es ist Superuser und damit Admin.
+Weitere Moderatoren und Admins ernennst du danach unter `/admin/` (siehe unten).
 
-Ein bereits vorhandenes normales Konto wird nicht zum Entwicklerkonto.
+Ein bereits vorhandenes normales Konto wird nicht zum Admin.
 Bei einer Namenskollision startet der Dienst mit einer Fehlermeldung.
 Die Variablen dienen der Ersteinrichtung. Ein später geänderter Wert setzt das
-Passwort eines bestehenden Entwicklerkontos nicht zurück.
+Passwort eines bestehenden Kontos nicht zurück. Alte Entwicklerkonten aus der
+früheren Datenbank werden beim Import zu Admins.
 
-Im Spiel kannst du mit dem Entwicklerkonto über **Besetzte Leitstelle
-übernehmen** die Leitstellenrolle übernehmen. Der bisherige
-Leitstellenspieler bleibt im Raum und kann ein Fahrzeug wählen. Die
-Übergabe erscheint im Funkprotokoll. Wenn du gerade ein Fahrzeug führst,
-musst du es zuerst regulär verlassen.
+## Rollen und Moderation
+
+| Rolle | Darf |
+|---|---|
+| Spieler | spielen |
+| Moderator | `/admin/` öffnen, Konten ansehen und suchen, Spieler sperren und entsperren, aktive Räume ansehen, Spieler aus Räumen entfernen, Räume schließen, besetzte Leitstelle übernehmen |
+| Admin | alles wie Moderator, außerdem Kontodaten bearbeiten, Rollen vergeben, Moderatoren und Admins sperren, Djangos Änderungsprotokoll sehen |
+
+Rollen sind die Gruppen „Moderator“ und „Admin“; ihre Rechte gleicht der Server bei
+jedem `migrate` ab. Rolle ändern: Konto unter `/admin/` öffnen → **Rolle ändern**.
+Niemand ändert die eigene Rolle oder sperrt sich selbst. Angemeldete Moderatoren
+und Admins sehen auf der Spielseite den Link **Moderation öffnen**.
+
+**Sperren:** Konto öffnen → **Sperren**, Dauer (1 Stunde, 1 Tag, 7 Tage, dauerhaft)
+und Grund wählen. Oder in der Kontoliste mehrere Konten auswählen → Aktion
+„Ausgewählte Konten sperren …“. Eine Sperre beendet sofort alle Sitzungen und nimmt
+den Spieler aus allen Räumen (Fahrzeug und Leitstelle werden frei, die Funkmeldung
+nennt keinen Grund; besitzt er einen Raum, verwaltet ihn ein anderer Spieler).
+Anmelden mit Passwort, Google oder Discord zeigt „Dein Konto ist gesperrt bis …“.
+Den Grund sieht nur die Moderation. **Sperre aufheben** beendet sie vorzeitig.
+
+**Aktive Räume** zeigt alle Räume mit Spielern. **Entfernen** wirft einen Spieler
+hinaus (er darf wieder beitreten), **Raum schließen** löscht den Raum samt Spielstand.
+
+**Moderationsprotokoll** listet jede Sperre, Entsperrung, jeden Rauswurf, jede
+Raumschließung und Rollenänderung mit Zeit, Akteur und Ziel, filterbar nach Aktion,
+Datum und Akteur. Andere Änderungen im Admin stehen unter „Logeinträge“ (nur Admins).
+
+Schreibende Anfragen an `/admin/` sind auf 60 pro Minute und IP begrenzt
+(`RATE_LIMIT_MODERATION`).
 
 ## E-Mail-Adresse und Testkonto
 

@@ -11,6 +11,7 @@ Server.
 | `westbummeln/` | Einstellungen (aus Umgebungsvariablen), URLs, WSGI |
 | `accounts/` | Konten (eigenes User-Modell), Anmeldung mit Name/E-Mail, Google, Discord, Import alter Konten |
 | `game/` | `engine.py` reine Spiellogik, `rooms.py` Spielräume im Speicher, `views.py` `POST /api` |
+| `moderation/` | Rollen (Moderator, Admin), Sperren, Moderationsprotokoll, Admin-Seite „Aktive Räume“ (siehe `KONTEN.md`) |
 | `integrations/` | Discord-Anbindung (siehe `DISCORD.md`) |
 | `templates/`, `static/` | Spielseite, CSS, JavaScript, Karte |
 | `tests/` | pytest-Tests |
@@ -79,7 +80,7 @@ Wichtige Umgebungsvariablen:
 | `DATABASE_URL` | Postgres-Verbindung |
 | `SECRET_KEY` | Geheimer Django-Schlüssel |
 | `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` | Domain des Spiels |
-| `DEVELOPER_USERNAME`, `DEVELOPER_PASSWORD` | Entwicklerkonto (siehe `KONTEN.md`) |
+| `DEVELOPER_USERNAME`, `DEVELOPER_PASSWORD` | erster Admin (siehe `KONTEN.md`) |
 | `GOOGLE_CLIENT_ID` | Google-Anmeldung (siehe `KONTEN.md`) |
 | `DISCORD_*` | Discord-Anbindung (siehe `DISCORD.md`) |
 

@@ -5,6 +5,7 @@ import pytest
 from django.test import Client
 
 from game import rooms
+from tests.helpers import make_moderator
 
 
 @pytest.mark.django_db
@@ -161,7 +162,7 @@ def test_player_id_from_other_account_is_rejected(player, game_client):
 
 def test_developer_view(player, django_user_model):
     assert player.client.get('/developer').status_code == 403
-    django_user_model.objects.filter(username='Florian1').update(is_staff=True)
+    make_moderator(django_user_model.objects.get(username='Florian1'))
     player.create()
     assert player.client.get('/developer').json() == {'rooms': 1, 'players': 1, 'rooms_total': 1}
 

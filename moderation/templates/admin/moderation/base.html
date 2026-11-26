@@ -1,0 +1,16 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'moderation/moderation.css' %}">{% endblock %}
+{% block extrahead %}{{ block.super }}<script src="{% static 'moderation/confirm.js' %}" defer></script>{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Start</a>
+  {% if target %}
+    &rsaquo; <a href="{% url 'admin:accounts_user_changelist' %}">Konten</a>
+    &rsaquo; <a href="{% url 'admin:accounts_user_change' target.pk %}">{{ target.username }}</a>
+  {% elif targets %}
+    &rsaquo; <a href="{% url 'admin:accounts_user_changelist' %}">Konten</a>
+  {% endif %}
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
