@@ -274,7 +274,7 @@ def handle(r, data, account_id, name, is_developer, now):
 
 # ------------------------------------------------------------------ Moderation (Admin-Seite)
 
-def remove_account(account_id, now):
+def remove_banned_account(account_id, now):
     """Gesperrtes Konto aus allen Räumen nehmen. Die Funkmeldung nennt keinen Grund.
 
     Besitzt das Konto einen Raum, übernimmt ein anderer anwesender Spieler die Verwaltung.

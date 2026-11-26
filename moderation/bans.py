@@ -114,7 +114,7 @@ def ban_user(actor, target, reason, duration):
         event = audit.log(actor, ModerationEvent.BAN, target=target, duration=label, reason=reason,
                           ends_at=ban.ends_at.isoformat() if ban.ends_at else None, replaced=replaced)
     forget(target)
-    removed = rooms.remove_account(target.pk, time.time())
+    removed = rooms.remove_banned_account(target.pk, time.time())
     if removed:
         event.details['rooms'] = removed
         event.save(update_fields=['details'])
