@@ -1,9 +1,9 @@
-Django>=5.2.8,<5.3
-dj-database-url>=2.3,<4
-psycopg[binary]>=3.2,<4
-gunicorn>=23,<24
-whitenoise>=6.8,<7
-google-auth>=2.30,<3
-requests>=2.32,<3
+Django>=5.2.19,<5.3
+dj-database-url>=3.1.2,<4
+psycopg[binary]>=3.3.9,<4
+gunicorn>=27.0.1,<28
+whitenoise>=6.12.0,<7
+google-auth>=2.63.1,<3
+requests>=2.34.2,<3
 django-csp>=4.0,<5
-tzdata>=2024.1  # Zeitzonen für zoneinfo, auch unter Windows
+tzdata>=2026.6  # Zeitzonen für zoneinfo, auch unter Windows
