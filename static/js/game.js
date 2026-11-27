@@ -149,7 +149,169 @@ function animateVehicles() {
 }
 requestAnimationFrame(animateVehicles);
 
-function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){pins.push(WBFahrzeuge.marker(v,position(v)))}$('markers').innerHTML=pins.join('');WBFahrzeuge.layout($('markers'));$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
+// Karte: Einsatz- und Fahrzeugpunkte. Die Buttons bleiben zwischen den Abfragen (alle 1,5 s) bestehen,
+// nur Lage und Beschriftung werden angepasst – so bleiben Tastaturfokus und offene Fahrzeug-Info erhalten.
+const phaseLabels = {anfahrt: 'Anfahrt', vorort: 'Vor Ort', rueckfahrt: 'Rückfahrt'};
+const mapPins = new Map();
+let mapVehicle = '';
+let flashVehicle = '';
+let flashUntil = 0;
+
+function showIncident(id) {
+  focusIncident = id;
+  if ($('incidentFilter').value === 'closed') $('incidentFilter').value = 'all';
+  render();
+  document.getElementById('inc-' + id)?.scrollIntoView({behavior: 'smooth', block: 'center'});
+}
+
+function showVehicleInList(id) {
+  const find = () => $('vehicles').querySelector(`[data-vehicle-item="${CSS.escape(id)}"]`);
+  if (!find()) {
+    $('vehicleSearch').value = '';
+    $('unitFilter').value = 'all';
+  }
+  flashVehicle = id;
+  flashUntil = Date.now() + 2500;
+  render();
+  find()?.scrollIntoView({behavior: 'smooth', block: 'center'});
+  setTimeout(() => { if (Date.now() >= flashUntil) render(); }, 2600);
+}
+
+function mapPin(key, create) {
+  let pin = mapPins.get(key);
+  if (!pin) {
+    pin = document.createElement('button');
+    pin.type = 'button';
+    create(pin);
+    mapPins.set(key, pin);
+    $('markers').appendChild(pin);
+  }
+  return pin;
+}
+
+function renderMap() {
+  const shown = new Set();
+  for (const incident of state.incidents) {
+    if (incident.closed) continue;
+    const pin = mapPin('i:' + incident.id, pin => {
+      pin.className = 'pin';
+      pin.textContent = '!';
+      pin.dataset.pin = incident.id;
+      pin.addEventListener('click', () => showIncident(pin.dataset.pin));
+    });
+    pin.classList.toggle('selected', focusIncident === incident.id);
+    pin.title = incident.title;
+    pin.setAttribute('aria-label', `Einsatz ${incident.title}, ${incident.address}`);
+    pin.style.left = `${incident.pos[0] * 100}%`;
+    pin.style.top = `${incident.pos[1] * 100}%`;
+    shown.add('i:' + incident.id);
+  }
+  // Fahrzeuge als Mini-Fahrzeug (Aussehen, Drehung und Versatz bei mehreren: WBFahrzeuge in fahrzeuge.js).
+  for (const vehicle of state.vehicles) {
+    const phase = phaseLabels[vehicle.phase];
+    if (!phase) continue;
+    const pin = mapPin('v:' + vehicle.id, pin => {
+      pin.dataset.vehiclePin = vehicle.id;
+      pin.innerHTML = WBFahrzeuge.inner(vehicle);  // Grafik + Namensschild, je Fahrzeug unveränderlich
+      pin.setAttribute('aria-haspopup', 'dialog');
+      pin.setAttribute('aria-controls', 'vehicleInfo');
+      pin.addEventListener('click', () => toggleVehicleInfo(pin.dataset.vehiclePin));
+    });
+    const className = `pin vehicle ${WBFahrzeuge.classes(vehicle)}${mapVehicle === vehicle.id ? ' selected' : ''}`;
+    if (pin.className !== className) pin.className = className;
+    pin.dataset.dir = WBFahrzeuge.direction(vehicle);
+    pin.title = WBFahrzeuge.describe(vehicle);
+    pin.setAttribute('aria-label', `${vehicle.call}, Status ${vehicle.status} ${labels[vehicle.status] || ''}, ${phase}`);
+    pin.setAttribute('aria-expanded', String(mapVehicle === vehicle.id));
+    const [x, y] = position(vehicle);
+    pin.style.left = `${x * 100}%`;
+    pin.style.top = `${y * 100}%`;
+    shown.add('v:' + vehicle.id);
+  }
+  for (const [key, pin] of mapPins) {
+    if (!shown.has(key)) {
+      pin.remove();
+      mapPins.delete(key);
+    }
+  }
+  WBFahrzeuge.layout($('markers'));
+  updateVehicleInfo();
+}
+
+// Info-Karte zu einem Fahrzeugpunkt. Sie wird beim Neuzeichnen nur aktualisiert, nicht neu aufgebaut.
+function toggleVehicleInfo(id) {
+  if (mapVehicle === id) {
+    closeVehicleInfo(true);
+    return;
+  }
+  mapVehicle = id;
+  const card = $('vehicleInfo');
+  const pin = mapPins.get('v:' + id);
+  const map = $('map').getBoundingClientRect(), at = (pin?.querySelector('.veh-body') || pin)?.getBoundingClientRect();
+  // In die Ecke gegenüber dem Punkt, damit die Info-Karte den Punkt nicht verdeckt.
+  const left = !at || at.left - map.left > map.width / 2;
+  const top = !at || at.top - map.top > map.height / 2;
+  card.classList.toggle('at-left', left);
+  card.classList.toggle('at-right', !left);
+  card.classList.toggle('at-top', top);
+  card.classList.toggle('at-bottom', !top);
+  card.classList.remove('hidden');
+  renderMap();
+  card.focus({preventScroll: true});
+}
+
+function closeVehicleInfo(returnFocus) {
+  const card = $('vehicleInfo');
+  const pin = mapPins.get('v:' + mapVehicle);
+  const hadFocus = card.contains(document.activeElement);
+  mapVehicle = '';
+  card.classList.add('hidden');
+  if (pin) {
+    pin.classList.remove('selected');
+    pin.setAttribute('aria-expanded', 'false');
+    if (returnFocus || hadFocus) pin.focus({preventScroll: true});
+  }
+}
+
+function setInfoText(id, text) {
+  if ($(id).textContent !== text) $(id).textContent = text;
+}
+
+function updateVehicleInfo() {
+  if (!mapVehicle) return;
+  const vehicle = state.vehicles.find(v => v.id === mapVehicle);
+  if (!vehicle || !phaseLabels[vehicle.phase]) {
+    closeVehicleInfo(false);
+    return;
+  }
+  const incident = state.incidents.find(i => i.id === vehicle.incident);
+  const owner = state.players.find(p => p.id === vehicle.owner);
+  setInfoText('vehicleInfoTitle', vehicle.call);
+  setInfoText('vehicleInfoStatus', `${vehicle.status} · ${labels[vehicle.status] || ''}`);
+  $('vehicleInfoStatus').dataset.fms = vehicle.status;
+  setInfoText('vehicleInfoPhase', phaseLabels[vehicle.phase]);
+  setInfoText('vehicleInfoIncident', incident
+    ? `${incident.title} · ${incident.address}${incident.closed ? ' (abgeschlossen)' : ''}`
+    : '–');
+  setInfoText('vehicleInfoCrew', owner ? owner.name + (owner.id === me ? ' (du)' : '') : 'KI-Besatzung');
+  $('vehicleInfoIncidentBtn').classList.toggle('hidden', !incident || incident.closed);
+  $('vehicleInfoListBtn').classList.toggle('hidden', $('vehiclesPanel').classList.contains('hidden'));
+}
+
+$('vehicleInfoClose').addEventListener('click', () => closeVehicleInfo(true));
+$('vehicleInfoIncidentBtn').addEventListener('click', () => {
+  const vehicle = state?.vehicles.find(v => v.id === mapVehicle);
+  if (vehicle?.incident) showIncident(vehicle.incident);
+});
+$('vehicleInfoListBtn').addEventListener('click', () => {
+  if (mapVehicle) showVehicleInList(mapVehicle);
+});
+document.addEventListener('click', event => {
+  if (mapVehicle && !event.target.closest('#vehicleInfo, [data-vehicle-pin]')) closeVehicleInfo(false);
+});
+document.addEventListener('keydown', event => {
+  if (mapVehicle && event.key === 'Escape') closeVehicleInfo(true);
+});
 function render(){if(!state)return;
 updateFme(state);
 $('countOpen').textContent=state.incidents.filter(i=>!i.closed).length;
@@ -160,10 +322,10 @@ let p=state.players.find(p=>p.id===me),isLs=p?.role==='ls',isGf=p?.role==='gf',l
 $('takeLs').textContent=developerAccount&&lsOwner&&!isLs
   ? 'Besetzte Leitstelle übernehmen'
   : 'Leitstelle übernehmen';$('leaveLs').disabled=!isLs;$('goGf').disabled=isLs;$('incidentsPanel').classList.remove('hidden');$('incidentsPanel').querySelectorAll('.quick, .screen-title, #title, #address, #create').forEach(el=>el.classList.toggle('hidden',!isLs));$('vehiclesPanel').classList.toggle('hidden',isLs);$('controlPanel').classList.toggle('hidden',!isGf);$('dashboard').classList.toggle('hidden',!isLs);$('create').disabled=!isLs;let mine=state.vehicles.find(v=>v.id===p?.vehicle);$('myVehicle').innerHTML=mine?`<b>${esc(mine.call)}</b><p><span class="fms" data-fms="${mine.status}">${mine.status}</span> ${esc(labels[mine.status])}${phaseLabel(mine.phase)===labels[mine.status]?'':' · '+esc(phaseLabel(mine.phase))}</p>`:'Noch kein Fahrzeug besetzt';$('statuses').innerHTML=Object.entries(labels).map(([n,t])=>`<button data-status="${n}" class="${mine?.status==n?'active':''}" ${!mine?'disabled':''}>${n} ${esc(t)}</button>`).join('');$('statuses').querySelectorAll('button').forEach(b=>b.onclick=()=>send('status',{status:Number(b.dataset.status)}));$('release').disabled=!mine||mine.phase!=='wache';
-$('vehicles').innerHTML=state.vehicles.filter(v=>( $('unitFilter').value==='all'||String(v.unit)===$('unitFilter').value )&&v.call.toLowerCase().includes($('vehicleSearch').value.trim().toLowerCase())).map(v=>{let owner=state.players.find(p=>p.id===v.owner);return `<div class="item"><b>${esc(v.call)}</b> <span class="fms" data-fms="${v.status}">${v.status}</span><div class="small">${owner?'GF: '+esc(owner.name):'GF frei'} · ${v.seats} Plätze · ${esc(phaseLabel(v.phase))}</div><button data-vehicle="${esc(v.id)}" ${isLs||(owner&&owner.id!==me)||v.phase!=='wache'?'disabled':''}>${owner?.id===me?'Dein Fahrzeug':'Übernehmen'}</button></div>`}).join('');$('vehicles').querySelectorAll('[data-vehicle]').forEach(b=>b.onclick=()=>send('claim',{vehicle:b.dataset.vehicle}));renderRoomAdmin();
+$('vehicles').innerHTML=state.vehicles.filter(v=>( $('unitFilter').value==='all'||String(v.unit)===$('unitFilter').value )&&v.call.toLowerCase().includes($('vehicleSearch').value.trim().toLowerCase())).map(v=>{let owner=state.players.find(p=>p.id===v.owner);return `<div class="item${flashVehicle===v.id&&Date.now()<flashUntil?' vehicle-flash':''}" data-vehicle-item="${esc(v.id)}"><b>${esc(v.call)}</b> <span class="fms" data-fms="${v.status}">${v.status}</span><div class="small">${owner?'GF: '+esc(owner.name):'GF frei'} · ${v.seats} Plätze · ${esc(phaseLabel(v.phase))}</div><button data-vehicle="${esc(v.id)}" ${isLs||(owner&&owner.id!==me)||v.phase!=='wache'?'disabled':''}>${owner?.id===me?'Dein Fahrzeug':'Übernehmen'}</button></div>`}).join('');$('vehicles').querySelectorAll('[data-vehicle]').forEach(b=>b.onclick=()=>send('claim',{vehicle:b.dataset.vehicle}));renderRoomAdmin();
 updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}" data-state="${i.closed?'closed':i.working?'working':'open'}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">${esc(i.address)} · <span class="mono">${esc(i.created)}</span></div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+` <span class="fms" data-fms="${v.status}">${v.status}</span>`).join(', ')||'noch keine'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${vehicleOptions(i)}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row"><button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'Discord · ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
 
-const phaseLabel=p=>({wache:'Auf Wache',anfahrt:'Anfahrt',vorort:'Einsatzstelle',rueckfahrt:'Rückfahrt'})[p]||p;
+const phaseLabel=p=>p==='wache'?'Auf Wache':phaseLabels[p]||p;
 
 function renderSections(){
  const own=state.players.find(p=>p.id===me),isLs=own?.role==='ls';

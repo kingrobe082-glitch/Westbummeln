@@ -241,8 +241,6 @@ button.pin::after{content:'';position:absolute;inset:-9px;border-radius:50%}
 /* Wetter auf der Karte: dezent, Einsatzpunkte bleiben immer darüber und lesbar. */
 #markers{position:absolute;inset:0;z-index:4;pointer-events:none}
 #markers .pin{pointer-events:auto}
-/* Fahrzeugpunkte sind nur Anzeige: Steht ein Fahrzeug am Einsatzort, bleibt der Einsatzpunkt darunter anklickbar. */
-#markers .pin.vehicle{pointer-events:none}
 #weatherOverlay{position:absolute;inset:0;pointer-events:none;z-index:3;overflow:hidden;transition:background-color 1.5s ease,opacity 1.5s ease}
 #weatherOverlay::before,#weatherOverlay::after{content:"";position:absolute;inset:0;opacity:0;transition:opacity 1.5s ease}
 /* Regen: leicht abgedunkelt, zwei Tropfenschichten (nah/schnell, fern/langsam) */
@@ -262,3 +260,26 @@ button.pin::after{content:'';position:absolute;inset:-9px;border-radius:50%}
 @keyframes wb-wind{to{background-position:520px 28%,360px 64%}}
 @keyframes wb-wind2{to{background-position:440px 46%}}
 @media(prefers-reduced-motion:reduce){#weatherOverlay::before,#weatherOverlay::after{animation:none!important}}
+/* Mini-Fahrzeuge anklickbar: Der Button selbst ist nur ein 0×0-Anker (fahrzeuge.css) und fängt keine Klicks,
+   sonst läge button.pin::after um den Anker. Klickbar sind Grafik und Namensschild; die Grafik bekommt eine
+   unsichtbar vergrößerte Klickfläche (mind. ~28 px hoch), damit sie auch auf dem Handy gut zu treffen ist. */
+#markers .pin.veh{pointer-events:none}
+#markers .pin.veh::after{content:none}
+#markers .veh-body,#markers .veh-label{pointer-events:auto;cursor:pointer}
+#markers .veh-body::after{content:'';position:absolute;inset:-9px -4px}
+#markers .veh.selected .veh-body{outline:2px solid var(--focus);outline-offset:2px}
+/* Info-Karte zu einem Fahrzeugpunkt: in der Ecke gegenüber dem Punkt, über Wetter und Punkten */
+#vehicleInfo{position:absolute;z-index:5;width:min(280px,calc(100% - 16px));max-height:calc(100% - 16px);overflow:auto;background:#15181cf2;border:1px solid var(--line-2);border-top:3px solid var(--fms5);border-radius:2px;padding:0 10px 10px;box-shadow:0 4px 14px #0009;font-size:13px}
+#vehicleInfo.at-left{left:8px}#vehicleInfo.at-right{right:8px}#vehicleInfo.at-top{top:8px}#vehicleInfo.at-bottom{bottom:8px}
+#vehicleInfo:focus{outline:none}
+.vehicle-info-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 -10px 6px;padding-left:10px;background:var(--head);border-bottom:1px solid var(--line)}
+#vehicleInfoTitle{font-family:var(--mono)}
+.vehicle-info-head button{width:40px;padding:0;font-size:20px;line-height:1;background:transparent;border-color:transparent;color:var(--muted)}
+#vehicleInfo dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:4px 0 8px}
+#vehicleInfo dt{color:var(--muted)}
+#vehicleInfoStatus[data-fms]::before{content:'';display:inline-block;width:10px;height:10px;margin-right:6px;background:var(--fms);vertical-align:-1px}#vehicleInfo dd{margin:0;overflow-wrap:anywhere}
+.vehicle-info-actions{display:flex;gap:6px;flex-wrap:wrap}
+.vehicle-info-actions button{flex:1 1 auto;padding:6px 10px;font-size:13px}
+@media(max-width:600px){#vehicleInfo{width:auto;left:6px;right:6px;padding:0 8px 8px;font-size:12px}.vehicle-info-head{margin:0 -8px 4px;padding-left:8px}#vehicleInfo.at-top{top:6px}#vehicleInfo.at-bottom{bottom:6px}#vehicleInfo dl{gap:1px 8px;margin:0 0 6px}}
+/* Kurz hervorgehobener Eintrag in der Fahrzeugliste („In Fahrzeugliste zeigen“) */
+.vehicle-flash{background:var(--hover);outline:2px solid var(--focus)}

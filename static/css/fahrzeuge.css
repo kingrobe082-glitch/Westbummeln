@@ -26,7 +26,7 @@
   filter:drop-shadow(0 0 .7px #fff) drop-shadow(0 1px 2px #000d);
 }
 /* Als Button (Fahrzeug anklickbar): Tastaturfokus an der Grafik zeigen */
-#markers .veh:focus-visible .veh-body{outline:2px solid #ffd16e;outline-offset:2px}
+#markers .veh:focus-visible .veh-body{outline:2px solid var(--focus,#f0c24b);outline-offset:2px}
 .veh-hlf .veh-body{background-image:url("../img/fahrzeuge/hlf.svg")}
 .veh-lf .veh-body{background-image:url("../img/fahrzeuge/lf.svg")}
 .veh-kdow .veh-body{background-image:url("../img/fahrzeuge/kdow.svg")}
@@ -43,10 +43,10 @@
   position:absolute;z-index:2;left:0;
   top:calc(var(--rs,0)*var(--w)/2 + var(--rc,1)*var(--h)/2 + 2px);
   transform:translateX(-50%);
-  padding:1px 4px;border-radius:4px;background:#0b1420c7;border:1px solid #ffffff2e;
-  font:600 10px/1.25 system-ui,Arial,sans-serif;letter-spacing:.02em;white-space:nowrap;color:#fff;
+  padding:1px 4px;border-radius:2px;background:#0e1013d9;border:1px solid #ffffff26;
+  font:600 10px/1.25 var(--mono,monospace);letter-spacing:0;white-space:nowrap;color:#fff;
 }
-.veh-rueckfahrt .veh-label{color:#d4e2f0}
+.veh-rueckfahrt .veh-label{color:var(--muted,#8b95a0)}
 
 /* Handy: kleinere Fahrzeuge und Schilder; auf sehr schmalen Karten nur die Grafik */
 @media(max-width:600px){
