@@ -33,6 +33,23 @@ $('fmeAcknowledge').onclick = () => {
   $('fmeMessage').textContent += ' · Quittiert';
 };
 
+// Auswahl im Einsatz: Spielerfahrzeuge immer; unbesetzte (KI-Besatzung) nur, wenn der Server es erlaubt,
+// sonst ausgegraut mit Grund (z. B. „Bedarf gedeckt“ oder „erst freie Spielerfahrzeuge alarmieren“).
+function vehicleOptions(incident) {
+  const free = state.vehicles.filter(v => v.phase === 'wache' && v.status !== 6 && !v.incident);
+  const option = v => `<option value="${esc(v.id)}">${esc(v.call)}</option>`;
+  const owned = free.filter(v => v.owner), crewless = free.filter(v => !v.owner);
+  if (state.ai_mode) return free.map(option).join('');
+  let markup = owned.length ? `<optgroup label="Spielerfahrzeuge">${owned.map(option).join('')}</optgroup>` : '';
+  if (crewless.length) {
+    const block = incident.ai_crew_block;
+    const label = block ? `Mit KI-Besatzung – gesperrt: ${block}`
+      : `Mit KI-Besatzung – Einsatz braucht ${incident.need} Fahrzeuge`;
+    markup += `<optgroup label="${esc(label)}"${block ? ' disabled' : ''}>${crewless.map(option).join('')}</optgroup>`;
+  }
+  return markup;
+}
+
 function updateIncidents(markup) {
   if (markup === incidentMarkup) return;
   const container = $('incidents');
@@ -81,13 +98,37 @@ function serverNow() {
   return Date.now() / 1000 + clockOffset;
 }
 
-// Der Server legt beim Phasenwechsel Start, Ziel und Ankunftszeit (phase_until) fest.
+// Seitenverhältnis der Karte (1536 × 1024), damit Strecken wie auf dem Server (game/strassen.py) zählen.
+const MAP_ASPECT = 1.5;
+
+function mapDistance(a, b) {
+  return Math.hypot((a[0] - b[0]) * MAP_ASPECT, a[1] - b[1]);
+}
+
+// Punkt nach dem Anteil share der Gesamtlänge einer Route [[x, y], …].
+function routePoint(route, share) {
+  const total = route.slice(1).reduce((sum, point, i) => sum + mapDistance(route[i], point), 0);
+  let remaining = Math.min(1, Math.max(0, share)) * total;
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1], b = route[i], step = mapDistance(a, b);
+    if (step >= remaining) {
+      const t = step ? remaining / step : 1;
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    remaining -= step;
+  }
+  return route[route.length - 1];
+}
+
+// Der Server legt beim Phasenwechsel Weg (phase_route) und Ankunftszeit (phase_until) fest.
 // Hier wird nur noch dazwischen interpoliert: (jetzt − phase_at) / (phase_until − phase_at).
+// Fahrten aus älteren Räumen ohne Route laufen weiter gerade von phase_from nach phase_to.
 function position(v) {
-  const from = v.phase_from || v.base;
-  const to = v.phase_to || from;
   const span = (v.phase_until ?? v.phase_at) - v.phase_at;
   const share = span > 0 ? Math.min(1, Math.max(0, (serverNow() - v.phase_at) / span)) : 1;
+  if (Array.isArray(v.phase_route) && v.phase_route.length > 1) return routePoint(v.phase_route, share);
+  const from = v.phase_from || v.base;
+  const to = v.phase_to || from;
   return [from[0] + (to[0] - from[0]) * share, from[1] + (to[1] - from[1]) * share];
 }
 
@@ -101,6 +142,7 @@ function animateVehicles() {
       pin.style.left = `${x * 100}%`;
       pin.style.top = `${y * 100}%`;
     }
+    WBFahrzeuge.layout($('markers'));
   }
   requestAnimationFrame(animateVehicles);
 }
@@ -163,41 +205,26 @@ function renderMap() {
     pin.style.top = `${incident.pos[1] * 100}%`;
     shown.add('i:' + incident.id);
   }
-  // Fahrzeuge vor Ort stehen an der Einsatzstelle: unter dem Einsatzpunkt, bis zu vier nebeneinander.
-  const onSite = new Map();
-  for (const vehicle of state.vehicles) {
-    if (vehicle.phase !== 'vorort') continue;
-    const key = vehicle.incident || String(vehicle.phase_to);
-    onSite.set(key, [...(onSite.get(key) || []), vehicle.id]);
-  }
+  // Fahrzeuge als Mini-Fahrzeug (Aussehen, Drehung und Versatz bei mehreren: WBFahrzeuge in fahrzeuge.js).
   for (const vehicle of state.vehicles) {
     const phase = phaseLabels[vehicle.phase];
     if (!phase) continue;
     const pin = mapPin('v:' + vehicle.id, pin => {
-      pin.className = 'pin vehicle';
       pin.dataset.vehiclePin = vehicle.id;
+      pin.innerHTML = WBFahrzeuge.inner(vehicle);  // Grafik + Namensschild, je Fahrzeug unveränderlich
       pin.setAttribute('aria-haspopup', 'dialog');
       pin.setAttribute('aria-controls', 'vehicleInfo');
       pin.addEventListener('click', () => toggleVehicleInfo(pin.dataset.vehiclePin));
     });
-    pin.title = `${vehicle.call} – ${phase}`;
+    const className = `pin vehicle ${WBFahrzeuge.classes(vehicle)}${mapVehicle === vehicle.id ? ' selected' : ''}`;
+    if (pin.className !== className) pin.className = className;
+    pin.dataset.dir = WBFahrzeuge.direction(vehicle);
+    pin.title = WBFahrzeuge.describe(vehicle);
     pin.setAttribute('aria-label', `${vehicle.call}, Status ${vehicle.status} ${labels[vehicle.status] || ''}, ${phase}`);
     pin.setAttribute('aria-expanded', String(mapVehicle === vehicle.id));
-    pin.classList.toggle('selected', mapVehicle === vehicle.id);
-    let [x, y] = position(vehicle), dx = 0, dy = 0;
-    if (vehicle.phase === 'vorort') {
-      const incident = state.incidents.find(i => i.id === vehicle.incident);
-      if (incident) [x, y] = incident.pos;
-      const group = onSite.get(vehicle.incident || String(vehicle.phase_to));
-      const index = group.indexOf(vehicle.id), row = Math.floor(index / 4);
-      const inRow = Math.min(4, group.length - row * 4);
-      dx = (index % 4 - (inRow - 1) / 2) * 24;
-      dy = 24 + row * 24;
-    }
+    const [x, y] = position(vehicle);
     pin.style.left = `${x * 100}%`;
     pin.style.top = `${y * 100}%`;
-    pin.style.marginLeft = `${dx}px`;
-    pin.style.marginTop = `${dy}px`;
     shown.add('v:' + vehicle.id);
   }
   for (const [key, pin] of mapPins) {
@@ -206,6 +233,7 @@ function renderMap() {
       mapPins.delete(key);
     }
   }
+  WBFahrzeuge.layout($('markers'));
   updateVehicleInfo();
 }
 
@@ -218,7 +246,7 @@ function toggleVehicleInfo(id) {
   mapVehicle = id;
   const card = $('vehicleInfo');
   const pin = mapPins.get('v:' + id);
-  const map = $('map').getBoundingClientRect(), at = pin?.getBoundingClientRect();
+  const map = $('map').getBoundingClientRect(), at = (pin?.querySelector('.veh-body') || pin)?.getBoundingClientRect();
   // In die Ecke gegenüber dem Punkt, damit die Info-Karte den Punkt nicht verdeckt.
   const left = !at || at.left - map.left > map.width / 2;
   const top = !at || at.top - map.top > map.height / 2;
@@ -293,12 +321,12 @@ $('takeLs').textContent=developerAccount&&lsOwner&&!isLs
   ? '📞 Besetzte Leitstelle übernehmen'
   : '📞 Leitstelle übernehmen';$('leaveLs').disabled=!isLs;$('goGf').disabled=isLs;$('incidentsPanel').classList.remove('hidden');$('incidentsPanel').querySelectorAll('.quick, .screen-title, #title, #address, #create').forEach(el=>el.classList.toggle('hidden',!isLs));$('vehiclesPanel').classList.toggle('hidden',isLs);$('controlPanel').classList.toggle('hidden',!isGf);$('dashboard').classList.toggle('hidden',!isLs);$('create').disabled=!isLs;let mine=state.vehicles.find(v=>v.id===p?.vehicle);$('myVehicle').innerHTML=mine?`<b>${esc(mine.call)}</b><p>Status ${mine.status} · ${esc(labels[mine.status])} · ${esc(mine.phase)}</p>`:'Noch kein Fahrzeug besetzt';$('statuses').innerHTML=Object.entries(labels).map(([n,t])=>`<button data-status="${n}" class="${mine?.status==n?'active':''}" ${!mine?'disabled':''}>${n} · ${esc(t)}</button>`).join('');$('statuses').querySelectorAll('button').forEach(b=>b.onclick=()=>send('status',{status:Number(b.dataset.status)}));$('release').disabled=!mine||mine.phase!=='wache';
 $('vehicles').innerHTML=state.vehicles.filter(v=>( $('unitFilter').value==='all'||String(v.unit)===$('unitFilter').value )&&v.call.toLowerCase().includes($('vehicleSearch').value.trim().toLowerCase())).map(v=>{let owner=state.players.find(p=>p.id===v.owner);return `<div class="item${flashVehicle===v.id&&Date.now()<flashUntil?' vehicle-flash':''}" data-vehicle-item="${esc(v.id)}"><b>${esc(v.call)}</b> <span class="pill">${v.status}</span><div class="small">${owner?'Besetzt: '+esc(owner.name):'GF-/Führungsplatz frei'} · ${v.seats} Plätze · ${esc(v.phase)}</div><button data-vehicle="${esc(v.id)}" ${isLs||(owner&&owner.id!==me)||v.phase!=='wache'?'disabled':''}>${owner?.id===me?'Dein Fahrzeug':'Übernehmen'}</button></div>`}).join('');$('vehicles').querySelectorAll('[data-vehicle]').forEach(b=>b.onclick=()=>send('claim',{vehicle:b.dataset.vehicle}));renderRoomAdmin();
-updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">📍 ${esc(i.address)} · ${esc(i.created)}</div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+' (S'+v.status+')').join(', ')||'Noch keine Fahrzeuge'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${state.vehicles.filter(v=>(v.owner||state.ai_mode)&&v.phase==='wache'&&v.status!==6).map(v=>`<option value="${esc(v.id)}">${esc(v.call)}</option>`).join('')}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row"><button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'💬 ':x.kind==='funk'?'📻 ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
+updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">📍 ${esc(i.address)} · ${esc(i.created)}</div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+' (S'+v.status+')').join(', ')||'Noch keine Fahrzeuge'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${vehicleOptions(i)}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row"><button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'💬 ':x.kind==='funk'?'📻 ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
 
 function renderSections(){
  const own=state.players.find(p=>p.id===me),isLs=own?.role==='ls';
  $('sectionsPanel').classList.remove('hidden'); const overlay=$('weatherOverlay');if(overlay)overlay.className=({Regen:'rain',Nebel:'fog',Windig:'wind'})[state.weather]||'';
- $('aiInfo').textContent=state.ai_mode?(isLs?'🤖 KI-Gruppenführer aktiv: Unbesetzte Fahrzeuge können alarmiert werden und arbeiten selbstständig.':'🤖 KI-Leitstelle aktiv: Sie erstellt Einsätze und alarmiert Fahrzeuge automatisch.'):'👥 Multiplayer: KI-Automatik pausiert, solange mehrere Spieler online sind.';
+ $('aiInfo').textContent=state.ai_dispatcher?'🤖 KI-Leitstelle aktiv: Sie erstellt Einsätze und alarmiert Fahrzeuge automatisch, bis jemand die Leitstelle übernimmt.':state.ai_mode?'🤖 KI-Gruppenführer aktiv: Unbesetzte Fahrzeuge können alarmiert werden und arbeiten selbstständig.':'👥 Multiplayer: Zuerst Spielerfahrzeuge alarmieren. Unbesetzte Fahrzeuge fahren mit KI-Besatzung, aber nur, wenn das Stichwort mehr Fahrzeuge verlangt (F2 = 2, B3 = 3) und kein Spielerfahrzeug mehr frei ist.';
  $('aiInfo').textContent += ` · 🌦 ${state.weather} · Fahrzeit ca. ${state.travel_time||12}s · Arbeitsfaktor ${Math.round((state.work_factor||1)*100)}%`; $('sectionsList').innerHTML=state.incidents.filter(i=>!i.closed).map(i=>{
  const sections=i.sections||{'Hauptabschnitt':{leader:'KI-Einsatzleitung',vehicles:[]}};
  const opts=Object.keys(sections).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');

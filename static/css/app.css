@@ -137,10 +137,14 @@ main{grid-auto-flow:row dense}
 @keyframes wb-wind{to{background-position:520px 28%,360px 64%}}
 @keyframes wb-wind2{to{background-position:440px 46%}}
 @media(prefers-reduced-motion:reduce){#weatherOverlay::before,#weatherOverlay::after{animation:none!important}}
-/* Fahrzeugpunkte: optisch klein, Klickfläche über button.pin::after (~33 px); liegen über den Einsatzpunkten.
-   Vor Ort stehen sie versetzt unter dem Einsatzpunkt, der dadurch frei anklickbar bleibt. */
-.pin.vehicle{z-index:1}
-.pin.vehicle.selected{outline:3px solid #ffde70;outline-offset:1px}
+/* Mini-Fahrzeuge anklickbar: Der Button selbst ist nur ein 0×0-Anker (fahrzeuge.css) und fängt keine Klicks,
+   sonst läge button.pin::after um den Anker. Klickbar sind Grafik und Namensschild; die Grafik bekommt eine
+   unsichtbar vergrößerte Klickfläche (mind. ~28 px hoch), damit sie auch auf dem Handy gut zu treffen ist. */
+#markers .pin.veh{pointer-events:none}
+#markers .pin.veh::after{content:none}
+#markers .veh-body,#markers .veh-label{pointer-events:auto;cursor:pointer}
+#markers .veh-body::after{content:'';position:absolute;inset:-9px -4px}
+#markers .veh.selected .veh-body{outline:2px solid #ffde70;outline-offset:2px}
 /* Info-Karte zu einem Fahrzeugpunkt: in der Ecke gegenüber dem Punkt, über Wetter und Punkten */
 #vehicleInfo{position:absolute;z-index:5;width:min(280px,calc(100% - 16px));max-height:calc(100% - 16px);overflow:auto;background:#10233aee;border:1px solid #6d8cab;border-radius:10px;padding:6px 10px 10px;box-shadow:0 6px 20px #000a;font-size:13px}
 #vehicleInfo.at-left{left:8px}#vehicleInfo.at-right{right:8px}#vehicleInfo.at-top{top:8px}#vehicleInfo.at-bottom{bottom:8px}
