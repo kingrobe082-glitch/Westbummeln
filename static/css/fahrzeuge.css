@@ -48,6 +48,16 @@
 }
 .veh-rueckfahrt .veh-label{color:#d4e2f0}
 
+/* LF und HLF: Foto-Seitenansicht (LF 20). Sie dreht sich nicht, sondern wird nur waagerecht
+   gespiegelt (--fx aus fahrzeuge.js), damit das Fahrzeug nie auf dem Kopf steht.
+   Der KdoW behält seine eigene Grafik (kdow.svg) und dreht sich weiter in Fahrtrichtung. */
+.veh-hlf,.veh-lf{--bw:40px;--bh:17px;--lx:8%;--ly:2%;--lw:8%;--lh:9%}
+.veh-hlf .veh-body,.veh-lf .veh-body{
+  background-image:url("../img/fahrzeuge/lf20.webp");background-size:contain;
+  transform:translate(-50%,-50%) scaleX(var(--fx,1));
+}
+.veh-hlf .veh-label,.veh-lf .veh-label{top:calc(var(--h)/2 + 2px)}
+
 /* Handy: kleinere Fahrzeuge und Schilder; auf sehr schmalen Karten nur die Grafik */
 @media(max-width:600px){
   #markers .pin.veh{--k:.8}
