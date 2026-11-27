@@ -187,13 +187,23 @@ def ai_mode(r):
     return is_solo(r)
 
 
+# Sekunden, bis die KI-Leitstelle einen Sprechwunsch (Status 5) beantwortet
+AI_SPEAK_DELAY = 3
+
+
 def ai_dispatcher(r):
     """Die KI-Leitstelle läuft, solange kein Spieler die Leitstelle besetzt – auch im Mehrspielerbetrieb."""
     return bool(r['players']) and not r['dispatcher']
 
 
 def _free(v):
-    return v['phase'] == 'wache' and v['status'] != 6 and not v['incident']
+    """Fahrzeug steht einsatzbereit auf der Wache (Status 1 oder 2, kein Einsatz)."""
+    return v['phase'] == 'wache' and v['status'] in (1, 2) and not v['incident']
+
+
+def _manual(v):
+    """Sitzt ein Spieler auf dem Fahrzeug, gibt er den FMS-Status selbst (keine Automatik)."""
+    return bool(v['owner'])
 
 
 def needed_vehicles(inc):
@@ -227,9 +237,20 @@ def alarm(r, inc, v, now):
     sections = inc.setdefault('sections', default_sections())
     if not any(v['id'] in section['vehicles'] for section in sections.values()):
         sections['Hauptabschnitt']['vehicles'].append(v['id'])
+    v['incident'] = inc['id']
+    if _manual(v):
+        # Spielerfahrzeug: bleibt alarmiert auf der Wache, bis der GF Status 3 gibt (_status).
+        v['alarmed_at'] = now
+        return
+    _depart(r, v, inc, now)
+
+
+def _depart(r, v, inc, now):
+    """Ausrücken zur Einsatzstelle mit Status 3."""
     route = strassen.route(v['base'], inc['pos'])
     _start_trip(v, 'anfahrt', route, trip_duration(r, route), now)
-    v.update(status=3, incident=inc['id'])
+    v['status'] = 3
+    v.pop('alarmed_at', None)
 
 
 def trip_duration(r, route):
@@ -415,13 +436,39 @@ def update(r, now=None):
             continue
         if v['phase'] == 'anfahrt':
             _stop(v, 'vorort', v.get('phase_to') or v['base'], now)
-            v['status'] = 4
-            emit(r, v['call'], 'Status 4 – Einsatzstelle erreicht.')
+            if _manual(v):
+                emit(r, v['call'], 'Einsatzstelle erreicht – bitte Status 4 geben.')
+            else:
+                v['status'] = 4
+                emit(r, v['call'], 'Status 4 – Einsatzstelle erreicht.')
         else:
             _stop(v, 'wache', v['base'], now)
-            v.update(status=2, incident=None)
-            emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
+            v['incident'] = None
+            if _manual(v):
+                emit(r, v['call'], 'Auf der Wache angekommen – bitte Status 2 geben.')
+            else:
+                v['status'] = 2
+                emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
         changed = True
+    # Alarmiertes Fahrzeug ohne Spieler (z. B. Verbindung verloren): KI-Besatzung rückt aus.
+    for v in r['vehicles'].values():
+        if v['phase'] == 'wache' and v['incident'] and not _manual(v):
+            inc = next((i for i in r['incidents'] if i['id'] == v['incident'] and not i['closed']), None)
+            if inc:
+                _depart(r, v, inc, now)
+                emit(r, v['call'], 'Status 3 – KI-Besatzung rückt aus.')
+            else:
+                v['incident'] = None
+                v.pop('alarmed_at', None)
+            changed = True
+    # Sprechwunsch ohne Spieler in der Leitstelle: die KI-Leitstelle antwortet nach kurzer Zeit.
+    if ai_dispatcher(r):
+        for v in r['vehicles'].values():
+            if v.get('speak') and now - v['speak'] >= AI_SPEAK_DELAY:
+                v.pop('speak')
+                v['speak_ok'] = now
+                emit(r, 'KI-Leitstelle', f'{v["call"]}: Sprechaufforderung (J) – bitte sprechen.')
+                changed = True
     if ai_group_leaders(r, now):
         changed = True
     for inc in r['incidents']:
@@ -478,6 +525,9 @@ def _finish_incident(r, inc, now):
         v = r['vehicles'].get(vid)
         if v and v['incident'] == inc['id'] and v['phase'] in ('anfahrt', 'vorort'):
             _send_home(r, v, now)
+        elif v and v['incident'] == inc['id'] and v['phase'] == 'wache':
+            v['incident'] = None
+            v.pop('alarmed_at', None)
 
 
 def _send_home(r, v, now):
@@ -502,7 +552,8 @@ def _send_home(r, v, now):
         back = strassen.route(vehicle_position(v, now), v['base'])
         duration = trip_duration(r, back)
     _start_trip(v, 'rueckfahrt', back, duration, now)
-    v['status'] = 1
+    if not _manual(v):
+        v['status'] = 1
 
 
 def _snapshot_incident(r, inc):
@@ -708,7 +759,7 @@ def _release(r, pid, p, data, now, is_developer):
     if not p['vehicle']:
         return
     v = r['vehicles'][p['vehicle']]
-    if v['phase'] != 'wache':
+    if v['phase'] != 'wache' or v['incident']:
         raise ValueError('Im Einsatz nicht aussteigen')
     v['owner'] = None
     p['vehicle'] = None
@@ -723,12 +774,42 @@ def _status(r, pid, p, data, now, is_developer):
     status = to_int(data.get('status', 0), 'Status')
     if status not in range(1, 7):
         raise ValueError('Ungültiger Status')
-    if v['phase'] != 'wache' and status in (2, 6):
-        raise ValueError('Status während Einsatz gesperrt')
-    if v['phase'] == 'wache' and status in (3, 4):
-        raise ValueError('Status 3/4 erfolgt durch Einsatzfahrt')
+    if status == 5:
+        # Sprechwunsch: ändert den Fahrzeugstatus nicht, die Leitstelle antwortet mit Sprechaufforderung.
+        v['speak'] = now
+        v.pop('speak_ok', None)
+        emit(r, v['call'], f'Status 5 – Sprechwunsch ({p["name"]}).')
+        return
+    alarmed = v['phase'] == 'wache' and v['incident']
+    if status == 3 and not (v['incident'] and v['phase'] in ('wache', 'anfahrt')):
+        raise ValueError('Status 3 nur nach einer Alarmierung')
+    if status == 4 and v['phase'] != 'vorort':
+        raise ValueError('Status 4 erst an der Einsatzstelle')
+    if status in (2, 6) and (v['phase'] != 'wache' or v['incident']):
+        raise ValueError(f'Status {status} nur auf der Wache ohne Einsatz')
+    if status == 1 and (v['phase'] == 'anfahrt' or alarmed):
+        raise ValueError('Status 1 nicht während der Anfahrt')
     v['status'] = status
+    if status == 3 and v['phase'] == 'wache':
+        inc = next((i for i in r['incidents'] if i['id'] == v['incident'] and not i['closed']), None)
+        if not inc:
+            v['incident'] = None
+            raise ValueError('Einsatz ist bereits beendet')
+        _depart(r, v, inc, now)
+        emit(r, v['call'], f'Status 3 – rückt aus ({p["name"]}).')
+        return
     emit(r, v['call'], f'Status {status} – {p["name"]}.')
+
+
+def _speak(r, pid, p, data, now, is_developer):
+    """Leitstelle beantwortet einen Sprechwunsch (Status 5) mit Sprechaufforderung (J)."""
+    _require_dispatcher(r, pid)
+    v = r['vehicles'].get(str(data.get('vehicle', '')))
+    if not v or not v.get('speak'):
+        raise ValueError('Kein Sprechwunsch von diesem Fahrzeug')
+    v.pop('speak', None)
+    v['speak_ok'] = now
+    emit(r, 'Leitstelle', f'{v["call"]}: Sprechaufforderung (J) – bitte sprechen.')
 
 
 def _incident(r, pid, p, data, now, is_developer):
@@ -807,6 +888,8 @@ def _work(r, pid, p, data, now, is_developer):
     inc = _open_incident(r, data)
     if p['vehicle'] not in inc['assigned'] or r['vehicles'][p['vehicle']]['phase'] != 'vorort':
         raise ValueError('Zuerst muss ein Fahrzeug die Einsatzstelle erreichen')
+    if r['vehicles'][p['vehicle']]['status'] != 4:
+        raise ValueError('Zuerst Status 4 geben (Einsatzstelle erreicht)')
     inc['working'] = True
     inc['updated'] = now
     emit(r, 'Einsatzleitung', f'{inc["title"]}: Maßnahmen eingeleitet.')
@@ -844,6 +927,7 @@ ACTIONS = {
     'claim': _claim,
     'release': _release,
     'status': _status,
+    'speak': _speak,
     'incident': _incident,
     'dispatch': _dispatch,
     'section_add': _section_add,
