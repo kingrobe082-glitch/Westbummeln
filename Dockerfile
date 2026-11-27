@@ -29,7 +29,10 @@ RUN DJANGO_ENV=prod \
     DATABASE_URL=postgresql://build:build@build/build \
     ALLOWED_HOSTS=build \
     python manage.py collectstatic --noinput \
-    && chmod +x /app/entrypoint.sh
+    && chmod +x /app/entrypoint.sh \
+    && mkdir -p /app/state && chown app:app /app/state
+# /app/state gehört app: Ein neues Docker-Volume (room-state) übernimmt beim ersten Einhängen diese
+# Rechte, damit gunicorn dort die Spielräume sichern kann (game/persistence.py).
 
 USER app
 EXPOSE 8000

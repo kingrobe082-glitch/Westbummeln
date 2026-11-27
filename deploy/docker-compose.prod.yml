@@ -58,7 +58,12 @@ services:
       retries: 3
       start_period: 60s
       start_interval: 2s   # beim Start alle 2 s prüfen, damit remote-deploy.sh schnell "gesund" sieht
-    stop_grace_period: 35s      # gunicorn graceful_timeout 30 s
+    # gunicorn graceful_timeout 30 s + Zeit zum Sichern der Räume (worker_exit, gunicorn.conf.py).
+    stop_grace_period: 35s
+    volumes:
+      # Gesicherte Spielräume (game/persistence.py): überleben Deploy und Neustart. Löschen = alle
+      # laufenden Spiele weg, sonst nichts.
+      - room-state:/app/state
     mem_limit: 350m
     logging: *logging
 
@@ -152,5 +157,6 @@ networks:
 
 volumes:
   db-data:
+  room-state:
   caddy-data:
   caddy-config:

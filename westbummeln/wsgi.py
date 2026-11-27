@@ -13,6 +13,9 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'westbummeln.settings')
 
 application = get_wsgi_application()
 
-from game.rooms import start_background  # noqa: E402  (braucht geladene Django-Einstellungen)
+from game import persistence  # noqa: E402  (braucht geladene Django-Einstellungen)
+from game.rooms import start_background  # noqa: E402
 
+# Erst die beim letzten Herunterfahren gesicherten Räume laden (auch den Discord-Raum), dann starten.
+persistence.start()
 start_background()

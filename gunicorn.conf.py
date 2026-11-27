@@ -15,6 +15,8 @@ workers = 1  # FEST, siehe oben. Nicht über eine Variable änderbar.
 worker_class = 'gthread'
 threads = 8
 timeout = 30
+# Beim Beenden (Deploy) wartet der Worker so lange auf laufende Anfragen und sichert danach die Räume
+# (worker_exit unten). stop_grace_period in docker-compose.prod.yml muss größer sein.
 graceful_timeout = 30
 keepalive = 5
 
@@ -46,3 +48,13 @@ logger_class = QuietHealthcheckLogger
 # Adresse CADDY_IP (docker-compose.prod.yml, setzt FORWARDED_ALLOW_IPS). Niemals "*".
 # gunicorn 23 kennt hier keine Netze (CIDR), nur einzelne Adressen.
 forwarded_allow_ips = os.environ.get('FORWARDED_ALLOW_IPS', '10.250.53.10')
+
+
+def worker_exit(server, worker):
+    """Läuft im Worker-Prozess, nachdem er die letzte Anfrage beantwortet hat (SIGTERM beim Deploy):
+    alle Spielräume in ROOM_STATE_FILE sichern, damit der neue Container sie wieder lädt."""
+    try:
+        from game import persistence
+    except Exception:  # Worker ist schon beim Laden der App gescheitert: nichts zu sichern
+        return
+    persistence.shutdown()
