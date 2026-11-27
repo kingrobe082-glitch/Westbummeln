@@ -58,9 +58,17 @@ def f1_vor_ort(r, titel='F1 · Gartenhütte', vehicle='WB-2-LF20'):
     inc = r['incidents'][-1]
     act(r, ls, 1, 'dispatch', incident=inc['id'], vehicle=vehicle)
     v = r['vehicles'][vehicle]
-    da = laufen(r, NOW, v['phase_until'])
-    assert v['phase'] == 'vorort'
+    da = ausruecken(r, gf, v, NOW)
     return ls, gf, inc, v, da
+
+
+def ausruecken(r, gf, v, now, account=2):
+    """Der GF gibt nach der Alarmierung Status 3, fährt hin und meldet Status 4. Liefert die Ankunftszeit."""
+    act(r, gf, account, 'status', now=now, status=3)
+    da = laufen(r, now, v['phase_until'])
+    assert v['phase'] == 'vorort'
+    act(r, gf, account, 'status', now=da, status=4)
+    return da
 
 
 def starten(r, gf, inc, key, now):
@@ -299,9 +307,15 @@ def test_nur_gf_vor_ort_darf(room):
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
     with pytest.raises(ValueError, match='Einsatzstelle erreichen'):
         starten(room, gf, inc, 'erkunden', NOW)
+    v = room['vehicles']['WB-2-LF20']
+    act(room, gf, 2, 'status', now=NOW, status=3)
+    da = laufen(room, NOW, v['phase_until'])
+    with pytest.raises(ValueError, match='Status 4'):  # vor Ort, aber noch nicht gemeldet
+        starten(room, gf, inc, 'erkunden', da)
+    act(room, gf, 2, 'status', now=da, status=4)
     with pytest.raises(ValueError, match='Meine Einsatzstelle'):
-        laufen(room, NOW, room['vehicles']['WB-2-LF20']['phase_until'])
-        act(room, gf, 2, 'work', now=room['vehicles']['WB-2-LF20']['phase_until'], incident=inc['id'])
+        act(room, gf, 2, 'work', now=da, incident=inc['id'])
+    starten(room, gf, inc, 'erkunden', da)
 
 
 def test_abbrechen_gibt_trupp_frei(room):
@@ -430,7 +444,7 @@ def test_raum_mit_laufenden_massnahmen_ist_speicher_und_ladbar(state_file):
         act(r, ls, 1, 'incident', now=T, title='F1 · Gartenhütte', address='Hauptstraße 5')
         inc = r['incidents'][-1]
         act(r, ls, 1, 'dispatch', now=T, incident=inc['id'], vehicle='WB-2-LF20')
-        t = laufen(r, T, r['vehicles']['WB-2-LF20']['phase_until'])
+        t = ausruecken(r, gf, r['vehicles']['WB-2-LF20'], T)
         starten(r, gf, inc, 'erkunden', t)
         starten(r, gf, inc, 'wasser', t)
         t = laufen(r, t + 1, t + 5)

@@ -124,6 +124,7 @@ function sceneButton(m, mn, vehicle, slots) {
   if (m.laufend >= m.max) return {group: 'laeuft'};
   let lock = '';
   if (vehicle.phase !== 'vorort') lock = 'erst nach Eintreffen';
+  else if (vehicle.status !== 4) lock = 'erst Status 4 geben';
   else if (!slots.info || !m.braucht.every(f => slots.info.faehigkeiten.includes(f))) lock = 'Nur ' + m.typen.join(' oder ');
   else if (m.hart.length) lock = m.hart[0];
   else if (m.platz === 'fuehrung' ? !slots.fuehrungFrei : slots.truppsFrei <= 0) {
