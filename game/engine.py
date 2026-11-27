@@ -99,7 +99,8 @@ def new_room(code, seed=None):
         'code': code,
         'players': {},
         'vehicles': {
-            v['id']: {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0}
+            v['id']: {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0,
+                      'vorbelastet': False}
             for v in FLEET
         },
         'incidents': [],
@@ -193,7 +194,22 @@ def ai_dispatcher(r):
 
 
 def _free(v):
+    """Frei auf der Wache (Status 2, auch 1 oder 5 auf der Wache)."""
     return v['phase'] == 'wache' and v['status'] != 6 and not v['incident']
+
+
+def alarmable(v):
+    """Darf alarmiert werden: frei auf der Wache oder Status 1 unterwegs.
+
+    Status 1 gibt es auf der Rückfahrt und, wenn der GF sein Fahrzeug über Funk frei meldet, vor Ort.
+    So ein Fahrzeug ist vorbelastet (siehe alarm). Nie aus Status 3, 4 oder 6."""
+    return _free(v) or (v['status'] == 1 and v['phase'] in ('rueckfahrt', 'vorort'))
+
+
+def alarm_eta(r, v, pos, now):
+    """Voraussichtliche Fahrzeit in Sekunden von der aktuellen Position des Fahrzeugs nach pos."""
+    start = list(v['base']) if v['phase'] == 'wache' else vehicle_position(v, now)
+    return trip_duration(r, strassen.route(start, pos))
 
 
 def needed_vehicles(inc):
@@ -215,21 +231,50 @@ def ai_crew_block(r, inc):
                  and r['vehicles'][vid]['phase'] in ('anfahrt', 'vorort'))
     if active >= need:
         return f'Bedarf gedeckt ({need} Fahrzeug{"e" if need > 1 else ""} laut Stichwort)'
-    if any(v['owner'] and _free(v) for v in r['vehicles'].values()):
+    if any(v['owner'] and alarmable(v) for v in r['vehicles'].values()):
         return 'erst freie Spielerfahrzeuge alarmieren'
     return ''
 
 
 def alarm(r, inc, v, now):
-    """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI)."""
+    """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI).
+
+    Die Anfahrt beginnt dort, wo das Fahrzeug gerade ist. Kommt es nicht von der Wache (Status 1),
+    verlässt es seinen alten Einsatz und gilt bis zur nächsten Ankunft auf der Wache als vorbelastet;
+    sein übriger Zustand (z. B. ein Wassertank) bleibt, wie er ist."""
+    from_station = v['phase'] == 'wache'
+    start = list(v['base']) if from_station else vehicle_position(v, now)
+    if not from_station:
+        _leave_incident(r, v, inc)
     if v['id'] not in inc['assigned']:
         inc['assigned'].append(v['id'])
     sections = inc.setdefault('sections', default_sections())
     if not any(v['id'] in section['vehicles'] for section in sections.values()):
         sections['Hauptabschnitt']['vehicles'].append(v['id'])
-    route = strassen.route(v['base'], inc['pos'])
+    route = strassen.route(start, inc['pos'])
     _start_trip(v, 'anfahrt', route, trip_duration(r, route), now)
-    v.update(status=3, incident=inc['id'])
+    v.update(status=3, incident=inc['id'], vorbelastet=not from_station)
+
+
+def _leave_incident(r, v, new):
+    """Fahrzeug aus seinem bisherigen, noch offenen Einsatz austragen (Zuordnung und Abschnitte).
+
+    Ein abgeschlossener Einsatz bleibt unverändert, damit seine Fahrzeugliste erhalten bleibt."""
+    old = next((i for i in r['incidents'] if i['id'] == v.get('incident')), None)
+    if not old or old is new or old['closed']:
+        return
+    if v['id'] in old['assigned']:
+        old['assigned'].remove(v['id'])
+    for section in old.get('sections', {}).values():
+        if v['id'] in section['vehicles']:
+            section['vehicles'].remove(v['id'])
+
+
+def alarm_message(v, inc):
+    text = f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.'
+    if v.get('vorbelastet'):
+        text += ' Aus Status 1 alarmiert, vorbelastet.'
+    return text
 
 
 def trip_duration(r, route):
@@ -274,10 +319,10 @@ def _distance(a, b):
 
 
 def ai_dispatch(r, inc, v, now):
-    if not _free(v):
+    if not alarmable(v):
         return False
     alarm(r, inc, v, now)
-    emit(r, 'KI-Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
+    emit(r, 'KI-Leitstelle', alarm_message(v, inc))
     return True
 
 
@@ -287,17 +332,21 @@ def _crews(r):
     return [v for v in vehicles if v['status'] != 6]
 
 
-def _ai_vehicle(r, inc):
-    """Fahrzeug für die KI-Leitstelle: das nächste freie Spielerfahrzeug.
+def _ai_vehicle(r, inc, now):
+    """Fahrzeug für die KI-Leitstelle: das alarmierbare Spielerfahrzeug mit der kürzesten Fahrzeit.
 
-    Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn das erlaubt ist."""
+    Bei gleicher Fahrzeit (auf volle Sekunden) gewinnt ein Fahrzeug auf der Wache (voll, ausgeruht)
+    vor einem in Status 1. Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn
+    das erlaubt ist – auch dort zuerst eines von der Wache."""
     crews = _crews(r)
     if crews:
-        return min((v for v in crews if _free(v)), key=lambda v: _distance(v['base'], inc['pos']), default=None)
+        return min((v for v in crews if alarmable(v)),
+                   key=lambda v: (round(alarm_eta(r, v, inc['pos'], now)), not _free(v)), default=None)
     if not ai_mode(r):
         return None
-    return next((v for v in r['vehicles'].values()
-                 if not v['owner'] and _free(v) and v['kind'] != 'KdoW'), None)
+    return min((v for v in r['vehicles'].values()
+                if not v['owner'] and alarmable(v) and v['kind'] != 'KdoW'),
+               key=lambda v: not _free(v), default=None)
 
 
 def ai_open_limit(r):
@@ -351,12 +400,12 @@ def run_ai(r, now):
     open_incidents = [i for i in r['incidents'] if not i['closed']]
     for inc in open_incidents:
         if not inc['assigned']:
-            v = _ai_vehicle(r, inc)
+            v = _ai_vehicle(r, inc, now)
             if v and ai_dispatch(r, inc, v, now):
                 changed = True
     for inc in open_incidents:
         while len(inc['assigned']) < needed_vehicles(inc) and inc['progress'] < AI_REINFORCE_BELOW:
-            v = _ai_vehicle(r, inc)
+            v = _ai_vehicle(r, inc, now)
             if not v or not ai_dispatch(r, inc, v, now):
                 break
             changed = True
@@ -419,7 +468,7 @@ def update(r, now=None):
             emit(r, v['call'], 'Status 4 – Einsatzstelle erreicht.')
         else:
             _stop(v, 'wache', v['base'], now)
-            v.update(status=2, incident=None)
+            v.update(status=2, incident=None, vorbelastet=False)
             emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
         changed = True
     if ai_group_leaders(r, now):
@@ -505,9 +554,12 @@ def _send_home(r, v, now):
     v['status'] = 1
 
 
-def _snapshot_incident(r, inc):
+def _snapshot_incident(r, inc, now):
     if not inc['closed']:
-        return {**inc, 'need': needed_vehicles(inc), 'ai_crew_block': ai_crew_block(r, inc)}
+        # Voraussichtliche Fahrzeit jedes alarmierbaren Fahrzeugs; das Frontend sortiert die Alarm-Auswahl danach.
+        eta = {v['id']: round(alarm_eta(r, v, inc['pos'], now))
+               for v in r['vehicles'].values() if alarmable(v)}
+        return {**inc, 'need': needed_vehicles(inc), 'ai_crew_block': ai_crew_block(r, inc), 'eta': eta}
     return {key: value for key, value in inc.items() if key != 'sections'}
 
 
@@ -519,7 +571,7 @@ def snapshot(r, now=None):
         'players': [{'id': p['id'], 'name': p['name'], 'vehicle': p['vehicle'], 'role': p['role']}
                     for p in r['players'].values()],
         'vehicles': list(r['vehicles'].values()),
-        'incidents': [_snapshot_incident(r, i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
+        'incidents': [_snapshot_incident(r, i, now) for i in r['incidents'] if not i['closed'] or id(i) in shown],
         'radio': r['radio'][-100:],
         'rev': r['rev'],
         'dispatcher': r['dispatcher'],
@@ -750,12 +802,12 @@ def _dispatch(r, pid, p, data, now, is_developer):
     v = r['vehicles'].get(str(data.get('vehicle', '')))
     if not inc or inc['closed'] or not v:
         raise ValueError('Einsatz oder Fahrzeug nicht verfügbar')
-    if not _free(v):
+    if not alarmable(v):
         raise ValueError('Fahrzeug ist nicht frei')
     if not v['owner'] and (reason := ai_crew_block(r, inc)):
         raise ValueError(f'Unbesetztes Fahrzeug nicht alarmierbar: {reason}')
     alarm(r, inc, v, now)
-    emit(r, 'Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
+    emit(r, 'Leitstelle', alarm_message(v, inc))
 
 
 def _section_add(r, pid, p, data, now, is_developer):

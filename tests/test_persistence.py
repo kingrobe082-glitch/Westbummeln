@@ -293,3 +293,22 @@ def test_room_with_ai_incidents_is_saved_and_continues_the_same_way():
     rooms.rooms.clear()
     reference = ki_verlauf(ki_room(seed=11), T + 120, 300)
     assert after_restart == reference and len(reference) > 2
+
+
+def test_vorbelastetes_fahrzeug_aus_status_1_ueberlebt_neustart():
+    """Alarm aus Status 1: Anfahrt ab der aktuellen Position und vorbelastet – auch nach einem Neustart."""
+    r, anna, ben = busy_room()
+    code = r['code']
+    v = r['vehicles']['WB-1-HLF20']
+    inc = r['incidents'][0]
+    act(r, 1, anna, 'state', v['phase_until'])
+    act(r, 1, anna, 'close', v['phase_until'], incident=inc['id'])
+    half = (v['phase_at'] + v['phase_until']) / 2
+    act(r, 1, anna, 'incident', half, title='F1 · Kleinbrand', address='Werkstraße 3')
+    act(r, 1, anna, 'dispatch', half, incident=r['incidents'][-1]['id'], vehicle='WB-1-HLF20')
+    assert v['vorbelastet'] and v['phase'] == 'anfahrt'
+    route, left = v['phase_route'], v['phase_until'] - half
+    restart(half + DOWN)
+    v = rooms.rooms[code]['vehicles']['WB-1-HLF20']
+    assert v['vorbelastet'] is True and v['phase'] == 'anfahrt' and v['phase_route'] == route
+    assert v['phase_until'] == pytest.approx(half + DOWN + left)

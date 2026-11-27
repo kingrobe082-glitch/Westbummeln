@@ -35,9 +35,13 @@ $('fmeAcknowledge').onclick = () => {
 
 // Auswahl im Einsatz: Spielerfahrzeuge immer; unbesetzte (KI-Besatzung) nur, wenn der Server es erlaubt,
 // sonst ausgegraut mit Grund (z. B. „Bedarf gedeckt“ oder „erst freie Spielerfahrzeuge alarmieren“).
+// Alarmierbar ist, was der Server in incident.eta (voraussichtliche Fahrzeit in Sekunden) liefert:
+// Fahrzeuge auf der Wache und solche in Status 1 unterwegs. Sortiert nach Fahrzeit, bei Gleichstand Wache zuerst.
 function vehicleOptions(incident) {
-  const free = state.vehicles.filter(v => v.phase === 'wache' && v.status !== 6 && !v.incident);
-  const option = v => `<option value="${esc(v.id)}">${esc(v.call)}</option>`;
+  const eta = incident.eta || {};
+  const free = state.vehicles.filter(v => v.id in eta).sort((a, b) =>
+    eta[a.id] - eta[b.id] || (a.phase !== 'wache') - (b.phase !== 'wache') || a.call.localeCompare(b.call));
+  const option = v => `<option value="${esc(v.id)}">${esc(alarmLabel(v, eta[v.id]))}</option>`;
   const owned = free.filter(v => v.owner), crewless = free.filter(v => !v.owner);
   if (state.ai_mode) return free.map(option).join('');
   let markup = owned.length ? `<optgroup label="Spielerfahrzeuge">${owned.map(option).join('')}</optgroup>` : '';
@@ -48,6 +52,16 @@ function vehicleOptions(incident) {
     markup += `<optgroup label="${esc(label)}"${block ? ' disabled' : ''}>${crewless.map(option).join('')}</optgroup>`;
   }
   return markup;
+}
+
+// „Florian WB 2 LF 20 · ca. 15 s“; Status-1-Fahrzeuge zusätzlich „S1 · auf Rückfahrt · Tank 40 %“
+// (Tank, sobald es ihn gibt, sonst „vorbelastet“). Fahrzeit in 5-s-Schritten, damit die Liste ruhig bleibt.
+function alarmLabel(v, seconds) {
+  let label = `${v.call} · ca. ${Math.max(5, Math.round(seconds / 5) * 5)} s`;
+  if (v.phase === 'wache') return label;
+  const where = v.phase === 'rueckfahrt' ? 'auf Rückfahrt' : 'frei am Einsatzort';
+  const load = typeof v.tank === 'number' ? `Tank ${Math.round(v.tank)} %` : 'vorbelastet';
+  return `${label} · S1 · ${where} · ${load}`;
 }
 
 function updateIncidents(markup) {
