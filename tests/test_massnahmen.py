@@ -126,6 +126,8 @@ def test_richtige_reihenfolge_loescht_f1_ohne_eskalation(room):
         starten(room, gf, inc, 'angriff', t)
     t = bis_dass(room, t, lambda: inc['mn']['aus'], 120)
     assert inc['mn']['aus'] and inc['mn']['zaehler']['wasser_aus'] == 0
+    with pytest.raises(ValueError, match='Feuer ist schon aus'):
+        starten(room, gf, inc, 'angriff', t)
     starten(room, gf, inc, 'nachloeschen', t)
     laufen(room, t + 1, t + 21)
     assert inc['closed'] and inc['bilanz']['stufe_max'] == 0

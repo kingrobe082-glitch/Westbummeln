@@ -107,6 +107,7 @@ function sceneButton(m, mn, vehicle, slots) {
   const ort = m.platz === 'fuehrung' ? '🧭 Führung' : '👥 Trupp';
   const sub = [`${m.dauer} s`, ort];
   if (m.fertig) return {group: 'erledigt'};
+  if (m.entfaellt) return {group: 'entfaellt'};
   if (m.laufend >= m.max) return {group: 'laeuft'};
   let lock = '';
   if (vehicle.phase !== 'vorort') lock = 'erst nach Eintreffen';

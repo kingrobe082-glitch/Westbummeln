@@ -145,7 +145,7 @@ def pruefen(inc, v, key):
         return 'Zuerst muss dein Fahrzeug die Einsatzstelle erreichen', None
     if _fertig(mn, key) and m.get('wirkung') != 'loeschen':
         return 'Bereits erledigt', None
-    if mn['aus'] and m.get('wirkung') == 'loeschen':
+    if _entfaellt(mn, m):
         return 'Das Feuer ist schon aus', None
     if sum(1 for i in _aktiv(mn) if i['key'] == key) >= m.get('max', 1):
         return 'Läuft bereits', None
@@ -158,6 +158,11 @@ def pruefen(inc, v, key):
     if platz is None:
         return ('Führung ist schon beschäftigt' if m['platz'] == 'fuehrung' else 'Kein freier Trupp'), None
     return '', platz
+
+
+def _entfaellt(mn, m):
+    """Löschen und Wasserversorgung braucht nach „Feuer aus“ niemand mehr."""
+    return mn['aus'] and m.get('wirkung') in ('loeschen', 'wasser')
 
 
 def _platz_name(instanz):
@@ -561,7 +566,7 @@ def snapshot(inc, vehicles, now):
             'laufend': sum(1 for i in _aktiv(mn) if i['key'] == key),
             'hart': [_bedingung_text(eintrag, b) for b in m.get('hart', ()) if not _erfuellt(mn, b)],
             'weich': [eintrag.get('weich_text', {}).get(b, b) for b in m.get('weich', ()) if not _erfuellt(mn, b)],
-            'loescht_mit': m.get('wirkung') == 'loeschen',
+            'entfaellt': _entfaellt(mn, m) and not _fertig(mn, key),
         })
     laufend = [{'key': i['key'], 'name': eintrag['massnahmen'][i['key']]['name'],
                 'icon': eintrag['massnahmen'][i['key']].get('icon', ''), 'status': i['status'], 'fz': i['fz'],
