@@ -149,7 +149,10 @@ def test_game_round_over_http(player, game_client):
     incident = response.json()['state']['incidents'][-1]
     response = player.api('dispatch', incident=incident['id'], vehicle='WB-3-HLF20')
     vehicle = next(v for v in response.json()['state']['vehicles'] if v['id'] == 'WB-3-HLF20')
-    assert vehicle['phase'] == 'anfahrt'
+    assert (vehicle['phase'], vehicle['incident']) == ('wache', incident['id'])  # wartet auf Status 3
+    response = second.api('status', status=3)
+    vehicle = next(v for v in response.json()['state']['vehicles'] if v['id'] == 'WB-3-HLF20')
+    assert (vehicle['phase'], vehicle['status']) == ('anfahrt', 3)
 
     response = second.api('radio', message='Florian WB 3 HLF 20 auf Anfahrt')
     last = response.json()['state']['radio'][-1]

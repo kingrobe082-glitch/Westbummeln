@@ -18,7 +18,18 @@ def join(r, account, name, now=NOW):
 
 
 def act(r, pid, account, action, now=NOW, **data):
-    return engine.handle(r, {'action': action, 'id': pid, **data}, account, 'x', False, now)
+    result = engine.handle(r, {'action': action, 'id': pid, **data}, account, 'x', False, now)
+    if action == 'dispatch':
+        ausruecken(r, data.get('vehicle'), now)
+    return result
+
+
+def ausruecken(r, vehicle, now=NOW):
+    """Spielerfahrzeuge geben ihren Status selbst: nach der Alarmierung Status 3 durch den GF."""
+    v = r['vehicles'].get(vehicle)
+    if v and v['owner'] and v['phase'] == 'wache' and v['incident']:
+        p = r['players'][v['owner']]
+        engine.handle(r, {'action': 'status', 'id': p['id'], 'status': 3}, p['account'], 'x', False, now)
 
 
 def leitstelle_mit_gf(r, vehicle='WB-2-LF20'):
@@ -150,7 +161,8 @@ def test_closing_during_approach_returns_from_current_position(room):
         pos = engine.vehicle_position(v, abort + back * share)
         assert pos == pytest.approx(strassen.along(route, .4 * (1 - share))[0])
     engine.update(room, v['phase_until'])
-    assert v['phase'] == 'wache' and v['status'] == 2
+    # Zurück auf der Wache; Status 2 gibt der GF selbst.
+    assert v['phase'] == 'wache' and v['incident'] is None
 
 
 def test_vehicle_without_route_moves_linearly(room):
@@ -296,6 +308,7 @@ def test_auto_finished_incident_releases_section_vehicles(room):
     ls, gf, inc = leitstelle_mit_gf(room)
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
     engine.update(room, NOW + 12)
+    act(room, gf, 2, 'status', now=NOW + 12, status=4)
     act(room, gf, 2, 'work', now=NOW + 12, incident=inc['id'])
     keep_online(room, ls, gf, now=NOW + 100)
     engine.update(room, NOW + 100)
@@ -451,17 +464,26 @@ def gf_raum(n, seed=1, leitstelle=False):
     return r, gfs
 
 
+# (Phase, alarmiert/im Einsatz) -> Status, den ein GF dann gibt
+STATUS_WUNSCH = {('wache', True): 3, ('vorort', True): 4, ('rueckfahrt', True): 1,
+                 ('rueckfahrt', False): 1, ('wache', False): 2}
+
+
 def spielen(r, gfs, seconds, arbeiten=True):
-    """Sekundenweise vorspulen; die GF starten die Maßnahmen, sobald ihr Fahrzeug vor Ort ist."""
+    """Sekundenweise vorspulen. Die GF geben ihre Status selbst (3 nach Alarm, 4 vor Ort, 1 auf der
+    Rückfahrt, 2 auf der Wache) und starten, wenn arbeiten, die Maßnahmen, sobald sie vor Ort sind."""
     open_max = 0
     for t in range(seconds):
         now = NOW + t
         keep_online(r, *r['players'], now=now)
         engine.update(r, now)
-        for pid, account, vid in gfs if arbeiten else ():
+        for pid, account, vid in gfs:
             v = r['vehicles'][vid]
+            wanted = STATUS_WUNSCH.get((v['phase'], bool(v['incident'])))
+            if wanted and v['status'] != wanted and not (wanted == 2 and v['status'] == 6):
+                act(r, pid, account, 'status', now=now, status=wanted)
             inc = next((i for i in r['incidents'] if i['id'] == v['incident']), None)
-            if inc and not inc['closed'] and not inc['working'] and v['phase'] == 'vorort':
+            if arbeiten and inc and not inc['closed'] and not inc['working'] and v['phase'] == 'vorort':
                 act(r, pid, account, 'work', now=now, incident=inc['id'])
         open_max = max(open_max, sum(not i['closed'] for i in r['incidents']))
     return open_max
