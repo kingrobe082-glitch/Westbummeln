@@ -108,7 +108,8 @@ def new_room(code, seed=None):
         'ai_last': 0,
         'ai_seq': 0,
         'ai_gap': AI_INCIDENT_MIN_GAP,
-        'rng': random.Random(seed),
+        # Nur der Seed liegt im Raum (der Raum muss JSON-speicherbar bleiben, siehe game/persistence.py).
+        'ai_seed': secrets.randbits(32) if seed is None else seed,
         'voice_messages': [],
         'voice_seq': 0,
         'admin': None,
@@ -310,8 +311,17 @@ def ai_incident_gap(r):
     return r.get('ai_gap', AI_INCIDENT_MIN_GAP) / (1 + free)
 
 
+def _ai_rng(r):
+    """Zufall für den nächsten KI-Einsatz, abgeleitet aus Seed und Einsatzzähler des Raums.
+
+    Kein random.Random im Raum ablegen: Räume werden als JSON gespeichert. So bleibt der Ablauf mit
+    gleichem Seed reproduzierbar, auch über ein Speichern und Laden hinweg."""
+    seed = r.setdefault('ai_seed', secrets.randbits(32))
+    return random.Random(f'{seed}:{r["ai_seq"]}')
+
+
 def _ai_new_incident(r, now):
-    rng = r.setdefault('rng', random.Random())
+    rng = _ai_rng(r)
     taken = {tuple(i['pos']) for i in r['incidents'] if not i['closed']}
     locations = [(name, x, y) for name, x, y in PLACES if safe_location((x, y)) and (x, y) not in taken]
     if not locations:

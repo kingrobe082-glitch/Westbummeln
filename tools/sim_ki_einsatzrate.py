@@ -16,7 +16,6 @@ Spalten der Ausgabe:
   Wartezeit  Sekunden vom Entstehen eines Einsatzes bis zum ersten Alarm (Mittelwert)
 """
 import argparse
-import random
 import sys
 from pathlib import Path
 
@@ -29,9 +28,7 @@ ORDER = [f'WB-{unit}-{kind}' for kind in ('HLF20', 'LF20') for unit in range(1, 
 
 
 def simulate(players, minutes=30, seed=1, reaction=5):
-    r = engine.new_room('SIM')
-    if 'rng' in r:
-        r['rng'] = random.Random(seed)
+    r = engine.new_room('SIM', seed=seed)
     pids = []
     for n in range(players):
         pid = engine.handle(r, {'action': 'join'}, n, f'GF{n}', False, START)['id']
