@@ -7,6 +7,7 @@ gemeldet; die Meldungen gehen unverändert an das Frontend.
 Die Logik stammt aus dem alten server.py; Welle 2C hat Fahrzeiten, Einsatzliste und KI-Übernahme korrigiert.
 """
 import json
+import random
 import re
 import secrets
 import time
@@ -58,7 +59,27 @@ TRAVEL_TIME = {'Sonnig': 12, 'Bewölkt': 13, 'Regen': 17, 'Nebel': 20, 'Windig':
 ROUTE_REFERENCE = .9
 ROUTE_FACTOR = (.5, 2)
 WORK_FACTOR = {'Sonnig': 1, 'Bewölkt': 1, 'Regen': .85, 'Nebel': .8, 'Windig': .9}
-AI_TITLES = ['F1 · Kleinbrand', 'TH1 · Verkehrsunfall', 'F2 · Wohnungsbrand', 'BMA · Brandmeldeanlage']
+# KI-Leitstelle (ohne menschliche Leitstelle). Die AI_*-Werte überschreibt westbummeln/settings.py per Env.
+# Abstand zwischen zwei Einsätzen: Zufall zwischen MIN und MAX Sekunden, geteilt durch (1 + freie GF-Fahrzeuge).
+AI_INCIDENT_MIN_GAP = 20
+AI_INCIDENT_MAX_GAP = 60
+# Gleichzeitig offene KI-Einsätze: besetzte Fahrzeuge × PER_PLAYER + EXTRA, höchstens AI_MAX_OPEN.
+AI_MAX_OPEN_PER_PLAYER = 1
+AI_MAX_OPEN_EXTRA = 1
+AI_MAX_OPEN = 8
+AI_MAX_WAITING = 2  # kein neuer Einsatz, solange so viele noch ganz ohne Fahrzeug warten
+AI_SETTINGS = ('AI_INCIDENT_MIN_GAP', 'AI_INCIDENT_MAX_GAP', 'AI_MAX_OPEN_PER_PLAYER', 'AI_MAX_OPEN_EXTRA',
+               'AI_MAX_OPEN', 'AI_MAX_WAITING')
+AI_REINFORCE_BELOW = 50  # weitere Fahrzeuge alarmiert die KI nur, solange der Einsatz unter 50 % ist
+# Stichworte der KI-Leitstelle: (Stichwort, Häufigkeit). Die Fahrzeugzahl ergibt sich aus der Stufe im Stichwort
+# (siehe needed_vehicles: F2 = 2, TH1 = 1, BMA = 1).
+AI_INCIDENT_TYPES = [
+    ('F1 · Kleinbrand', 3), ('F1 · Mülltonnenbrand', 2), ('F1 · PKW-Brand', 2),
+    ('F2 · Wohnungsbrand', 2), ('F2 · Kellerbrand', 1), ('F3 · Dachstuhlbrand', 1),
+    ('TH1 · Ölspur', 2), ('TH1 · Baum auf Straße', 2), ('TH1 · Türöffnung', 2),
+    ('TH1 · Wasser im Keller', 1), ('TH2 · Verkehrsunfall, eingeklemmte Person', 1),
+    ('BMA · Brandmeldeanlage', 3), ('ABC1 · Gasgeruch', 1),
+]
 VOICE_SIGNALS = ('offer', 'answer', 'candidate', 'bye', 'channel')
 DISPATCHER_ONLY = 'Nur die besetzte Leitstelle darf diese Aktion ausführen'
 UNCHANGED = object()  # Rückgabe einer Aktion, die den Raum nicht verändert hat (rev bleibt gleich)
@@ -72,7 +93,8 @@ def _radio_noop(room_code, entry):
 radio_hook = _radio_noop
 
 
-def new_room(code):
+def new_room(code, seed=None):
+    """Neuer Raum. seed macht den Zufall der KI-Leitstelle reproduzierbar (Tests, Simulation)."""
     return {
         'code': code,
         'players': {},
@@ -86,6 +108,9 @@ def new_room(code):
         'dispatcher': None,
         'ai_last': 0,
         'ai_seq': 0,
+        'ai_gap': AI_INCIDENT_MIN_GAP,
+        # Nur der Seed liegt im Raum (der Raum muss JSON-speicherbar bleiben, siehe game/persistence.py).
+        'ai_seed': secrets.randbits(32) if seed is None else seed,
         'voice_messages': [],
         'voice_seq': 0,
         'admin': None,
@@ -256,17 +281,60 @@ def ai_dispatch(r, inc, v, now):
     return True
 
 
+def _crews(r):
+    """Fahrzeuge, die ein Spieler als GF besetzt hat (ohne Status 6 – außer Dienst)."""
+    vehicles = [r['vehicles'][p['vehicle']] for p in r['players'].values() if p['vehicle'] in r['vehicles']]
+    return [v for v in vehicles if v['status'] != 6]
+
+
 def _ai_vehicle(r, inc):
     """Fahrzeug für die KI-Leitstelle: das nächste freie Spielerfahrzeug.
 
     Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn das erlaubt ist."""
-    owned = [r['vehicles'][p['vehicle']] for p in r['players'].values() if p['vehicle'] in r['vehicles']]
-    if owned:
-        return min((v for v in owned if _free(v)), key=lambda v: _distance(v['base'], inc['pos']), default=None)
+    crews = _crews(r)
+    if crews:
+        return min((v for v in crews if _free(v)), key=lambda v: _distance(v['base'], inc['pos']), default=None)
     if not ai_mode(r):
         return None
     return next((v for v in r['vehicles'].values()
                  if not v['owner'] and _free(v) and v['kind'] != 'KdoW'), None)
+
+
+def ai_open_limit(r):
+    """Höchstzahl gleichzeitig offener Einsätze, die die KI-Leitstelle anlegt."""
+    limit = max(1, len(_crews(r))) * AI_MAX_OPEN_PER_PLAYER + AI_MAX_OPEN_EXTRA
+    return max(1, min(AI_MAX_OPEN, limit))
+
+
+def ai_incident_gap(r):
+    """Sekunden bis zum nächsten KI-Einsatz: der ausgeloste Abstand, kürzer je mehr GF-Fahrzeuge frei sind."""
+    free = sum(1 for v in _crews(r) if _free(v))
+    return r.get('ai_gap', AI_INCIDENT_MIN_GAP) / (1 + free)
+
+
+def _ai_rng(r):
+    """Zufall für den nächsten KI-Einsatz, abgeleitet aus Seed und Einsatzzähler des Raums.
+
+    Kein random.Random im Raum ablegen: Räume werden als JSON gespeichert. So bleibt der Ablauf mit
+    gleichem Seed reproduzierbar, auch über ein Speichern und Laden hinweg."""
+    seed = r.setdefault('ai_seed', secrets.randbits(32))
+    return random.Random(f'{seed}:{r["ai_seq"]}')
+
+
+def _ai_new_incident(r, now):
+    rng = _ai_rng(r)
+    taken = {tuple(i['pos']) for i in r['incidents'] if not i['closed']}
+    locations = [(name, x, y) for name, x, y in PLACES if safe_location((x, y)) and (x, y) not in taken]
+    if not locations:
+        return False
+    name, x, y = rng.choice(locations)
+    title, _ = rng.choices(AI_INCIDENT_TYPES, weights=[t[1] for t in AI_INCIDENT_TYPES])[0]
+    r['incidents'].append(new_incident(title, name, [x, y], 'KI-Leitstelle', now))
+    r['ai_last'] = now
+    r['ai_seq'] += 1
+    r['ai_gap'] = rng.uniform(AI_INCIDENT_MIN_GAP, AI_INCIDENT_MAX_GAP)
+    emit(r, 'KI-Leitstelle', f'Neuer Einsatz: {title} – {name}.')
+    return True
 
 
 def run_ai(r, now):
@@ -275,21 +343,22 @@ def run_ai(r, now):
         return False
     changed = False
     open_incidents = [i for i in r['incidents'] if not i['closed']]
-    if now - r['ai_last'] >= 45 and len(open_incidents) < 2:
-        locations = [(name, x, y) for name, x, y in PLACES if safe_location((x, y))]
-        if locations:
-            name, x, y = locations[r['ai_seq'] % len(locations)]
-            title = AI_TITLES[r['ai_seq'] % 4]
-            r['incidents'].append(new_incident(title, name, [x, y], 'KI-Leitstelle', now))
-            r['ai_last'] = now
-            r['ai_seq'] += 1
-            emit(r, 'KI-Leitstelle', f'Neuer Einsatz: {title} – {name}.')
-            changed = True
-    for inc in r['incidents']:
-        if inc['closed'] or inc['assigned']:
-            continue
-        v = _ai_vehicle(r, inc)
-        if v and ai_dispatch(r, inc, v, now):
+    waiting = sum(1 for i in open_incidents if not i['assigned'])
+    if (now - r['ai_last'] >= ai_incident_gap(r) and len(open_incidents) < ai_open_limit(r)
+            and waiting < AI_MAX_WAITING):
+        changed = _ai_new_incident(r, now)
+    # Erst bekommt jeder offene Einsatz ein Fahrzeug, dann werden Einsätze bis zur Fahrzeugzahl aufgefüllt.
+    open_incidents = [i for i in r['incidents'] if not i['closed']]
+    for inc in open_incidents:
+        if not inc['assigned']:
+            v = _ai_vehicle(r, inc)
+            if v and ai_dispatch(r, inc, v, now):
+                changed = True
+    for inc in open_incidents:
+        while len(inc['assigned']) < needed_vehicles(inc) and inc['progress'] < AI_REINFORCE_BELOW:
+            v = _ai_vehicle(r, inc)
+            if not v or not ai_dispatch(r, inc, v, now):
+                break
             changed = True
     return changed
 

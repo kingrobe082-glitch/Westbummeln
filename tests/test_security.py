@@ -5,13 +5,11 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from django.contrib.sessions.models import Session
 from django.test import RequestFactory
 
-import westbummeln.security
 from accounts import lockout
 from westbummeln.security import client_ip
 
@@ -20,13 +18,6 @@ ROOT = Path(__file__).resolve().parent.parent
 LIMIT_MESSAGE = 'Zu viele Anfragen. Bitte warte kurz und versuche es dann erneut.'
 
 
-@pytest.fixture
-def fixed_limit_window(monkeypatch):
-    """Die IP-Limits zählen in festen Zeitfenstern (int(time // Periode)). Fällt eine Testserie
-    zufällig über eine Fenstergrenze, beginnt die Zählung neu und der Test schlägt sporadisch fehl.
-    Deshalb steht die Uhr des Limiters in den Limit-Tests still (nicht global: andere Tests
-    stellen die Uhr selbst vor und brauchen dann neue Fenster)."""
-    monkeypatch.setattr(westbummeln.security, 'time', SimpleNamespace(time=lambda: 1_800_000_000.0))
 
 
 def post_from(client, path, data, ip='10.0.0.1', **extra):

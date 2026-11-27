@@ -112,6 +112,7 @@ def test_wrong_delete_password_counts_for_lockout(player, django_user_model):
     assert django_user_model.objects.filter(username='Florian1').exists()
 
 
+@pytest.mark.usefixtures("fixed_limit_window")
 def test_delete_is_rate_limited(player, settings, django_user_model):
     settings.RATE_LIMITS = {**settings.RATE_LIMITS, 'login': '2/m'}
     player.account('delete_account', password='falsch-123')
@@ -263,6 +264,7 @@ def test_export_of_oauth_account(game_client, django_user_model):
     assert data['konto']['email'] is None
 
 
+@pytest.mark.usefixtures("fixed_limit_window")
 def test_export_is_rate_limited(player, settings):
     settings.RATE_LIMITS = {**settings.RATE_LIMITS, 'export': '1/m'}
     assert player.client.get('/account/export').status_code == 200
