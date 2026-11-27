@@ -1,0 +1,33 @@
+#!/bin/sh
+# Meldet die tägliche Sicherung an einen Überwachungsdienst (healthchecks.io), siehe MONITORING.md.
+#
+# Das Backup-Image (prodrigestivill/postgres-backup-local) ruft alle Dateien in /hooks per
+#   run-parts -a <aktion> /hooks
+# auf, mit <aktion> = pre-backup, post-backup oder error (error: irgendein Schritt von /backup.sh
+# ist fehlgeschlagen). Docker bindet diesen Ordner nach /hooks ein.
+#
+# BACKUP_PING_URL kommt aus /opt/westbummeln/.env. Leer = kein Ping (Überwachung aus).
+# Ein gescheiterter Ping lässt die Sicherung nicht scheitern (Exit 0): bleibt der Ping aus, meldet
+# sich der Dienst nach Ablauf der Gnadenfrist ohnehin.
+#
+# Dateiname ohne Punkt: run-parts überspringt Dateien mit Punkt im Namen.
+
+url=${BACKUP_PING_URL:-}
+[ -n "$url" ] || exit 0
+url=${url%/}
+
+case "${1:-}" in
+  pre-backup)  url="$url/start" ;;   # Dienst misst die Dauer und merkt hängende Sicherungen
+  post-backup) ;;                    # Erfolg
+  error)       url="$url/fail" ;;    # sofortige Warnung
+  *)           exit 0 ;;
+esac
+
+# Nur den Rechnernamen ins Log: die UUID in der URL ist das einzige Geheimnis des Checks.
+host=$(printf '%s' "$url" | cut -d/ -f3)
+if curl -fsS --max-time 10 --retry 3 -o /dev/null "$url"; then
+  echo "Ping gesendet (${1}) an ${host}"
+else
+  echo "WARNUNG: Ping (${1}) an ${host} fehlgeschlagen." >&2
+fi
+exit 0
