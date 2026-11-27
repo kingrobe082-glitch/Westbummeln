@@ -172,16 +172,16 @@ def test_kick_frees_vehicle_and_dispatcher():
     r, anna = create(1)
     ben = join(r, 2, 'Ben')
     cleo = join(r, 3, 'Cleo')
-    act(r, 2, ben, 'claim', vehicle='LZ4-HLF10-1')
+    act(r, 2, ben, 'claim', vehicle='LZ4-RW-1')
     act(r, 3, cleo, 'take_ls')
-    assert r['vehicles']['LZ4-HLF10-1']['owner'] == ben
+    assert r['vehicles']['LZ4-RW-1']['owner'] == ben
 
     act(r, 1, anna, 'kick', target=ben)
     assert ben not in r['players']
-    assert r['vehicles']['LZ4-HLF10-1']['owner'] is None
-    assert r['vehicles']['LZ4-HLF10-1']['unattended_since'] == NOW  # KI übernimmt wie bei Verbindungsverlust
+    assert r['vehicles']['LZ4-RW-1']['owner'] is None
+    assert r['vehicles']['LZ4-RW-1']['unattended_since'] == NOW  # KI übernimmt wie bei Verbindungsverlust
     assert r['radio'][-1]['message'] == ('Ben wurde von der Raumverwaltung entfernt. '
-                                         'Florian Westbummeln 4 HLF 10-1 ist wieder frei.')
+                                         'Florian Westbummeln 4 RW-1 ist wieder frei.')
 
     act(r, 1, anna, 'kick', target=cleo)
     assert r['dispatcher'] is None

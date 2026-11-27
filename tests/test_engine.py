@@ -53,16 +53,28 @@ def test_full_mission_flow(room):
     assert inc['pos'] == [.39, .53]
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     vehicle = room['vehicles']['LZ2-MLF-2']
+    # Spielerfahrzeug: alarmiert, rückt aber erst mit Status 3 aus.
+    assert (vehicle['phase'], vehicle['status'], vehicle['incident']) == ('wache', 2, inc['id'])
+    engine.update(room, NOW + 5)
+    assert vehicle['phase'] == 'wache'
+    act(room, gf, 2, 'status', now=NOW + 5, status=3)
     assert (vehicle['phase'], vehicle['status']) == ('anfahrt', 3)
 
-    engine.update(room, NOW + 12)
-    assert (vehicle['phase'], vehicle['status']) == ('vorort', 4)
-    act(room, gf, 2, 'work', now=NOW + 12, incident=inc['id'])
-    engine.update(room, NOW + 100)
+    arrival = vehicle['phase_until']
+    engine.update(room, arrival)
+    assert (vehicle['phase'], vehicle['status']) == ('vorort', 3)
+    with pytest.raises(ValueError, match='Zuerst Status 4'):
+        act(room, gf, 2, 'work', now=arrival, incident=inc['id'])
+    act(room, gf, 2, 'status', now=arrival, status=4)
+    act(room, gf, 2, 'work', now=arrival, incident=inc['id'])
+    engine.update(room, arrival + 100)
     assert inc['closed'] and inc['progress'] == 100
-    assert vehicle['phase'] == 'rueckfahrt'
-    engine.update(room, NOW + 112)
-    assert (vehicle['phase'], vehicle['status'], vehicle['incident']) == ('wache', 2, None)
+    assert (vehicle['phase'], vehicle['status']) == ('rueckfahrt', 4)
+    act(room, gf, 2, 'status', now=arrival + 100, status=1)
+    engine.update(room, arrival + 200)
+    assert (vehicle['phase'], vehicle['status'], vehicle['incident']) == ('wache', 1, None)
+    act(room, gf, 2, 'status', now=arrival + 200, status=2)
+    assert vehicle['status'] == 2
 
 
 def test_take_ls_twice_does_not_change_revision(room):

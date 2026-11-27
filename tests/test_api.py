@@ -144,18 +144,22 @@ def test_game_round_over_http(player, game_client):
     second.join()
 
     assert player.api('take_ls').status_code == 200
-    assert second.api('claim', vehicle='LZ4-HLF10-1').status_code == 200
+    # Ein RW: die KI-Leitstelle alarmiert nur Löschfahrzeuge, er ist also sicher frei, solange player allein war.
+    assert second.api('claim', vehicle='LZ4-RW-1').status_code == 200
     response = player.api('incident', title='F1 · Kleinbrand', address='Marktplatz')
     incident = response.json()['state']['incidents'][-1]
-    response = player.api('dispatch', incident=incident['id'], vehicle='LZ4-HLF10-1')
-    vehicle = next(v for v in response.json()['state']['vehicles'] if v['id'] == 'LZ4-HLF10-1')
-    assert vehicle['phase'] == 'anfahrt'
+    response = player.api('dispatch', incident=incident['id'], vehicle='LZ4-RW-1')
+    vehicle = next(v for v in response.json()['state']['vehicles'] if v['id'] == 'LZ4-RW-1')
+    assert (vehicle['phase'], vehicle['incident']) == ('wache', incident['id'])  # wartet auf Status 3
+    response = second.api('status', status=3)
+    vehicle = next(v for v in response.json()['state']['vehicles'] if v['id'] == 'LZ4-RW-1')
+    assert (vehicle['phase'], vehicle['status']) == ('anfahrt', 3)
 
-    response = second.api('radio', message='Florian Westbummeln 4 HLF 10-1 auf Anfahrt')
+    response = second.api('radio', message='Florian Westbummeln 4 RW-1 auf Anfahrt')
     last = response.json()['state']['radio'][-1]
-    assert last == {**last, 'author': 'Zweite', 'kind': 'funk', 'call': 'Florian Westbummeln 4 HLF 10-1'}
+    assert last == {**last, 'author': 'Zweite', 'kind': 'funk', 'call': 'Florian Westbummeln 4 RW-1'}
 
-    response = player.api('dispatch', incident=incident['id'], vehicle='LZ4-HLF10-1')
+    response = player.api('dispatch', incident=incident['id'], vehicle='LZ4-RW-1')
     assert response.status_code == 400
     assert response.json() == {'error': 'Fahrzeug ist nicht frei'}
 

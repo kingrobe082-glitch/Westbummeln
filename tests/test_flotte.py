@@ -142,20 +142,37 @@ def test_abrollbehaelter_faehrt_mit_wlf_als_gespann(room):
     # Das Spielerfahrzeug wird bevorzugt, obwohl LZ2-WLF-1 auch frei wäre.
     assert inc['assigned'] == ['LZ2-WLF-2', 'LZ2-AB-Wasser-1']
     assert wlf['towing'] == ab['id'] and ab['towed_by'] == wlf['id']
-    assert ab['phase_route'] == wlf['phase_route'] and ab['phase_until'] == wlf['phase_until']
     assert room['radio'][-1]['message'].startswith('Alarm Florian Westbummeln 2 WLF-2 mit Florian Westbummeln 2 '
                                                    'AB-Wasser-1')
+    # Spieler-WLF wartet auf Status 3 – der AB rückt nicht allein mit KI-Besatzung aus.
+    engine.update(room, NOW + 5)
+    assert ab['phase'] == wlf['phase'] == 'wache' and ab['incident'] == wlf['incident'] == inc['id']
+    act(room, gf, 2, 'status', now=NOW + 5, status=3)
+    assert ab['phase'] == wlf['phase'] == 'anfahrt' and ab['status'] == 3
+    assert ab['phase_route'] == wlf['phase_route'] and ab['phase_until'] == wlf['phase_until']
     # Im Snapshot hängt der AB am WLF: keine eigene Route.
     shown = {v['id']: v for v in engine.snapshot(room, NOW)['vehicles']}
     assert 'phase_route' not in shown[ab['id']] and shown[ab['id']]['towed_by'] == wlf['id']
 
     engine.update(room, wlf['phase_until'])
     assert ab['phase'] == wlf['phase'] == 'vorort' and ab['status'] == 4
+    act(room, gf, 2, 'status', now=wlf['phase_until'], status=4)
     act(room, ls, 1, 'close', now=wlf['phase_until'] + 1, incident=inc['id'])
     assert ab['phase'] == wlf['phase'] == 'rueckfahrt' and ab['phase_route'] == wlf['phase_route']
     engine.update(room, wlf['phase_until'])
     assert ab['phase'] == wlf['phase'] == 'wache'
-    assert wlf['towing'] is None and ab['towed_by'] is None and ab['status'] == 2
+    assert wlf['towing'] is None and ab['towed_by'] is None and ab['status'] == 2 and ab['incident'] is None
+
+
+def test_einsatz_beendet_bevor_spieler_ausrueckt_loest_gespann(room):
+    ls, gf = leitstelle(room)
+    act(room, gf, 2, 'claim', vehicle='LZ1-HLF20-2')
+    inc = incident(room, ls)
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ1-AnhTierrettung-1')
+    act(room, ls, 1, 'close', incident=inc['id'])
+    hlf, anh = room['vehicles']['LZ1-HLF20-2'], room['vehicles']['LZ1-AnhTierrettung-1']
+    assert hlf['towing'] is None and anh['towed_by'] is None
+    assert hlf['incident'] is None and anh['incident'] is None and engine._free(anh)
 
 
 def test_ohne_freies_zugfahrzeug_kein_alarm(room):
@@ -287,7 +304,7 @@ def test_alter_raum_wird_auf_neue_flotte_umgestellt(caplog):
     assert v['phase'] == 'vorort'
     engine._finish_incident(r, inc, NOW + 13)
     engine.update(r, v['phase_until'])
-    assert v['phase'] == 'wache' and v['status'] == 2
+    assert v['phase'] == 'wache' and v['incident'] is None  # Status 2 gibt Ben selbst
 
 
 def test_raum_mit_neuer_flotte_bleibt_unveraendert():

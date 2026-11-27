@@ -126,7 +126,7 @@ def test_delete_removes_player_from_all_rooms(player, game_client):
     # Raum 1: Florian1 ist Besitzer und fährt ein Fahrzeug, Ben spielt mit.
     player.create()
     own_room = player.room
-    assert player.api('claim', vehicle='LZ4-HLF10-1').status_code == 200
+    assert player.api('claim', vehicle='LZ4-RW-1').status_code == 200
     ben = game_client()
     ben.account('register', name='Ben', email='ben@example.com', password='Ben-Funkwort-1')
     ben.room = own_room
@@ -149,11 +149,11 @@ def test_delete_removes_player_from_all_rooms(player, game_client):
 
     first = rooms.rooms[own_room]
     assert [p['name'] for p in first['players'].values()] == ['Ben']
-    assert first['vehicles']['LZ4-HLF10-1']['owner'] is None
+    assert first['vehicles']['LZ4-RW-1']['owner'] is None
     assert first['owner_name'] == 'Ben'
     assert first['admin'] == ben.id
     messages = [entry['message'] for entry in first['radio']]
-    assert 'Florian1 hat das Spiel verlassen. Florian Westbummeln 4 HLF 10-1 ist wieder frei.' in messages
+    assert 'Florian1 hat das Spiel verlassen. Florian Westbummeln 4 RW-1 ist wieder frei.' in messages
     assert 'Ben verwaltet jetzt den Raum.' in messages
     second = rooms.rooms[cleo.room]
     assert [p['name'] for p in second['players'].values()] == ['Cleo']

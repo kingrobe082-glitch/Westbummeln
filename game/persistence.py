@@ -53,6 +53,9 @@ TIME_KEYS = frozenset({
     'ai_last',           # Raum: letzter KI-Einsatz
     'weather_at',        # Raum: letzter Wetterwechsel
     'phase_at',          # Fahrzeug: Beginn der Phase
+    'alarmed_at',        # Fahrzeug: alarmiert, wartet auf Status 3
+    'speak',             # Fahrzeug: Sprechwunsch (Status 5) seit
+    'speak_ok',          # Fahrzeug: Sprechaufforderung der Leitstelle
     'phase_until',       # Fahrzeug: Ankunft
     'unattended_since',  # Fahrzeug: seit wann ohne Spieler
     'updated',           # Einsatz: letzte Fortschrittsberechnung
