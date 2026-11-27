@@ -1,17 +1,18 @@
 'use strict';
 // Mini-Fahrzeuge auf der Einsatzkarte: nur das Aussehen der Fahrzeugmarker.
-// Grafik je Typ (Seitenansichten: LF/HLF lf20.webp, KdoW kdow-seite.svg; über css/fahrzeuge.css), Namensschild,
+// Grafik je Typ (Seitenansichten: LF/HLF lf20.webp, LF 10 lf10-seite.svg, KdoW kdow-seite.svg; über css/fahrzeuge.css), Namensschild,
 // Drehung in Fahrtrichtung und Versatz, wenn mehrere Fahrzeuge an derselben Stelle stehen.
 // Position (left/top in %) und Klick-Verhalten kommen aus game.js.
 const WBFahrzeuge = (() => {
   const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   const PHASES = {anfahrt: 'Anfahrt', vorort: 'an der Einsatzstelle', rueckfahrt: 'Rückfahrt'};
-  const TYPES = {HLF: 'hlf', LF: 'lf', KdoW: 'kdow'};
+  // Grafik je Fahrzeugtyp: erst der volle Typ (LF 10 der Gerätehäuser, TSF-W), sonst das erste Wort.
+  const TYPES = {'LF 10': 'lf10', 'TSF-W': 'lf10', HLF: 'hlf', LF: 'lf', KdoW: 'kdow'};
   // Ab dieser Strecke (px) wird die Fahrtrichtung neu aus der Bewegung bestimmt.
   const STEP = 2;
   const seen = new Map();
 
-  const type = v => TYPES[String(v.kind || '').split(' ')[0]] || 'lf';
+  const type = v => TYPES[v.kind] || TYPES[String(v.kind || '').split(' ')[0]] || 'lf';
   // Kurzbezeichnung fürs Namensschild, z. B. „1-HLF“.
   const label = v => `${v.unit}-${String(v.kind || '').split(' ')[0]}`;
   const describe = v => `${v.call} – ${PHASES[v.phase] || v.phase}${v.status ? ` (Status ${v.status})` : ''}`;
