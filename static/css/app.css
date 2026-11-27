@@ -1,113 +1,236 @@
-:root{font:15px system-ui,Arial;color:#eef5ff;background:#0b1420}*{box-sizing:border-box}body{margin:0}header{padding:14px 20px;background:#15263a;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}h1{font-size:21px;margin:0}h2{font-size:17px;margin:0 0 12px}h3{font-size:15px;margin:8px 0}main{max-width:1650px;margin:auto;padding:12px;display:grid;grid-template-columns:1.2fr 1fr;gap:12px}.panel{background:#192c41;border:1px solid #3a536d;border-radius:12px;padding:13px;min-width:0}.wide{grid-column:1/-1}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}.row>*{flex:1;min-width:0}button,input,select{font:inherit;border:1px solid #54718e;border-radius:8px;background:#263f59;color:white;padding:9px;min-height:39px}button{cursor:pointer}button:hover{background:#385e7d}button:disabled{opacity:.4;cursor:not-allowed}input{width:100%}.small{color:#c0d2e4;font-size:12px}.item{padding:9px 3px;border-bottom:1px solid #38516a}.pill{display:inline-block;padding:3px 8px;background:#39536b;border-radius:6px;font-size:12px}.green{background:#226d50}.hidden{display:none!important}#notice{color:#ffcd7d;min-height:24px;padding:0 15px}.statuses{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.active{background:#217451!important}.map{position:relative;width:100%;aspect-ratio:3/2;background:#1e3b2a;overflow:hidden;border-radius:9px}.map img{width:100%;height:100%;object-fit:fill;display:block}.pin{position:absolute;transform:translate(-50%,-100%);border:2px solid white;border-radius:100%;width:23px;height:23px;background:#e63731;color:white;display:grid;place-items:center;font-size:12px;box-shadow:0 2px 5px #0009;cursor:pointer;padding:0;min-height:0}.pin.vehicle{background:#2675d6;border-color:#d9eaff;width:15px;height:15px}.pin.selected{outline:3px solid #ffde70}.progress{height:11px;background:#0b1c2d;border-radius:9px;overflow:hidden;margin:8px 0}.progress span{display:block;height:100%;background:#37ad79}.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.tabs button{min-height:35px}#log{max-height:250px;overflow:auto;background:#0f2031;border-radius:8px;padding:6px}.incident{border:1px solid #3c5873;border-radius:9px;padding:10px;margin:8px 0}#vehicles{max-height:420px;overflow:auto}#connection{font-size:13px}label{font-size:13px}@media(max-width:850px){main{grid-template-columns:1fr}.wide{grid-column:auto}.statuses{grid-template-columns:repeat(3,1fr)}header{padding:12px}}
+/* Westbummeln – Oberfläche im Stil einer Einsatzleitsoftware (ELS), dunkel.
+   Flache Kästen, Titelleisten, FMS-Statusfarben. Farben nur über die Variablen hier ändern. */
+:root{
+  --bg:#0e1013;--surface:#15181c;--field:#1c2025;--hover:#252a31;--head:#1d2126;
+  --line:#2a3037;--line-2:#3a424b;
+  --text:#dde2e7;--muted:#8b95a0;--focus:#f0c24b;
+  --primary:#2b5d8a;--primary-hover:#346c9f;
+  --alarm:#b3302a;--alarm-hover:#cb3a32;
+  --ok:#3d9a52;--warn:#e0a91f;--link:#8fbbe6;
+  /* FMS-Status: Füllfarbe und passende Schriftfarbe */
+  --fms1:#45b05a;--fms1-ink:#08140b;
+  --fms2:#2a7a3c;--fms2-ink:#fff;
+  --fms3:#e2b21c;--fms3-ink:#1a1400;
+  --fms4:#d0402e;--fms4-ink:#fff;
+  --fms5:#3a84d2;--fms5-ink:#fff;
+  --fms6:#6a737d;--fms6-ink:#fff;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,"Liberation Mono",monospace;
+  font:14px/1.4 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+  color:var(--text);background:var(--bg);color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-variant-numeric:tabular-nums}
+a{color:var(--link)}
+h1{font-size:15px;margin:0;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+h2{font-size:12px;margin:0 0 10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+h3{font-size:12px;margin:12px 0 4px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+label{font-size:13px}
+.small{color:var(--muted);font-size:12px}
+.mono{font-family:var(--mono)}
+.hidden{display:none!important}
 
-/* Leitstelle V4 */
-:root{font-size:14px}body{background:#0a111b}header{position:sticky;top:0;z-index:20;border-bottom:1px solid #41617e;box-shadow:0 5px 20px #0005}main{grid-template-columns:minmax(0,1.3fr) minmax(350px,1fr);align-items:start}.panel{box-shadow:0 4px 15px #0003}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #ffd16e;outline-offset:2px}.panel h2{border-bottom:1px solid #37526c;padding-bottom:9px}.statbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.stat{background:#122338;border:1px solid #385575;border-radius:9px;padding:12px}.stat strong{font-size:25px;display:block}.stat span{font-size:12px;color:#c2d5e8}.toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.toolbar>*{flex:1;min-width:110px}.incident{background:#12263a}.incident:target{outline:2px solid #ffd36a}.item{padding:10px 5px}.item button{margin-top:5px}.quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}.quick button{min-height:35px;padding:6px 9px;font-size:12px;background:#304960}.compact{font-size:12px;color:#c4d7eb}.map{aspect-ratio:1.55}.filterline{display:flex;gap:8px;flex-wrap:wrap}.filterline input{flex:2}.filterline select{flex:1}.screen-title{font-size:12px;letter-spacing:.09em;color:#92b5d8;text-transform:uppercase}.section-tag{background:#0d1d2c;border-radius:6px;padding:4px 8px;font-size:11px;color:#c5dcf5}.panel.wide{grid-column:1/-1}#radioPanel{grid-column:1/-1}#vehiclesPanel{grid-column:2}#controlPanel{grid-column:2}#mapPanel{grid-column:1;grid-row:span 2}#incidentsPanel{grid-column:1}#dashboard{grid-column:1/-1}.hidden{display:none!important}@media(max-width:850px){main{grid-template-columns:1fr}#mapPanel,#incidentsPanel,#vehiclesPanel,#controlPanel,#dashboard,#radioPanel{grid-column:1;grid-row:auto}.statbar{grid-template-columns:repeat(2,1fr)}.map{aspect-ratio:1.3}}#weatherOverlay{position:absolute;inset:0;pointer-events:none;z-index:3}
-.authTabs{display:flex;gap:6px;margin:6px 0 10px;max-width:420px}
-.authTabs button{flex:1;min-height:40px;font-size:14px;background:#263f59;border:1px solid #54718e;color:#cfe0f0;border-radius:8px;margin:0}
-.authTabs button.active{background:#c93a3a;border-color:#ff8a8a;color:#fff;font-weight:700}
-.authFields{display:grid;gap:10px;max-width:420px}
-.authFields label{display:grid;gap:4px}
-.authFields input{flex:none}
-.authFields button[type=submit]{min-height:44px;font-size:15px;font-weight:700;background:#2f8f5b;color:#fff;border:0;border-radius:8px}
-.authFields button[disabled]{opacity:.6;cursor:wait}
-.notice{padding:9px 11px;border-radius:8px;font-size:14px;margin:10px 0;max-width:420px}
-.notice.error{background:#4a1d24;border:1px solid #ff7b7b;color:#ffd5d5}
-.notice.ok{background:#173d2a;border:1px solid #5fd18f;color:#d3ffe5}
-.notice.info{background:#1a3350;border:1px solid #6aa9ff;color:#d6e8ff}
-
-.discordBtn{display:block;max-width:420px;box-sizing:border-box;text-align:center;text-decoration:none;background:#5865f2;color:#fff;font-weight:700;padding:11px 14px;border-radius:8px;margin-top:10px}
-.discordBtn:hover{background:#4752c4}
-.radio-funk{border-left:3px solid #4aa3ff;padding-left:8px}
-.radio-discord{border-left:3px solid #5865f2;background:#5865f21f;padding-left:8px}
-.radio-auto{opacity:.85}
-.roomBadge{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-.roomBadge strong{font:700 28px ui-monospace,Consolas,monospace;letter-spacing:.18em;background:#0d1d2c;border:1px solid #54718e;border-radius:8px;padding:4px 12px;user-select:all}
-.roomBadge button{flex:0 0 auto}
-.playerActions{display:flex;gap:6px;flex-wrap:wrap}
-.playerActions button{min-height:30px;padding:4px 8px;font-size:12px}
-.playerActions .danger{background:#7a2a2a;border-color:#c45b5b}
-#securityPanel{margin:10px 0}
-#securityPanel summary{cursor:pointer;margin-bottom:8px}
-#logoutAll{margin-top:10px}
-#privacyPanel{margin:10px 0}
-#privacyPanel summary{cursor:pointer;margin-bottom:8px}
-#exportData{margin-bottom:12px;max-width:420px;width:100%}
-.authFields button.danger{background:#b3261e}
-.authFields button.danger:hover{background:#d0352b}
-.siteFooter{max-width:1650px;margin:0 auto;padding:16px 20px 24px;text-align:center}
-.siteFooter a,.legal a,.formHint a,#privacyPanel a{color:#9cc8ff}
-.backLink{color:#9cc8ff;font-weight:700}
-.legal{display:block;max-width:860px;line-height:1.55}
-.legal h2{margin:26px 0 8px}
-.legal table{border-collapse:collapse;width:100%;font-size:13px}
-.legal th,.legal td{border:1px solid #3a536d;padding:7px 9px;text-align:left;vertical-align:top}
-.legal th{background:#15263a}
-.legal code{background:#15263a;border-radius:4px;padding:1px 5px}
-@media(max-width:600px){.legal table,.legal tbody,.legal tr,.legal td{display:block}.legal thead{display:none}.legal td{border-top:0}.legal tr{border-top:1px solid #3a536d;margin-bottom:8px}.legal td:first-child{font-weight:700;background:#15263a}}
-.ageGate{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:16px;background:#0a111b}
-.ageGated body>:not(#ageGate):not(script){display:none!important}
-.ageGateBox{max-width:440px;width:100%;background:#192c41;border:1px solid #3a536d;border-radius:12px;padding:22px;text-align:center;box-shadow:0 8px 30px #0008}
-.ageGateBox h2{font-size:20px;margin:0 0 10px}
-.ageGateBox a{color:#9cc8ff}
-.ageGateButtons{display:grid;gap:10px;margin:18px 0 12px}
-#ageYes{background:#2f8f5b;border:0;font-weight:700;min-height:46px}
-#ageNo{min-height:42px}
-/* Raumcode-Zeile: Feld mit Beschriftung und "Raum beitreten" auf einer Unterkante */
-#roomEntry .row{align-items:flex-end}
-#roomEntry label{display:grid;gap:4px}
-
-/* UI-Feinschliff: Kopfzeile – Ton, Lautstärke und Verbindungsstatus auf einer Linie, ohne Überlappung */
+/* Kopfzeile */
+header{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 16px;background:#0a0b0d;border-bottom:1px solid var(--line);border-top:3px solid var(--alarm)}
+header .small{margin-top:1px}
 .headerTools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 16px}
 .headerTools>*{flex:none}
-.volume{display:flex;align-items:center;gap:8px;white-space:nowrap}
-#volume{width:110px;flex:none;min-height:40px;padding:0;border:0;background:none;accent-color:#5aa0e6;cursor:pointer}
-#connection{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1px solid #3a536d;border-radius:999px;background:#0d1d2c;color:#c0d2e4;font-size:13px;white-space:nowrap}
-#connection::before{content:'';flex:none;width:9px;height:9px;border-radius:50%;background:#e5484d;box-shadow:0 0 0 3px #e5484d33}
-#connection[data-state=ok]{color:#a5e7b5}
-#connection[data-state=ok]::before{background:#3fcf7f;box-shadow:0 0 0 3px #3fcf7f33}
-#connection[data-state=error]{color:#ffb2a2;border-color:#8a4a4a}
+.volume{display:flex;align-items:center;gap:8px;white-space:nowrap;color:var(--muted)}
+#volume{width:110px;flex:none;min-height:40px;padding:0;border:0;background:none;accent-color:var(--muted);cursor:pointer}
+#connection{display:inline-flex;align-items:center;gap:8px;padding:4px 10px;border:1px solid var(--line-2);border-radius:2px;background:var(--field);color:var(--muted);font:12px var(--mono);white-space:nowrap}
+#connection::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:var(--fms4)}
+#connection[data-state=ok]{color:var(--text)}
+#connection[data-state=ok]::before{background:var(--fms1)}
+#connection[data-state=error]{color:#ffb2a2;border-color:#7a3a35}
+#notice{color:var(--warn);min-height:22px;padding:2px 16px 0;font-size:13px}
 
-/* Touch-Ziele mindestens 40 px */
-button,input,select{min-height:40px}
-.quick button,.tabs button,.playerActions button{min-height:40px}
-details>summary{padding:10px 0;line-height:20px;width:fit-content;cursor:pointer}
-#moderationLink{display:inline-block;padding:11px 0}
-#accountLogout{margin-left:10px}
-/* Einsatzpunkte bleiben optisch klein, bekommen aber eine größere Klickfläche */
-button.pin::after{content:'';position:absolute;inset:-9px;border-radius:50%}
-
-/* Leitstellenübersicht: Überschrift links, Kennung rechts – nicht auf halbe Breite gestreckt */
-#dashboard>.row{margin:0 0 12px;padding-bottom:9px;border-bottom:1px solid #37526c}
-#dashboard>.row>*{flex:0 1 auto}
-#dashboard>.row>h2{border:0;padding:0}
-
-/* Raster: freie Plätze auffüllen, damit Fahrzeuge (GF) neben der Karte stehen statt darunter */
-main{grid-auto-flow:row dense}
-/* Karte nicht über zwei Zeilen: sonst klafft unter ihr eine Lücke, wenn rechts der Statusbereich höher ist */
-#mapPanel{grid-row:auto}
+/* Raster */
+main{max-width:1650px;margin:auto;padding:0 10px 10px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(350px,1fr);gap:10px;align-items:start;grid-auto-flow:row dense}
+.wide,.panel.wide,#dashboard,#radioPanel{grid-column:1/-1}
+#mapPanel,#incidentsPanel{grid-column:1}
+#vehiclesPanel,#controlPanel{grid-column:2}
 @media(min-width:851px){
   /* Leitstelle: Fahrzeug- und Statusbereich sind ausgeblendet – Disposition rückt neben die Karte */
   main:has(#vehiclesPanel.hidden):has(#controlPanel.hidden) #incidentsPanel{grid-column:2}
 }
 
-/* Abschnitte: Zeilen bündig mit dem Rest des Einsatzkastens */
+/* Kästen mit Titelleiste */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:2px;padding:12px;min-width:0}
+.panel>h2:first-child{margin:-12px -12px 10px;padding:8px 12px;background:var(--head);border-bottom:1px solid var(--line);color:var(--text)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.row>*{flex:1;min-width:0}
+.item{padding:8px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item button{margin-top:5px}
+
+/* Bedienelemente */
+button,input,select{font:inherit;border:1px solid var(--line-2);border-radius:2px;background:var(--field);color:var(--text);padding:8px 10px;min-height:40px}
+input{width:100%}
+input::placeholder{color:#6c7580}
+button{cursor:pointer}
+button:hover:not(:disabled){background:var(--hover);border-color:#4a535e}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.active{background:var(--hover)!important;border-color:var(--text)!important}
+/* Hauptaktion je Bereich */
+#create,#send,#accountSubmit,#ageYes,#passwordSubmit{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
+#create:hover:not(:disabled),#send:hover:not(:disabled),#accountSubmit:hover:not(:disabled),#ageYes:hover,#passwordSubmit:hover:not(:disabled){background:var(--primary-hover);border-color:var(--primary-hover)}
+/* Alarm und Unwiderrufliches */
+[data-dispatch],#fmeAcknowledge:not(:disabled),.danger{background:var(--alarm);border-color:var(--alarm);color:#fff;font-weight:600}
+[data-dispatch]:hover:not(:disabled),#fmeAcknowledge:hover:not(:disabled),.danger:hover:not(:disabled){background:var(--alarm-hover);border-color:var(--alarm-hover)}
+details>summary{padding:10px 0;line-height:20px;width:fit-content;cursor:pointer}
+
+/* Badges: Einsatzstatus und FMS */
+.pill{display:inline-block;padding:1px 6px;border:1px solid var(--line-2);border-radius:2px;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);vertical-align:1px}
+.pill.green{border-color:var(--ok);color:var(--ok)}
+[data-fms="1"],#statuses [data-status="1"]{--fms:var(--fms1);--fms-ink:var(--fms1-ink)}
+[data-fms="2"],#statuses [data-status="2"]{--fms:var(--fms2);--fms-ink:var(--fms2-ink)}
+[data-fms="3"],#statuses [data-status="3"]{--fms:var(--fms3);--fms-ink:var(--fms3-ink)}
+[data-fms="4"],#statuses [data-status="4"]{--fms:var(--fms4);--fms-ink:var(--fms4-ink)}
+[data-fms="5"],#statuses [data-status="5"]{--fms:var(--fms5);--fms-ink:var(--fms5-ink)}
+[data-fms="6"],#statuses [data-status="6"]{--fms:var(--fms6);--fms-ink:var(--fms6-ink)}
+.fms{display:inline-block;min-width:20px;padding:0 5px;border-radius:2px;background:var(--fms,var(--fms6));color:var(--fms-ink,#fff);font:700 12px/18px var(--mono);text-align:center;vertical-align:1px}
+
+/* Lageübersicht */
+.statbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stat{background:var(--field);border:1px solid var(--line);border-left:4px solid var(--line-2);border-radius:2px;padding:6px 10px}
+.stat:nth-child(1){border-left-color:var(--alarm)}
+.stat:nth-child(2){border-left-color:var(--fms2)}
+.stat:nth-child(3){border-left-color:var(--fms3)}
+.stat:nth-child(4){border-left-color:var(--fms4)}
+.stat strong{display:block;font:600 22px/1.2 var(--mono)}
+.stat span{font-size:12px;color:var(--muted)}
+
+/* Raum und Rolle */
+.roomBadge{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.roomBadge strong{font:700 24px var(--mono);letter-spacing:.18em;background:#0a0b0d;border:1px solid var(--line-2);border-radius:2px;padding:2px 10px;user-select:all}
+.roomBadge button{flex:0 0 auto}
+#roomEntry .row{align-items:flex-end}
+#roomEntry label{display:grid;gap:4px}
+.playerActions{display:flex;gap:6px;flex-wrap:wrap}
+.playerActions button{padding:4px 8px;font-size:12px}
+
+/* Karte. Kartenpunkte bleiben unverändert. */
+.map{position:relative;width:100%;aspect-ratio:1.55;background:#1e3b2a;overflow:hidden;border:1px solid var(--line)}
+.map img{width:100%;height:100%;object-fit:fill;display:block}
+.pin{position:absolute;transform:translate(-50%,-100%);border:2px solid white;border-radius:100%;width:23px;height:23px;background:#e63731;color:white;display:grid;place-items:center;font-size:12px;box-shadow:0 2px 5px #0009;cursor:pointer;padding:0;min-height:0}
+.pin.vehicle{background:#2675d6;border-color:#d9eaff;width:15px;height:15px}
+.pin.selected{outline:3px solid #ffde70}
+/* Einsatzpunkte bleiben optisch klein, bekommen aber eine größere Klickfläche */
+button.pin::after{content:'';position:absolute;inset:-9px;border-radius:50%}
+#mapPanel>.small{margin-top:6px}
+
+/* Notruf und Disposition */
+.screen-title{font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:4px}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.quick button{padding:6px 9px;font-size:12px;font-weight:600}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.toolbar>*{flex:1;min-width:110px}
+.row>#title{flex:1 1 100%}
+.row>#send,.row>#create{flex:0 0 auto;min-width:120px}
+.incident{background:var(--field);border:1px solid var(--line);border-left:3px solid var(--fms4);border-radius:2px;padding:8px 10px;margin:8px 0}
+.incident[data-state=working]{border-left-color:var(--fms3)}
+.incident[data-state=closed]{border-left-color:var(--ok);opacity:.75}
+.incident:target{outline:2px solid var(--focus)}
+.incident>.small{margin-top:2px}
+.progress{height:6px;background:#0a0b0d;border:1px solid var(--line);overflow:hidden;margin:6px 0 2px}
+.progress span{display:block;height:100%;background:var(--ok)}
+
+/* Fahrzeuge: eine dichte Liste, Knopf rechts */
+.filterline{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.filterline input{flex:2}
+.filterline select{flex:1}
+#vehicles{max-height:420px;overflow:auto;margin-top:6px;border-top:1px solid var(--line)}
+#vehicles .item{display:grid;grid-template-columns:auto auto 1fr auto;column-gap:8px;align-items:center;padding:6px 0}
+#vehicles .item>.small{grid-column:1/4;grid-row:2}
+#vehicles .item>button{grid-column:4;grid-row:1/3;margin:0;min-width:110px}
+
+/* Alarm (FME) */
+#fmePanel{border-color:var(--alarm)}
+#fmePanel>h2:first-child{background:var(--alarm);border-color:var(--alarm);color:#fff}
+#fmeMessage{font:600 16px var(--mono);margin:4px 0 10px}
+
+/* Mein Fahrzeug und FMS-Status */
+#myVehicle b{font-family:var(--mono);font-size:15px}
+#myVehicle p{margin:4px 0 10px}
+.statuses{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+#statuses button{border-left:6px solid var(--fms);text-align:left}
+#statuses button.active{background:var(--fms)!important;border-color:var(--fms)!important;color:var(--fms-ink);font-weight:700}
+#release{margin-top:8px}
+
+/* Abschnitte */
+#aiInfo{margin-bottom:4px}
 #sectionsList .item{padding-left:0;padding-right:0}
 
-/* Funk: Filter und Senden-Knopf nicht über die volle Breite strecken */
+/* Funk */
+#voicePtt{width:100%;font-weight:600;touch-action:none;user-select:none}
+#voicePtt.sending{background:var(--alarm);border-color:var(--alarm);color:#fff}
+#log{max-height:250px;overflow:auto;background:#0a0b0d;border:1px solid var(--line);padding:4px 8px;font-size:13px}
+#log .item{padding:5px 0}
+#log .item>.small{font-family:var(--mono);font-size:11px}
+.radio-funk{border-left:3px solid var(--fms5);padding-left:8px!important}
+.radio-discord{border-left:3px solid #5865f2;padding-left:8px!important}
+.radio-auto{opacity:.85}
 .row>#radioFilter{flex:0 1 260px}
-.row>#send,.row>#create{flex:0 0 auto;min-width:120px}
-/* Notruf: Stichwort volle Breite, Einsatzort und Knopf darunter – sonst wird beides abgeschnitten */
-.row>#title{flex:1 1 100%}
 
+/* Anmeldung und Konto */
+.authTabs{display:flex;gap:0;margin:6px 0 10px;max-width:420px}
+.authTabs button{flex:1;margin:0;color:var(--muted)}
+.authTabs button+button{border-left:0}
+.authTabs button.active{background:var(--head)!important;border-color:var(--line-2)!important;box-shadow:inset 0 -2px 0 var(--text);color:var(--text);font-weight:600}
+.authFields{display:grid;gap:10px;max-width:420px}
+.authFields label{display:grid;gap:4px}
+.authFields input{flex:none}
+.authFields button[type=submit]{min-height:44px}
+.authFields button[disabled]{opacity:.6;cursor:wait}
+.notice{padding:8px 10px;border-radius:2px;font-size:13px;margin:10px 0;max-width:420px}
+.notice.error{background:#3a1a1c;border:1px solid #a4433f;color:#ffd5d5}
+.notice.ok{background:#16301f;border:1px solid #3d9a52;color:#d3ffe5}
+.notice.info{background:#172634;border:1px solid #3a6a95;color:#d6e8ff}
+.discordBtn{display:block;max-width:420px;text-align:center;text-decoration:none;background:#5865f2;color:#fff;font-weight:600;padding:10px 14px;border-radius:2px;margin-top:10px}
+.discordBtn:hover{background:#4752c4}
+#securityPanel,#privacyPanel{margin:10px 0}
+#securityPanel summary,#privacyPanel summary{margin-bottom:8px}
+#logoutAll{margin-top:10px}
+#exportData{margin-bottom:12px;max-width:420px;width:100%}
+#moderationLink{display:inline-block;padding:11px 0}
+#accountLogout{margin-left:10px}
+
+/* Altersabfrage */
+.ageGate{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:16px;background:var(--bg)}
+.ageGated body>:not(#ageGate):not(script){display:none!important}
+.ageGateBox{max-width:440px;width:100%;background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--alarm);border-radius:2px;padding:20px;text-align:center}
+.ageGateBox h2{font-size:17px;margin:0 0 10px;letter-spacing:0;text-transform:none;color:var(--text)}
+.ageGateButtons{display:grid;gap:10px;margin:18px 0 12px}
+#ageYes{min-height:46px}
+
+/* Fußzeile und Datenschutzseite */
+.siteFooter{max-width:1650px;margin:0 auto;padding:16px 20px 24px;text-align:center}
+.backLink{color:var(--link);font-weight:600}
+.legal{display:block;max-width:860px;line-height:1.55}
+.legal h2{margin:26px 0 8px;font-size:15px;letter-spacing:0;text-transform:none;color:var(--text)}
+.legal table{border-collapse:collapse;width:100%;font-size:13px}
+.legal th,.legal td{border:1px solid var(--line-2);padding:7px 9px;text-align:left;vertical-align:top}
+.legal th{background:var(--head)}
+.legal code{background:var(--head);border-radius:2px;padding:1px 5px}
+@media(max-width:600px){.legal table,.legal tbody,.legal tr,.legal td{display:block}.legal thead{display:none}.legal td{border-top:0}.legal tr{border-top:1px solid var(--line-2);margin-bottom:8px}.legal td:first-child{font-weight:700;background:var(--head)}}
+
+/* Schmal: eine Spalte */
+@media(max-width:850px){
+  main{grid-template-columns:1fr}
+  .wide,.panel.wide,#mapPanel,#incidentsPanel,#vehiclesPanel,#controlPanel,#dashboard,#radioPanel{grid-column:1;grid-row:auto}
+  .statbar{grid-template-columns:repeat(2,1fr)}
+  .map{aspect-ratio:1.3}
+  header{padding:8px 12px}
+}
 /* Handy */
 @media(max-width:600px){
-  header{position:static;padding:10px 12px}
-  h1{font-size:18px}
+  header{position:static}
   .headerTools{justify-content:flex-start;width:100%}
-  main{padding:8px;gap:8px}
-  .panel{padding:11px}
+  main{padding:0 6px 8px;gap:8px}
+  .panel{padding:10px}
+  .panel>h2:first-child{margin:-10px -10px 10px;padding:8px 10px}
   #rolesPanel .row>*{flex:1 1 100%}
-  .roomBadge strong{font-size:24px}
+  .roomBadge strong{font-size:22px}
   .row>#voiceChannel,
   #sectionsList .row>input,#sectionsList .row>select[data-secvehicle],#sectionsList .row>select[data-leader]{flex:1 1 100%}
   .statuses{grid-template-columns:repeat(2,1fr)}
