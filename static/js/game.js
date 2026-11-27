@@ -312,8 +312,65 @@ document.addEventListener('click', event => {
 document.addEventListener('keydown', event => {
   if (mapVehicle && event.key === 'Escape') closeVehicleInfo(true);
 });
+// GF-Knöpfe „Maßnahmen abschließen“ und „Zurück zur Wache“. Sie erscheinen nur, wenn die Aktion gerade
+// möglich ist; der Server prüft alles noch einmal (game/engine.py: _complete, _return_home).
+function gfIncident(vehicle) {
+  return vehicle && state.incidents.find(i => i.id === vehicle.incident);
+}
+
+// Frei an der Einsatzstelle: Maßnahmen abgeschlossen oder Einsatz beendet (wie engine.released).
+function gfReleased(vehicle) {
+  if (!vehicle || vehicle.phase !== 'vorort') return false;
+  if (vehicle.released_at != null) return true;
+  const incident = gfIncident(vehicle);
+  return !incident || incident.closed;
+}
+
+function gfCanComplete(vehicle, incident) {
+  return Boolean(vehicle && incident && !incident.closed && incident.working && vehicle.phase === 'vorort'
+    && vehicle.incident === incident.id && incident.assigned.includes(vehicle.id) && !gfReleased(vehicle)
+    && incident.progress >= state.complete_min);
+}
+
+function renderGfActions() {
+  const player = state.players.find(p => p.id === me);
+  const mine = player?.role === 'gf' && state.vehicles.find(v => v.id === player.vehicle);
+  const incident = mine && gfIncident(mine);
+  const buttons = [];
+  let hint = '';
+  if (gfCanComplete(mine, incident)) {
+    buttons.push(`<button class="gf-complete" data-gf="complete" data-incident="${esc(incident.id)}">Maßnahmen abschließen</button>`);
+    // Wie der Server: abgearbeitet ab complete_all % oder wenn kein anderes Spielerfahrzeug mehr arbeitet.
+    const othersWorking = incident.assigned.some(id => {
+      const other = state.vehicles.find(v => v.id === id);
+      return other && other.id !== mine.id && other.owner && other.incident === incident.id
+        && ['anfahrt', 'vorort'].includes(other.phase) && !gfReleased(other);
+    });
+    hint = incident.progress >= state.complete_all || !othersWorking
+      ? 'Einsatz ist damit abgearbeitet.'
+      : 'Andere GF arbeiten weiter, dein Fahrzeug wird frei.';
+  } else if (gfReleased(mine)) {
+    buttons.push('<button class="gf-return" data-gf="return_home">Zurück zur Wache</button>');
+    const left = Math.max(0, Math.ceil(mine.released_at + state.return_delay - serverNow()));
+    hint = mine.released_at != null ? `Einsatzstelle frei. Ohne Meldung Rückfahrt in ${left} s.` : 'Einsatzstelle frei.';
+  } else if (mine && incident && incident.working && mine.phase === 'vorort' && !incident.closed) {
+    hint = `Abschließen ab ${state.complete_min} % Fortschritt (jetzt ${Math.floor(incident.progress)} %).`;
+  }
+  const box = $('gfActions'), row = box.querySelector('.row'), text = box.querySelector('p');
+  const markup = buttons.join('');
+  if (row.innerHTML !== markup) {
+    row.innerHTML = markup;
+    row.querySelectorAll('[data-gf]').forEach(b => b.onclick = () =>
+      send(b.dataset.gf, b.dataset.incident ? {incident: b.dataset.incident} : {}));
+  }
+  row.classList.toggle('hidden', !buttons.length);
+  if (text.textContent !== hint) text.textContent = hint;
+  box.classList.toggle('hidden', !buttons.length && !hint);
+}
+
 function render(){if(!state)return;
 updateFme(state);
+renderGfActions();
 $('countOpen').textContent=state.incidents.filter(i=>!i.closed).length;
 $('countFree').textContent=state.vehicles.filter(v=>v.phase==='wache'&&v.status!==6).length;
 $('countDrive').textContent=state.vehicles.filter(v=>v.phase==='anfahrt').length;
@@ -323,7 +380,7 @@ $('takeLs').textContent=developerAccount&&lsOwner&&!isLs
   ? 'Besetzte Leitstelle übernehmen'
   : 'Leitstelle übernehmen';$('leaveLs').disabled=!isLs;$('goGf').disabled=isLs;$('incidentsPanel').classList.remove('hidden');$('incidentsPanel').querySelectorAll('.quick, .screen-title, #title, #address, #create').forEach(el=>el.classList.toggle('hidden',!isLs));$('vehiclesPanel').classList.toggle('hidden',isLs);$('controlPanel').classList.toggle('hidden',!isGf);$('dashboard').classList.toggle('hidden',!isLs);$('create').disabled=!isLs;let mine=state.vehicles.find(v=>v.id===p?.vehicle);$('myVehicle').innerHTML=mine?`<b>${esc(mine.call)}</b><p><span class="fms" data-fms="${mine.status}">${mine.status}</span> ${esc(labels[mine.status])}${phaseLabel(mine.phase)===labels[mine.status]?'':' · '+esc(phaseLabel(mine.phase))}</p>`:'Noch kein Fahrzeug besetzt';$('statuses').innerHTML=Object.entries(labels).map(([n,t])=>`<button data-status="${n}" class="${mine?.status==n?'active':''}" ${!mine?'disabled':''}>${n} ${esc(t)}</button>`).join('');$('statuses').querySelectorAll('button').forEach(b=>b.onclick=()=>send('status',{status:Number(b.dataset.status)}));$('release').disabled=!mine||mine.phase!=='wache';
 $('vehicles').innerHTML=state.vehicles.filter(v=>( $('unitFilter').value==='all'||String(v.unit)===$('unitFilter').value )&&v.call.toLowerCase().includes($('vehicleSearch').value.trim().toLowerCase())).map(v=>{let owner=state.players.find(p=>p.id===v.owner);return `<div class="item${flashVehicle===v.id&&Date.now()<flashUntil?' vehicle-flash':''}" data-vehicle-item="${esc(v.id)}"><b>${esc(v.call)}</b> <span class="fms" data-fms="${v.status}">${v.status}</span><div class="small">${owner?'GF: '+esc(owner.name):'GF frei'} · ${v.seats} Plätze · ${esc(phaseLabel(v.phase))}</div><button data-vehicle="${esc(v.id)}" ${isLs||(owner&&owner.id!==me)||v.phase!=='wache'?'disabled':''}>${owner?.id===me?'Dein Fahrzeug':'Übernehmen'}</button></div>`}).join('');$('vehicles').querySelectorAll('[data-vehicle]').forEach(b=>b.onclick=()=>send('claim',{vehicle:b.dataset.vehicle}));renderRoomAdmin();
-updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}" data-state="${i.closed?'closed':i.working?'working':'open'}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">${esc(i.address)} · <span class="mono">${esc(i.created)}</span></div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+` <span class="fms" data-fms="${v.status}">${v.status}</span>`).join(', ')||'noch keine'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${vehicleOptions(i)}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row"><button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'Discord · ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
+updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}" data-state="${i.closed?'closed':i.working?'working':'open'}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">${esc(i.address)} · <span class="mono">${esc(i.created)}</span></div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+` <span class="fms" data-fms="${v.status}">${v.status}</span>`+((i.done||[]).includes(v.id)?' <span class="done-mark">fertig</span>':'')).join(', ')||'noch keine'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${vehicleOptions(i)}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row">${gfCanComplete(mine,i)?`<button class="gf-complete" data-complete="${esc(i.id)}">Maßnahmen abschließen</button>`:`<button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>`}${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-complete]').forEach(b=>b.onclick=()=>send('complete',{incident:b.dataset.complete}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'Discord · ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
 
 const phaseLabel=p=>p==='wache'?'Auf Wache':phaseLabels[p]||p;
 

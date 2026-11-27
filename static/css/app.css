@@ -156,6 +156,13 @@ button.pin::after{content:'';position:absolute;inset:-9px;border-radius:50%}
 #statuses button{border-left:6px solid var(--fms);text-align:left}
 #statuses button.active{background:var(--fms)!important;border-color:var(--fms)!important;color:var(--fms-ink);font-weight:700}
 #release{margin-top:8px}
+/* GF: Maßnahmen abschließen / Zurück zur Wache (Status 1) */
+#gfActions{margin:0 0 10px}
+#gfActions .row{margin:0 0 4px}
+#gfActions p{margin:0}
+button.gf-complete{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:700}
+button.gf-return{background:var(--fms1);border-color:var(--fms1);color:var(--fms1-ink);font-weight:700}
+.done-mark{color:var(--ok);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
 
 /* Abschnitte */
 #aiInfo{margin-bottom:4px}
