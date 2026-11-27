@@ -35,9 +35,12 @@ $('fmeAcknowledge').onclick = () => {
 
 // Auswahl im Einsatz: Spielerfahrzeuge immer; unbesetzte (KI-Besatzung) nur, wenn der Server es erlaubt,
 // sonst ausgegraut mit Grund (z. B. „Bedarf gedeckt“ oder „erst freie Spielerfahrzeuge alarmieren“).
+// Hinter jedem Fahrzeug die voraussichtliche Fahrzeit vom Server (incident.eta), schnellstes zuerst.
 function vehicleOptions(incident) {
-  const free = state.vehicles.filter(v => v.phase === 'wache' && v.status !== 6 && !v.incident);
-  const option = v => `<option value="${esc(v.id)}">${esc(v.call)}</option>`;
+  const eta = incident.eta || {};
+  const free = state.vehicles.filter(v => v.phase === 'wache' && v.status !== 6 && !v.incident)
+    .sort((a, b) => (eta[a.id] ?? Infinity) - (eta[b.id] ?? Infinity));
+  const option = v => `<option value="${esc(v.id)}">${esc(v.call)}${eta[v.id] != null ? ` · ca. ${eta[v.id]} s` : ''}</option>`;
   const owned = free.filter(v => v.owner), crewless = free.filter(v => !v.owner);
   if (state.ai_mode) return free.map(option).join('');
   let markup = owned.length ? `<optgroup label="Spielerfahrzeuge">${owned.map(option).join('')}</optgroup>` : '';
@@ -121,10 +124,28 @@ function routePoint(route, share) {
   return route[route.length - 1];
 }
 
-// Der Server legt beim Phasenwechsel Weg (phase_route) und Ankunftszeit (phase_until) fest.
-// Hier wird nur noch dazwischen interpoliert: (jetzt − phase_at) / (phase_until − phase_at).
-// Fahrten aus älteren Räumen ohne Route laufen weiter gerade von phase_from nach phase_to.
+// Punkt zur Fahrzeit t (Sekunden ab phase_at); times[i] = Zeitpunkt, an dem route[i] erreicht wird.
+// So fährt das Fahrzeug je Abschnitt mit dem Tempo seiner Straße (Feldweg sichtbar langsamer).
+function routeAtTime(route, times, t) {
+  if (t <= times[0]) return route[0];
+  for (let i = 1; i < route.length; i++) {
+    if (t < times[i]) {
+      const a = route[i - 1], b = route[i], span = times[i] - times[i - 1];
+      const share = span > 0 ? (t - times[i - 1]) / span : 1;
+      return [a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share];
+    }
+  }
+  return route[route.length - 1];
+}
+
+// Der Server legt beim Phasenwechsel Weg (phase_route), Zeitplan (phase_times) und Ankunft (phase_until) fest.
+// Hier wird nur noch dazwischen interpoliert. Fahrten aus älteren Räumen ohne Zeitplan laufen gleichmäßig
+// über die Route, ganz alte ohne Route gerade von phase_from nach phase_to.
 function position(v) {
+  const route = v.phase_route, times = v.phase_times;
+  if (Array.isArray(route) && Array.isArray(times) && route.length > 1 && times.length === route.length) {
+    return routeAtTime(route, times, serverNow() - v.phase_at);
+  }
   const span = (v.phase_until ?? v.phase_at) - v.phase_at;
   const share = span > 0 ? Math.min(1, Math.max(0, (serverNow() - v.phase_at) / span)) : 1;
   if (Array.isArray(v.phase_route) && v.phase_route.length > 1) return routePoint(v.phase_route, share);
@@ -331,7 +352,7 @@ function renderSections(){
  const own=state.players.find(p=>p.id===me),isLs=own?.role==='ls';
  $('sectionsPanel').classList.remove('hidden'); const overlay=$('weatherOverlay');if(overlay)overlay.className=({Regen:'rain',Nebel:'fog',Windig:'wind'})[state.weather]||'';
  $('aiInfo').textContent=state.ai_dispatcher?'KI-Leitstelle aktiv: Sie erstellt Einsätze und alarmiert Fahrzeuge automatisch, bis jemand die Leitstelle übernimmt.':state.ai_mode?'KI-Gruppenführer aktiv: Unbesetzte Fahrzeuge können alarmiert werden und arbeiten selbstständig.':'Mehrspieler: Zuerst Spielerfahrzeuge alarmieren. Unbesetzte Fahrzeuge fahren mit KI-Besatzung, aber nur, wenn das Stichwort mehr Fahrzeuge verlangt (F2 = 2, B3 = 3) und kein Spielerfahrzeug mehr frei ist.';
- $('aiInfo').textContent += ` · Wetter: ${state.weather} · Fahrzeit ca. ${state.travel_time||12}s · Arbeitsfaktor ${Math.round((state.work_factor||1)*100)}%`; $('sectionsList').innerHTML=state.incidents.filter(i=>!i.closed).map(i=>{
+ $('aiInfo').textContent += ` · Wetter: ${state.weather} · Fahrtempo ${Math.round(100/(state.drive_slowdown||1))}%${state.weather==='Regen'?' (Feldwege matschig)':''} · Arbeitsfaktor ${Math.round((state.work_factor||1)*100)}%`; $('sectionsList').innerHTML=state.incidents.filter(i=>!i.closed).map(i=>{
  const sections=i.sections||{'Hauptabschnitt':{leader:'KI-Einsatzleitung',vehicles:[]}};
  const opts=Object.keys(sections).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
  const vehicles=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);
