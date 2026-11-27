@@ -6,6 +6,7 @@ gemeldet; die Meldungen gehen unverändert an das Frontend.
 
 Die Logik stammt aus dem alten server.py; Welle 2C hat Fahrzeiten, Einsatzliste und KI-Übernahme korrigiert.
 """
+import itertools
 import json
 import random
 import re
@@ -52,12 +53,13 @@ UNATTENDED_DELAY = 20  # Sekunden, bis die KI ein unbesetztes Fahrzeug vor Ort �
 SNAPSHOT_CLOSED = 20  # so viele abgeschlossene Einsätze sieht das Frontend
 KEEP_CLOSED = 50  # so viele abgeschlossene Einsätze bleiben im Speicher
 WEATHER = ['Sonnig', 'Bewölkt', 'Regen', 'Nebel', 'Windig']
-TRAVEL_TIME = {'Sonnig': 12, 'Bewölkt': 13, 'Regen': 17, 'Nebel': 20, 'Windig': 15}
-# Fahrten folgen dem Straßennetz (game.strassen). TRAVEL_TIME gilt für eine mittellange Route
-# (Mittel über alle Wachen und Einsatzorte); kürzere und längere Routen dauern anteilig kürzer oder
-# länger, aber höchstens halb bzw. doppelt so lange, damit das Spiel nicht zäh wird.
-ROUTE_REFERENCE = .9
-ROUTE_FACTOR = (.5, 2)
+# Fahrzeit = Ausrückzeit + Summe(Abschnittslänge / Geschwindigkeit der Straßenklasse) × Wetterfaktor.
+# Geschwindigkeiten je Klasse: game.strassen.SPEED. Weg und Fahrzeit stehen beim Alarm fest.
+DEPARTURE_TIME = 3  # Sekunden vom Alarm bis zur Abfahrt (nur Anfahrt, nicht Rückfahrt)
+WEATHER_SLOWDOWN = {'Sonnig': 1, 'Bewölkt': 1.05, 'Regen': 1.25, 'Nebel': 1.4, 'Windig': 1.1}
+MUD_SLOWDOWN = 1.5  # Feld- und Schotterwege bei Regen zusätzlich (matschig)
+KIND_SPEED = {'KdoW': 1.15}  # Kommandowagen ist wendiger als die Löschfahrzeuge
+LEGACY_TRAVEL_TIME = 12  # Fahrten aus sehr alten Räumen ohne phase_until
 WORK_FACTOR = {'Sonnig': 1, 'Bewölkt': 1, 'Regen': .85, 'Nebel': .8, 'Windig': .9}
 # KI-Leitstelle (ohne menschliche Leitstelle). Die AI_*-Werte überschreibt westbummeln/settings.py per Env.
 # Abstand zwischen zwei Einsätzen: Zufall zwischen MIN und MAX Sekunden, geteilt durch (1 + freie GF-Fahrzeuge).
@@ -207,9 +209,12 @@ def alarmable(v):
 
 
 def alarm_eta(r, v, pos, now):
-    """Voraussichtliche Fahrzeit in Sekunden von der aktuellen Position des Fahrzeugs nach pos."""
-    start = list(v['base']) if v['phase'] == 'wache' else vehicle_position(v, now)
-    return trip_duration(r, strassen.route(start, pos))
+    """Voraussichtliche Fahrzeit in Sekunden von der aktuellen Position des Fahrzeugs nach pos.
+
+    Wie alarm(): auf der Wache mit Ausrückzeit (= eta), unterwegs ohne."""
+    if v['phase'] == 'wache':
+        return eta(r, v, pos)
+    return plan_trip(r, v, vehicle_position(v, now), pos)[1][-1]
 
 
 def needed_vehicles(inc):
@@ -251,8 +256,8 @@ def alarm(r, inc, v, now):
     sections = inc.setdefault('sections', default_sections())
     if not any(v['id'] in section['vehicles'] for section in sections.values()):
         sections['Hauptabschnitt']['vehicles'].append(v['id'])
-    route = strassen.route(start, inc['pos'])
-    _start_trip(v, 'anfahrt', route, trip_duration(r, route), now)
+    # Ausrückzeit nur auf der Wache; ein Fahrzeug, das schon fährt, dreht einfach um.
+    _start_trip(v, 'anfahrt', *plan_trip(r, v, start, inc['pos'], DEPARTURE_TIME if from_station else 0), now)
     v.update(status=3, incident=inc['id'], vorbelastet=not from_station)
 
 
@@ -277,41 +282,70 @@ def alarm_message(v, inc):
     return text
 
 
-def trip_duration(r, route):
-    """Fahrzeit in Sekunden für eine Route, abhängig vom aktuellen Wetter."""
-    factor = strassen.length(route) / ROUTE_REFERENCE
-    return travel_time(r) * min(ROUTE_FACTOR[1], max(ROUTE_FACTOR[0], factor))
+def drive_slowdown(r):
+    """Wetterfaktor auf alle Fahrzeiten (1 = sonnig)."""
+    return WEATHER_SLOWDOWN.get(r['weather'], 1)
 
 
-def _start_trip(v, phase, route, duration, now):
-    """Fahrt entlang route beginnen. Weg und Ankunftszeit stehen ab jetzt fest; ein Wetterwechsel ändert sie nicht."""
-    v.update(phase=phase, phase_at=now, phase_until=now + duration, phase_from=list(route[0]),
-             phase_to=list(route[-1]), phase_route=route)
+def drive_speeds(r, v=None):
+    """Meter pro Sekunde je Straßenklasse für dieses Fahrzeug beim aktuellen Wetter."""
+    factor = KIND_SPEED.get(v['kind'], 1) / drive_slowdown(r) if v else 1 / drive_slowdown(r)
+    speeds = {road: speed * factor for road, speed in strassen.SPEED.items()}
+    if r['weather'] == 'Regen':
+        speeds['weg'] /= MUD_SLOWDOWN
+    return speeds
+
+
+def plan_trip(r, v, start, target, departure=0):
+    """Schnellster Weg von start nach target: (Punkte, Sekunden ab Alarm je Punkt)."""
+    route, times = strassen.plan(start, target, drive_speeds(r, v))
+    return route, [round(departure + t, 2) for t in times]
+
+
+def eta(r, v, target):
+    """Voraussichtliche Fahrzeit in Sekunden von der Wache zu target (inklusive Ausrückzeit)."""
+    return plan_trip(r, v, v['base'], target, DEPARTURE_TIME)[1][-1]
+
+
+def _start_trip(v, phase, route, times, now):
+    """Fahrt entlang route beginnen. times[i]: Sekunden ab now, zu denen route[i] erreicht wird.
+
+    Weg, Tempo je Abschnitt und Ankunftszeit stehen ab jetzt fest; ein Wetterwechsel ändert sie nicht."""
+    v.update(phase=phase, phase_at=now, phase_until=now + times[-1], phase_from=list(route[0]),
+             phase_to=list(route[-1]), phase_route=route, phase_times=times)
 
 
 def _stop(v, phase, pos, now):
     v.update(phase=phase, phase_at=now, phase_until=now, phase_from=list(pos), phase_to=list(pos))
     v.pop('phase_route', None)
+    v.pop('phase_times', None)
 
 
-def _trip_share(v, now):
-    """Zurückgelegter Anteil der laufenden Fahrt (0–1) nach der Zeit."""
-    duration = v.get('phase_until', v['phase_at']) - v['phase_at']
-    return 1 if duration <= 0 else min(1, max(0, (now - v['phase_at']) / duration))
+def _timeline(v):
+    """Weg und Zeitplan (Sekunden ab phase_at) der laufenden Fahrt.
+
+    Fahrten aus älteren Räumen ohne phase_times laufen gleichmäßig über die Strecke, ganz alte ohne
+    Route gerade von phase_from nach phase_to."""
+    route = v.get('phase_route')
+    if not route or len(route) < 2:
+        start = v.get('phase_from') or list(v['base'])
+        route = [start, v.get('phase_to') or start]
+    times = v.get('phase_times')
+    if times and len(times) == len(route):
+        return route, times
+    span = max(0, v.get('phase_until', v['phase_at']) - v['phase_at'])
+    total = strassen.length(route)
+    times, walked = [0], 0
+    for a, b in itertools.pairwise(route):
+        walked += strassen.distance(a, b)
+        times.append(span * walked / total if total else span)
+    return route, times
 
 
 def vehicle_position(v, now):
-    """Position auf der Karte (0–1) zum Zeitpunkt now.
-
-    Entlang phase_route, falls vorhanden; Fahrten aus älteren Räumen ohne Route linear zwischen
-    phase_from und phase_to."""
-    share = _trip_share(v, now)
-    route = v.get('phase_route')
-    if route and len(route) > 1:
-        return strassen.along(route, share)[0]
-    start = v.get('phase_from') or list(v['base'])
-    target = v.get('phase_to') or start
-    return [start[0] + (target[0] - start[0]) * share, start[1] + (target[1] - start[1]) * share]
+    """Position auf der Karte (0–1) zum Zeitpunkt now, entlang des Wegs mit dem Tempo je Abschnitt."""
+    route, times = _timeline(v)
+    return strassen.at_time(route, times, now - v['phase_at'])[0]
 
 
 def _distance(a, b):
@@ -440,10 +474,6 @@ def ai_group_leaders(r, now):
     return changed
 
 
-def travel_time(r):
-    return TRAVEL_TIME.get(r['weather'], 12)
-
-
 def weather_work_factor(r):
     return WORK_FACTOR.get(r['weather'], 1)
 
@@ -459,8 +489,8 @@ def update(r, now=None):
     for v in r['vehicles'].values():
         if v['phase'] not in ('anfahrt', 'rueckfahrt'):
             continue
-        # Fahrten aus älteren Räumen ohne phase_until enden wie früher nach der aktuellen Fahrzeit.
-        if now < v.get('phase_until', v['phase_at'] + travel_time(r)):
+        # Fahrten aus sehr alten Räumen ohne phase_until enden nach der alten Pauschale.
+        if now < v.get('phase_until', v['phase_at'] + LEGACY_TRAVEL_TIME):
             continue
         if v['phase'] == 'anfahrt':
             _stop(v, 'vorort', v.get('phase_to') or v['base'], now)
@@ -532,25 +562,21 @@ def _finish_incident(r, inc, now):
 def _send_home(r, v, now):
     """Rückfahrt ab der aktuellen Position.
 
-    Bricht die Anfahrt ab, fährt das Fahrzeug den bisherigen Weg zurück und braucht dafür anteilig
-    so lange, wie es schon unterwegs war. Vom Einsatzort aus geht es über den kürzesten Weg heim."""
-    route = v.get('phase_route')
-    if v['phase'] == 'anfahrt' and route and len(route) > 1:
-        share = _trip_share(v, now)
-        _, walked = strassen.along(route, share)
-        back = walked[::-1] if len(walked) > 1 else [walked[0], walked[0]]
-        duration = trip_duration(r, route) * (strassen.length(walked) / (strassen.length(route) or 1))
-    elif v['phase'] == 'anfahrt':
-        # Anfahrt aus einem älteren Raum ohne Route: wie früher gerade zurück.
-        start = vehicle_position(v, now)
-        base = list(v['base'])
-        full = _distance(v.get('phase_to') or start, base)
-        back = [start, base]
-        duration = travel_time(r) * (_distance(start, base) / full if full else 1)
+    Bricht die Anfahrt ab, fährt das Fahrzeug den bisherigen Weg zurück, mit demselben Tempo je
+    Abschnitt, braucht also so lange, wie es schon gefahren ist. Vom Einsatzort aus geht es über
+    den schnellsten Weg heim (ohne Ausrückzeit)."""
+    if v['phase'] == 'anfahrt':
+        route, times = _timeline(v)
+        elapsed = min(times[-1], max(times[0], now - v['phase_at']))
+        here, walked = strassen.at_time(route, times, elapsed)
+        passed = times[:len(walked) - 1]  # Zeitpunkte der schon erreichten Wegpunkte
+        back = walked[::-1]
+        back_times = [0] + [round(elapsed - t, 2) for t in reversed(passed)]
+        if len(back) == 1:
+            back, back_times = [here, here], [0, 0]
     else:
-        back = strassen.route(vehicle_position(v, now), v['base'])
-        duration = trip_duration(r, back)
-    _start_trip(v, 'rueckfahrt', back, duration, now)
+        back, back_times = plan_trip(r, v, vehicle_position(v, now), v['base'])
+    _start_trip(v, 'rueckfahrt', back, back_times, now)
     v['status'] = 1
 
 
@@ -582,7 +608,7 @@ def snapshot(r, now=None):
         'roles': r['roles'],
         'weather': r['weather'],
         'weather_mode': r['weather_mode'],
-        'travel_time': travel_time(r),
+        'drive_slowdown': drive_slowdown(r),
         'work_factor': weather_work_factor(r),
     }
 

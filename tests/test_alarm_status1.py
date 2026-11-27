@@ -69,7 +69,8 @@ def test_alarm_aus_status_1_auf_rueckfahrt(room):
     assert v['phase_route'][0] == pytest.approx(here, abs=1e-3)
     assert v['phase_route'][0] != pytest.approx(list(v['base']), abs=1e-2)
     assert v['phase_route'][-1] == new['pos']
-    assert v['phase_until'] == pytest.approx(now + engine.trip_duration(room, v['phase_route']))
+    # Keine Ausrückzeit: das Fahrzeug fährt schon.
+    assert v['phase_until'] == pytest.approx(now + engine.plan_trip(room, v, here, new['pos'])[1][-1], abs=.05)
     assert v['vorbelastet'] is True
     assert room['radio'][-1]['message'].endswith('Aus Status 1 alarmiert, vorbelastet.')
     # Der alte Einsatz bleibt abgeschlossen und behält seine Fahrzeugliste.
@@ -170,26 +171,38 @@ def ki_mit_zwei_gf(r):
     return anna, ben
 
 
-def test_ki_bevorzugt_bei_gleicher_fahrzeit_die_wache(room):
+def test_ki_bevorzugt_bei_gleicher_fahrzeit_die_wache(room, monkeypatch):
     ki_mit_zwei_gf(room)
     s1 = room['vehicles']['WB-2-LF20']
-    # Fast zurück an der Wache: gleiche Fahrzeit wie das Fahrzeug, das schon dort steht.
-    route = [[s1['base'][0] + .01, s1['base'][1]], list(s1['base'])]
-    engine._start_trip(s1, 'rueckfahrt', route, 10, NOW - 9.9)
+    engine._start_trip(s1, 'rueckfahrt', [[.6, .6], list(s1['base'])], [0, 60], NOW - 30)
     s1['status'] = 1
     inc = engine.new_incident('F1 · Kleinbrand', 'Kirchstraße', [.56, .58], 'KI-Leitstelle', NOW)
     room['incidents'].append(inc)
-    assert round(engine.alarm_eta(room, s1, inc['pos'], NOW)) == \
-        round(engine.alarm_eta(room, room['vehicles']['WB-2-HLF20'], inc['pos'], NOW))
+    # Gleiche Fahrzeit (auf volle Sekunden): die Wache gewinnt, obwohl das S1-Fahrzeug zuerst steht.
+    monkeypatch.setattr(engine, 'alarm_eta', lambda r, v, pos, now: 30.2 if v is s1 else 29.8)
     engine.run_ai(room, NOW)
     assert inc['assigned'] == ['WB-2-HLF20']
+
+
+def test_ki_nimmt_status_1_wenn_es_schneller_ist(room):
+    ki_mit_zwei_gf(room)
+    s1 = room['vehicles']['WB-2-LF20']
+    inc = engine.new_incident('F1 · Kleinbrand', 'Kirchstraße', [.56, .58], 'KI-Leitstelle', NOW)
+    # Auf der Rückfahrt vom Einsatzort nebenan: viel schneller dort als das Fahrzeug auf der Wache.
+    engine._start_trip(s1, 'rueckfahrt', [[.58, .58], list(s1['base'])], [0, 60], NOW - 1)
+    s1['status'] = 1
+    room['incidents'].append(inc)
+    on_station = room['vehicles']['WB-2-HLF20']
+    assert engine.alarm_eta(room, s1, inc['pos'], NOW) < engine.alarm_eta(room, on_station, inc['pos'], NOW)
+    engine.run_ai(room, NOW)
+    assert inc['assigned'] == ['WB-2-LF20'] and s1['vorbelastet']
 
 
 def test_ki_alarmiert_status_1_wenn_nichts_auf_der_wache(room):
     ki_mit_zwei_gf(room)
     for vid in ('WB-2-LF20', 'WB-2-HLF20'):
         v = room['vehicles'][vid]
-        engine._start_trip(v, 'rueckfahrt', [[.8, .8], list(v['base'])], 60, NOW - 30)
+        engine._start_trip(v, 'rueckfahrt', [[.8, .8], list(v['base'])], [0, 60], NOW - 30)
         v['status'] = 1
     room['vehicles']['WB-2-HLF20']['status'] = 3  # nicht alarmierbar
     inc = engine.new_incident('F1 · Kleinbrand', 'Kirchstraße', [.56, .58], 'KI-Leitstelle', NOW)
@@ -205,7 +218,7 @@ def test_ki_allein_nimmt_erst_fahrzeuge_von_der_wache(room):
     join(room, 1, 'Anna')  # allein: unbesetzte Fahrzeuge mit KI-Besatzung
     room['ai_last'] = NOW + 10_000
     first = room['vehicles']['WB-1-HLF20']
-    engine._start_trip(first, 'rueckfahrt', [[.3, .5], list(first['base'])], 60, NOW - 30)
+    engine._start_trip(first, 'rueckfahrt', [[.3, .5], list(first['base'])], [0, 60], NOW - 30)
     first['status'] = 1
     inc = engine.new_incident('F1 · Kleinbrand', 'Kirchstraße', [.56, .58], 'KI-Leitstelle', NOW)
     room['incidents'].append(inc)

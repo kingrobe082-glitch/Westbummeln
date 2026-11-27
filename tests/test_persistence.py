@@ -126,6 +126,16 @@ def test_downtime_does_not_count():
     assert v['phase'] == 'anfahrt'
 
 
+def test_timetable_survives_restart_unshifted():
+    """phase_times sind Sekunden ab phase_at, keine Zeitpunkte: Sie bleiben, nur phase_at wandert."""
+    r, anna, ben = busy_room()
+    code = r['code']
+    times = list(r['vehicles']['WB-1-HLF20']['phase_times'])
+    restart(T + 3 + DOWN)
+    v = rooms.rooms[code]['vehicles']['WB-1-HLF20']
+    assert v['phase_times'] == times
+    assert v['phase_until'] - v['phase_at'] == pytest.approx(times[-1])
+
 def test_zero_means_never_and_is_not_shifted():
     room = {'ai_last': 0, 'weather_at': 0, 'vehicles': {'X': {'phase_at': 0, 'phase_until': T}}}
     persistence.shift_times(room, DOWN)
