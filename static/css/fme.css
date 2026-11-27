@@ -52,3 +52,20 @@
   .fme[data-state]{animation:none!important}
   .fme[data-state] .fme-display{animation:none!important}
 }
+
+/* Pop-up: Der Melder liegt bei jeder Alarmierung mittig über der ganzen Seite,
+   bis er quittiert ist (game.js schließt ihn kurz danach). */
+#fmePanel.fme-popup{
+  position:fixed;inset:0;z-index:1000;margin:0;padding:16px;
+  display:flex;align-items:center;justify-content:center;
+  background:#000000b8;backdrop-filter:blur(3px);animation:fme-pop-in .18s ease-out;
+}
+.fme-card{
+  width:min(100%,360px);padding:0 14px 14px;border-radius:14px;overflow:hidden;
+  background:var(--surface,#15181c);border:2px solid var(--alarm,#b3302a);box-shadow:0 18px 48px #000c;
+}
+.fme-card>h2{margin:0 -14px 14px;padding:9px 14px;background:var(--alarm,#b3302a);color:#fff;
+  font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+.fme-hint{margin:12px 0 0;text-align:center;font-size:12px;color:var(--muted,#aab)}
+@keyframes fme-pop-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){#fmePanel.fme-popup{animation:none}}

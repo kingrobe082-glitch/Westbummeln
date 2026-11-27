@@ -2,6 +2,9 @@ let incidentMarkup = '';
 let fmeKey = '';
 let fmeAcknowledged = false;
 let fmeLines = [];
+let fmeCloseTimer = 0;
+// So lange bleibt das Pop-up nach dem Quittieren mit „✓ Quittiert“ sichtbar (ms).
+const FME_CLOSE_DELAY = 1600;
 
 function updateFme(next) {
   const player = next.players.find(player => player.id === me);
@@ -14,11 +17,14 @@ function updateFme(next) {
   if (key === fmeKey) return;
   fmeKey = key;
   fmeAcknowledged = false;
+  clearTimeout(fmeCloseTimer);
+  // Der Melder ist ein Pop-up: Er erscheint bei jeder neuen Alarmierung über allem anderen.
   $('fmePanel').classList.toggle('hidden', !incident);
   $('fmeAcknowledge').disabled = !incident;
   if (incident) {
     fmeLines = ['Einsatzalarm', vehicle.call, incident.title, incident.address];
     WBFme.alarm(fmeLines);
+    $('fmeAcknowledge').focus({preventScroll: true});
   } else {
     fmeLines = [];
     WBFme.clear();
@@ -30,6 +36,10 @@ $('fmeAcknowledge').onclick = () => {
   fmeAcknowledged = true;
   $('fmeAcknowledge').disabled = true;
   WBFme.acknowledge(fmeLines);
+  const key = fmeKey;
+  fmeCloseTimer = setTimeout(() => {
+    if (fmeKey === key) $('fmePanel').classList.add('hidden');
+  }, FME_CLOSE_DELAY);
 };
 
 // Auswahl im Einsatz: Spielerfahrzeuge immer; unbesetzte (KI-Besatzung) nur, wenn der Server es erlaubt,
