@@ -16,19 +16,47 @@ from collections import deque
 from game import strassen
 from game.parsing import to_int
 
+# Fahrzeugtypen: Sitzplätze, Tankinhalt (Liter) und Fähigkeiten. Ein neuer Typ ist eine Zeile.
+# Fähigkeiten: loeschen, pumpe, wasserversorgung, rettungssatz (hydraulisch, nur HLF), fuehrung.
+# Sie stehen nicht im Fahrzeug-dict, sondern werden über 'kind' nachgeschlagen (vehicle_type), damit
+# gespeicherte Räume nach einer Änderung hier nicht migriert werden müssen.
+VEHICLE_TYPES = {
+    'HLF 20': {'seats': 9, 'tank': 1600, 'abilities': ('loeschen', 'pumpe', 'wasserversorgung', 'rettungssatz')},
+    'LF 20': {'seats': 9, 'tank': 2000, 'abilities': ('loeschen', 'pumpe', 'wasserversorgung')},
+    'LF 10': {'seats': 9, 'tank': 1200, 'abilities': ('loeschen', 'pumpe', 'wasserversorgung')},
+    'TSF-W': {'seats': 6, 'tank': 750, 'abilities': ('loeschen', 'pumpe', 'wasserversorgung')},
+    'KdoW': {'seats': 3, 'tank': 0, 'abilities': ('fuehrung',)},
+}
 # Koordinaten beziehen sich auf die vollständige Originalkarte inklusive Legende.
 BASE = {1: (.235, .55), 2: (.466, .51), 3: (.565, .215), 4: (.827, .46), 5: (.548, .80), 6: (.276, .15)}
-FLEET = [
-    {
-        'id': f'WB-{unit}-{kind.replace(" ", "")}',
+UNIT_KINDS = ('HLF 20', 'KdoW', 'LF 20')  # je Löschzug
+# Gerätehäuser (Kartenlegende „Gerätehäuser (zusätzlich)“): Name und Lage des Symbols auf der Karte.
+# Jedes hat ein Fahrzeug vom Typ GH_KIND; an das Straßennetz kommt es wie die Wachen über die
+# nächste Straße (game.strassen.route), GH4 Bummelsbach also über den Mühlenweg.
+GERAETEHAEUSER = {
+    'GH1': ('Birkenhof', (.372, .150)),
+    'GH2': ('Ahorn', (.892, .350)),
+    'GH3': ('Tannenfeld', (.876, .215)),
+    'GH4': ('Bummelsbach', (.267, .798)),
+    'GH5': ('Industrie', (.919, .799)),
+}
+GH_KIND = 'LF 10'  # z. B. 'TSF-W'; der Typ braucht eine Zeile in VEHICLE_TYPES
+
+
+def _fleet_vehicle(unit, kind, base):
+    return {
+        'id': f'WB-{unit}-{kind.replace(" ", "").replace("-", "")}',
         'call': f'Florian WB {unit} {kind}',
         'unit': unit,
         'kind': kind,
-        'seats': 3 if kind == 'KdoW' else 9,
-        'base': BASE[unit],
+        'seats': VEHICLE_TYPES[kind]['seats'],
+        'base': base,
     }
-    for unit in range(1, 7)
-    for kind in ('HLF 20', 'KdoW', 'LF 20')
+
+
+FLEET = [
+    *(_fleet_vehicle(unit, kind, BASE[unit]) for unit in range(1, 7) for kind in UNIT_KINDS),
+    *(_fleet_vehicle(unit, GH_KIND, pos) for unit, (_, pos) in GERAETEHAEUSER.items()),
 ]
 # Straßenpositionen wurden anhand der vom Spieler gelieferten Karte bestimmt.
 PLACES = [
@@ -46,7 +74,7 @@ PLACES = [
     ('Am Rathauspark', .32, .70), ('Erlenstraße', .92, .60),
 ]
 # Feuerwachen und Gerätehäuser dürfen keine Einsatzorte sein.
-STATIONS = [*BASE.values(), (.38, .16), (.90, .37), (.88, .23), (.27, .84), (.92, .84)]
+STATIONS = [*BASE.values(), *(pos for _, pos in GERAETEHAEUSER.values())]
 OFFLINE_TIMEOUT = 30
 UNATTENDED_DELAY = 20  # Sekunden, bis die KI ein unbesetztes Fahrzeug vor Ort übernimmt
 SNAPSHOT_CLOSED = 20  # so viele abgeschlossene Einsätze sieht das Frontend
@@ -80,7 +108,9 @@ AI_INCIDENT_TYPES = [
     ('TH1 · Wasser im Keller', 1), ('TH2 · Verkehrsunfall, eingeklemmte Person', 1),
     ('BMA · Brandmeldeanlage', 3), ('ABC1 · Gasgeruch', 1),
 ]
-VOICE_SIGNALS = ('offer', 'answer', 'candidate', 'bye', 'channel')
+# Stichworte, für die ein Fahrzeug mit einer bestimmten Fähigkeit (VEHICLE_TYPES) kommen muss.
+STICHWORT_ABILITIES = {'TH2': ('rettungssatz',)}
+VOICE_SIGNALS =('offer', 'answer', 'candidate', 'bye', 'channel')
 DISPATCHER_ONLY = 'Nur die besetzte Leitstelle darf diese Aktion ausführen'
 UNCHANGED = object()  # Rückgabe einer Aktion, die den Raum nicht verändert hat (rev bleibt gleich)
 
@@ -98,10 +128,7 @@ def new_room(code, seed=None):
     return {
         'code': code,
         'players': {},
-        'vehicles': {
-            v['id']: {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0}
-            for v in FLEET
-        },
+        'vehicles': {v['id']: _new_vehicle(v) for v in FLEET},
         'incidents': [],
         'radio': [],
         'rev': 0,
@@ -121,6 +148,24 @@ def new_room(code, seed=None):
         'weather_at': 0,
         'weather_history': [],
     }
+
+
+def _new_vehicle(v):
+    return {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0}
+
+
+def complete_fleet(r):
+    """Fehlende Fahrzeuge aus FLEET ergänzen (gespeicherte Räume von vor einer Flottenerweiterung,
+    z. B. ohne die Gerätehaus-Fahrzeuge). Vorhandene Fahrzeuge bleiben unverändert. Liefert die Zahl."""
+    missing = [v for v in FLEET if v['id'] not in r['vehicles']]
+    for v in missing:
+        r['vehicles'][v['id']] = _new_vehicle(v)
+    return len(missing)
+
+
+def vehicle_type(v):
+    """Typdaten (seats, tank, abilities) zum Fahrzeug; unbekannte Typen haben keine Fähigkeiten."""
+    return VEHICLE_TYPES.get(v.get('kind'), {'seats': v.get('seats', 9), 'tank': 0, 'abilities': ()})
 
 
 def emit(r, author, message, kind='auto', call=None):
@@ -287,17 +332,37 @@ def _crews(r):
     return [v for v in vehicles if v['status'] != 6]
 
 
-def _ai_vehicle(r, inc):
-    """Fahrzeug für die KI-Leitstelle: das nächste freie Spielerfahrzeug.
+def required_abilities(inc):
+    """Fähigkeiten, die mindestens ein alarmiertes Fahrzeug laut Stichwort mitbringen muss."""
+    match = re.match(r'\s*([^\W\d_]+\d?)', inc['title'])
+    return STICHWORT_ABILITIES.get(match.group(1).upper(), ()) if match else ()
 
-    Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn das erlaubt ist."""
+
+def drive_distance(v, target):
+    """Länge des Wegs über das Straßennetz von der Wache des Fahrzeugs zu target (Maß für die Fahrzeit)."""
+    return strassen.length(strassen.route(v['base'], target))
+
+
+def _ai_vehicle(r, inc):
+    """Fahrzeug für die KI-Leitstelle: das freie Spielerfahrzeug mit der kürzesten Anfahrt.
+
+    Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn das erlaubt ist – zuerst das
+    nächstgelegene, also oft das Gerätehaus; bei größeren Einsätzen kommen die Löschzüge dazu.
+    Fehlt dem Einsatz noch eine Fähigkeit laut Stichwort (TH2: Rettungssatz), hat ein Fahrzeug damit Vorrang."""
     crews = _crews(r)
     if crews:
-        return min((v for v in crews if _free(v)), key=lambda v: _distance(v['base'], inc['pos']), default=None)
-    if not ai_mode(r):
+        candidates = [v for v in crews if _free(v)]
+    elif ai_mode(r):
+        candidates = [v for v in r['vehicles'].values() if not v['owner'] and _free(v) and v['kind'] != 'KdoW']
+    else:
         return None
-    return next((v for v in r['vehicles'].values()
-                 if not v['owner'] and _free(v) and v['kind'] != 'KdoW'), None)
+    present = [r['vehicles'][vid] for vid in inc['assigned'] if vid in r['vehicles']]
+    missing = [a for a in required_abilities(inc) if not any(a in vehicle_type(v)['abilities'] for v in present)]
+
+    def rank(v):
+        fits = all(a in vehicle_type(v)['abilities'] for a in missing)
+        return not fits, drive_distance(v, inc['pos'])
+    return min(candidates, key=rank, default=None)
 
 
 def ai_open_limit(r):

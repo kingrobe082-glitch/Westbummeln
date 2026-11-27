@@ -99,6 +99,8 @@ def _load_room(data):
     data['banned'] = {account: name for account, name in data.get('banned', [])}
     for p in data['players'].values():
         p.pop('radio_times', None)
+    # Räume von vor einer Flottenerweiterung (z. B. ohne Gerätehaus-Fahrzeuge) bekommen die neuen Fahrzeuge.
+    engine.complete_fleet(data)
     return data
 
 

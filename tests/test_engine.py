@@ -21,8 +21,8 @@ def act(r, pid, account, action, now=NOW, developer=False, **data):
     return engine.handle(r, {'action': action, 'id': pid, **data}, account, 'x', developer, now)
 
 
-def test_fleet_has_18_vehicles_on_station(room):
-    assert len(room['vehicles']) == 18
+def test_fleet_has_23_vehicles_on_station(room):
+    assert len(room['vehicles']) == 23  # 6 Löschzüge × 3 + 5 Gerätehäuser
     assert room['vehicles']['WB-1-HLF20']['call'] == 'Florian WB 1 HLF 20'
     assert all(v['phase'] == 'wache' and v['status'] == 2 for v in room['vehicles'].values())
 

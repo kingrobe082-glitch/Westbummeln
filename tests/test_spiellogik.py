@@ -396,7 +396,7 @@ def test_ki_leitstelle_laeuft_mit_mehreren_spielern_ohne_leitstelle(room, monkey
     assert inc['creator'] == 'KI-Leitstelle'
     # Nur Spielerfahrzeuge, und zwar das nächste zum Einsatzort.
     nearest = min(('WB-1-HLF20', 'WB-4-LF20'),
-                  key=lambda vid: engine._distance(room['vehicles'][vid]['base'], inc['pos']))
+                  key=lambda vid: engine.drive_distance(room['vehicles'][vid], inc['pos']))
     assert inc['assigned'] == [nearest]
 
 
