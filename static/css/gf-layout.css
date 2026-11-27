@@ -1,0 +1,44 @@
+/* GF-Ansicht (body.gf-mode, gesetzt von gf-layout.js): Spieler führt ein Fahrzeug.
+   Ohne Fahrzeug und als Leitstelle greift nichts davon. */
+
+/* Leiste „Fahrzeug wechseln“: nur als GF sichtbar */
+.vehiclesToggle,.gfLine{display:none}
+body.gf-mode #vehiclesPanel>.vehiclesTitle{display:none}
+body.gf-mode .vehiclesToggle{display:flex;width:100%;justify-content:space-between;align-items:center;font-weight:600;text-align:left}
+body.gf-mode .vehiclesToggle .arrow{font-size:18px;line-height:1;transition:transform .15s}
+body.gf-mode #vehiclesPanel.open .vehiclesToggle .arrow{transform:rotate(90deg)}
+body.gf-mode #vehiclesPanel.open #vehiclesBody{margin-top:10px}
+body.gf-mode #vehiclesPanel:not(.open) #vehiclesBody{display:none}
+body.gf-mode #vehiclesPanel{padding:8px;align-self:start}
+
+/* „Rolle wählen“ als eine Zeile: Raumcode · Rolle + Fahrzeug · Fahrzeug verlassen */
+body.gf-mode #rolesPanel{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:8px 13px}
+body.gf-mode #rolesPanel>h2,body.gf-mode #roleInfo,body.gf-mode #rolesPanel>.row{display:none}
+body.gf-mode #rolesPanel .roomBadge{margin:0}
+body.gf-mode #rolesPanel .roomBadge strong{font-size:18px;padding:2px 9px}
+body.gf-mode .gfLine{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-left:auto}
+body.gf-mode .gfLine b{color:#fff}
+/* „Fahrzeug verlassen“ steht jetzt oben in der Rollenzeile */
+body.gf-mode #release{display:none}
+
+/* Reihenfolge: eigenes Fahrzeug vor der Karte, Fahrzeugliste ans Ende */
+body.gf-mode #rolesPanel{order:-2}
+body.gf-mode #controlPanel{order:-1}
+body.gf-mode #vehiclesPanel{order:1}
+
+@media(min-width:851px){
+  /* Karte breiter; rechts eigenes Fahrzeug oben, darunter die Leiste.
+     Die Karte läuft über beide Zeilen; die zweite Zeile ist flexibel und nimmt den Rest der
+     Kartenhöhe auf, damit unter dem Statusbereich keine Lücke vor der Leiste entsteht. */
+  body.gf-mode main{grid-template-columns:minmax(0,1.7fr) minmax(330px,1fr);grid-template-rows:auto auto 1fr}
+  body.gf-mode #mapPanel{grid-column:1;grid-row:span 2}
+  body.gf-mode #controlPanel,body.gf-mode #vehiclesPanel{grid-column:2}
+  /* Unter der Karte ist rechts nichts mehr: Einsätze über die volle Breite */
+  body.gf-mode #incidentsPanel{grid-column:1/-1}
+}
+
+@media(max-width:850px){
+  /* Handy/Tablet: Alarm (FME) und eigenes Fahrzeug direkt unter der Kopfzeile */
+  body.gf-mode #fmePanel{order:-1}
+  body.gf-mode .gfLine{margin-left:0}
+}
