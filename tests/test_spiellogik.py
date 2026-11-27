@@ -65,6 +65,7 @@ def test_return_trip_uses_fixed_duration(room):
     arrival = v['phase_until']
     engine.update(room, arrival)
     act(room, ls, 1, 'close', now=arrival, incident=inc['id'])
+    act(room, gf, 2, 'return_home', now=arrival)
     duration = engine.trip_duration(room, strassen.route(inc['pos'], v['base']))
     assert (v['phase'], v['phase_at'], v['phase_until']) == ('rueckfahrt', arrival, pytest.approx(arrival + duration))
     assert v['phase_from'] == inc['pos'] and v['phase_to'] == list(v['base'])
@@ -88,6 +89,7 @@ def test_return_trip_takes_as_long_as_approach(room):
     engine.update(room, v['phase_until'])
     assert v['phase'] == 'vorort'
     act(room, ls, 1, 'close', now=v['phase_until'] + 30, incident=far['id'])
+    act(room, gf, 2, 'return_home', now=v['phase_until'] + 30)
     assert v['phase'] == 'rueckfahrt'
     assert strassen.length(v['phase_route']) == pytest.approx(forward)
     assert v['phase_until'] - v['phase_at'] == pytest.approx(approach)
