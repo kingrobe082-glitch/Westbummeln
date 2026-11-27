@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 230 100" width="230" height="100">
+<!-- KdoW (Kommandowagen, SUV) in Seitenansicht, Front nach links – passend zur LF-20-Seitenansicht.
+     Eigene Zeichnung für Westbummeln. Wird auf der Karte nur gespiegelt, nicht gedreht. -->
+<defs>
+  <linearGradient id="lack" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#f03a30"/><stop offset="1" stop-color="#b81815"/>
+  </linearGradient>
+  <linearGradient id="glas" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3b4652"/><stop offset="1" stop-color="#1b2229"/>
+  </linearGradient>
+</defs>
+<!-- Blaulichtbalken -->
+<rect x="96" y="2" width="56" height="8" rx="3" fill="#1f3fbf" stroke="#0d1a55" stroke-width="1.5"/>
+<rect x="99" y="3.5" width="18" height="4.5" rx="2" fill="#6fb6ff"/>
+<rect x="131" y="3.5" width="18" height="4.5" rx="2" fill="#6fb6ff"/>
+<!-- Karosserie -->
+<path d="M10 64 L12 50 Q14 42 24 41 L62 37 L84 15 Q88 10 95 10 L208 10 Q218 10 219 19 L221 64 Q221 74 211 74 L20 74 Q10 74 10 64 Z" fill="url(#lack)" stroke="#5a0a08" stroke-width="2"/>
+<!-- weiße Schwellerzone wie beim LF 20 -->
+<path d="M11 62 L220 62 L220 66 Q220 74 211 74 L20 74 Q11 74 11 66 Z" fill="#f2f2f2"/>
+<!-- Fenster -->
+<path d="M68 38 L88 17 Q90 15 94 15 L112 15 L112 38 Z" fill="url(#glas)"/>
+<rect x="117" y="15" width="44" height="23" rx="2" fill="url(#glas)"/>
+<rect x="166" y="15" width="47" height="23" rx="3" fill="url(#glas)"/>
+<!-- Türfugen und Griffe -->
+<path d="M114 15 L114 62 M163 15 L163 62" stroke="#7d100d" stroke-width="1.5"/>
+<rect x="132" y="42" width="9" height="2.5" rx="1" fill="#3a0605"/>
+<rect x="180" y="42" width="9" height="2.5" rx="1" fill="#3a0605"/>
+<!-- gelbe Warnstreifen -->
+<rect x="14" y="50" width="206" height="6" fill="#f4e400"/>
+<rect x="12" y="44" width="10" height="5" rx="1" fill="#fff3b0"/>
+<rect x="214" y="22" width="5" height="12" rx="1" fill="#e0221b" stroke="#7d100d"/>
+<!-- Beschriftung -->
+<text x="116" y="70" font-family="Arial,Helvetica,sans-serif" font-size="8" font-weight="700" fill="#b81815" text-anchor="middle">FEUERWEHR</text>
+<!-- Räder -->
+<g fill="#1a1a1a"><circle cx="50" cy="74" r="16"/><circle cx="183" cy="74" r="16"/></g>
+<g fill="#b9bec4" stroke="#6d7379" stroke-width="1.5"><circle cx="50" cy="74" r="8"/><circle cx="183" cy="74" r="8"/></g>
+<g fill="#6d7379"><circle cx="50" cy="74" r="2.5"/><circle cx="183" cy="74" r="2.5"/></g>
+</svg>
