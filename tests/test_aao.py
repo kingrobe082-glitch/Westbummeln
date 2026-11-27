@@ -50,7 +50,8 @@ def test_einsatzbereiche_decken_alle_orte_ab():
     assert {name for name, _, _ in engine.PLACES} == set(aao.EINSATZBEREICHE)
     for zust, nachbar in aao.EINSATZBEREICHE.values():
         assert zust != nachbar and {zust, nachbar} <= set(aao.LOESCHZUEGE)
-    assert aao.einsatzbereich('Hauptstraße 5') == ('LZ2', 'LZ1')
+    assert aao.einsatzbereich('Kirchstraße 5') == ('LZ2', 'LZ1')
+    assert aao.einsatzbereich('Flurstraße') == ('LZ4', 'LZ6')
 
 
 # ------------------------------------------------------------------ Vererbung und Sonderfälle
@@ -71,10 +72,10 @@ def test_zusaetzlich_heisst_mehr_fahrzeuge_derselben_einheit():
 
 
 def test_lz2_schickt_bei_b1_ein_mlf():
-    v = aao.vorschlag('B 1', FLOTTE, ort='Hauptstraße')  # Einsatzbereich LZ 2
+    v = aao.vorschlag('B 1', FLOTTE, ort='Kirchstraße')  # Einsatzbereich LZ 2
     assert v['zustaendig'] == 'LZ2'
     assert [(x['einheit'], x['typ'], x['status']) for x in v['fahrzeuge']] == [('LZ2', 'MLF', 'neu')]
-    v = aao.vorschlag('B 1', FLOTTE, ort='Schulstraße')  # Einsatzbereich LZ 4
+    v = aao.vorschlag('B 1', FLOTTE, ort='Flurstraße')  # Einsatzbereich LZ 4
     assert [(x['einheit'], x['typ']) for x in v['fahrzeuge']] == [('LZ4', 'HLF 10')]
 
 
@@ -138,9 +139,9 @@ def test_ersatz_mit_hinweis_wenn_fahrzeug_belegt():
     # LZ 1 hat zwei DLK, beide schon eingeplant → die DLK von LZ 3 fehlt.
     assert not ersatz and any(f['regel'] == 'LZ 3: DLK 23/12' and f['hinweis'] == 'nicht frei' for f in v['fehlt'])
     busy = {x['id'] for x in FLOTTE if x['einheit'] == 'LZ4' and x['typ'] == 'HLF 10'}
-    v = aao.vorschlag('B 1', FLOTTE, ort='Schulstraße', frei=lambda x: x['id'] not in busy)
+    v = aao.vorschlag('B 1', FLOTTE, ort='Flurstraße', frei=lambda x: x['id'] not in busy)
     (x,) = v['fahrzeuge']
-    assert x['status'] == 'ersatz' and x['einheit'] == 'LZ3' and 'nicht frei' in x['hinweis']  # Nachbar-LZ
+    assert x['status'] == 'ersatz' and x['einheit'] == 'LZ6' and 'nicht frei' in x['hinweis']  # Nachbar-LZ
 
 
 def test_ersatz_nimmt_spaeteren_plaetzen_nichts_weg():
@@ -301,7 +302,7 @@ def test_spielerfahrzeug_wird_bevorzugt():
 def test_leitstelle_darf_aao_mit_ki_besatzung_alarmieren_im_mehrspieler():
     r, ls = aao_raum()
     gf = join(r, 2, 'Ben')
-    act(r, gf, 2, 'claim', vehicle='LZ6-hlf20-1')  # freies Spielerfahrzeug, nicht in der AAO
+    act(r, gf, 2, 'claim', vehicle='LZ5-tlf3000-1')  # freies Spielerfahrzeug, nicht in der AAO
     inc, ids = anlegen(r, ls, 'B 2', 'Schulstraße')
     assert inc['assigned'] == ids and all(not r['vehicles'][i]['owner'] for i in ids)
 

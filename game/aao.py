@@ -190,20 +190,22 @@ ALT = {
 # ------------------------------------------------------------------ Einsatzbereiche
 
 # Zuständiger LZ und Nachbar-LZ je Einsatzort: die zwei Löschzüge mit der kürzesten Fahrzeit über das
-# Straßennetz (Fahrzeit nach Straßenart, PR #42). Neu berechnen mit `python tools/einsatzbereiche.py`.
+# Straßennetz (Fahrzeit nach Straßenart aus PR #42, Wachen-Standorte aus game/flotte.py: LZ 1 Mitte am Gebäude
+# „Freiwillige Feuerwehr“, LZ 5 West an der gedruckten „LZ1“-Wache usw.). Neu berechnen mit
+# `python tools/einsatzbereiche.py`. LZ 5 (Vegetation, ganz im Westen) ist für keinen Ort der Liste am schnellsten.
 EINSATZBEREICHE = {
-    'Hauptstraße': ('LZ2', 'LZ1'), 'Marktplatz': ('LZ2', 'LZ1'), 'Schulstraße': ('LZ4', 'LZ3'),
-    'Waldstraße': ('LZ6', 'LZ2'), 'Dorfstraße': ('LZ5', 'LZ4'), 'Nelkenweg': ('LZ4', 'LZ2'),
-    'Mathias-Berg-Straße': ('LZ4', 'LZ2'), 'Robin-Hof-Straße': ('LZ5', 'LZ4'), 'Werkstraße': ('LZ5', 'LZ4'),
-    'Buchenstraße': ('LZ4', 'LZ5'), 'Eichenstraße': ('LZ6', 'LZ3'), 'Bachstraße': ('LZ5', 'LZ4'),
-    'Flurstraße': ('LZ3', 'LZ4'), 'Tannenweg': ('LZ3', 'LZ4'), 'Ahornallee': ('LZ4', 'LZ3'),
-    'Kreuzbergstraße': ('LZ3', 'LZ4'), 'Jägerstraße': ('LZ6', 'LZ2'), 'Scheunenweg': ('LZ3', 'LZ6'),
-    'Blütenstraße': ('LZ3', 'LZ6'), 'Sportplatzring': ('LZ6', 'LZ3'), 'Kirchstraße': ('LZ2', 'LZ4'),
-    'Rosenstraße': ('LZ2', 'LZ1'), 'Sonnenstraße': ('LZ2', 'LZ5'), 'Mozartweg': ('LZ4', 'LZ5'),
-    'Uferstraße': ('LZ5', 'LZ2'), 'Mühlenweg': ('LZ5', 'LZ4'), 'Gartenweg': ('LZ5', 'LZ4'),
-    'Wiesenstraße': ('LZ5', 'LZ4'), 'Bummelbachweg': ('LZ5', 'LZ4'), 'Dorflick': ('LZ5', 'LZ4'),
-    'Bürgerstraße': ('LZ5', 'LZ4'), 'Forstweg': ('LZ6', 'LZ3'), 'Feldweg': ('LZ3', 'LZ4'),
-    'Am Rathauspark': ('LZ2', 'LZ1'), 'Erlenstraße': ('LZ4', 'LZ5'),
+    'Hauptstraße': ('LZ1', 'LZ2'), 'Marktplatz': ('LZ1', 'LZ2'), 'Schulstraße': ('LZ6', 'LZ4'),
+    'Waldstraße': ('LZ1', 'LZ2'), 'Dorfstraße': ('LZ3', 'LZ6'), 'Nelkenweg': ('LZ6', 'LZ2'),
+    'Mathias-Berg-Straße': ('LZ6', 'LZ2'), 'Robin-Hof-Straße': ('LZ3', 'LZ6'), 'Werkstraße': ('LZ3', 'LZ6'),
+    'Buchenstraße': ('LZ6', 'LZ3'), 'Eichenstraße': ('LZ4', 'LZ1'), 'Bachstraße': ('LZ3', 'LZ6'),
+    'Flurstraße': ('LZ4', 'LZ6'), 'Tannenweg': ('LZ4', 'LZ6'), 'Ahornallee': ('LZ6', 'LZ4'),
+    'Kreuzbergstraße': ('LZ4', 'LZ6'), 'Jägerstraße': ('LZ1', 'LZ2'), 'Scheunenweg': ('LZ4', 'LZ1'),
+    'Blütenstraße': ('LZ4', 'LZ1'), 'Sportplatzring': ('LZ1', 'LZ4'), 'Kirchstraße': ('LZ2', 'LZ1'),
+    'Rosenstraße': ('LZ2', 'LZ1'), 'Sonnenstraße': ('LZ2', 'LZ1'), 'Mozartweg': ('LZ6', 'LZ3'),
+    'Uferstraße': ('LZ3', 'LZ1'), 'Mühlenweg': ('LZ3', 'LZ6'), 'Gartenweg': ('LZ3', 'LZ6'),
+    'Wiesenstraße': ('LZ3', 'LZ6'), 'Bummelbachweg': ('LZ3', 'LZ6'), 'Dorflick': ('LZ3', 'LZ6'),
+    'Bürgerstraße': ('LZ3', 'LZ6'), 'Forstweg': ('LZ4', 'LZ1'), 'Feldweg': ('LZ4', 'LZ6'),
+    'Am Rathauspark': ('LZ1', 'LZ2'), 'Erlenstraße': ('LZ6', 'LZ3'),
 }
 
 # Merkmale der Einsatzorte für die KI (VEG nur an Feld/Wald). Eine Bahnstrecke gibt es auf der Karte nicht,
