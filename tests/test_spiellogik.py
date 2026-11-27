@@ -449,6 +449,15 @@ def gf_raum(n, seed=1, leitstelle=False):
     return r, gfs
 
 
+def gf_waehlt_massnahmen(r, pid, account, inc, now):
+    """Menschlicher GF bei Katalog-Einsätzen (F1): startet, was gerade geht, in der Musterreihenfolge."""
+    for key in ('erkunden', 'wasser', 'angriff', 'angriff', 'nachloeschen'):
+        try:
+            act(r, pid, account, 'massnahme', now=now, incident=inc['id'], key=key)
+        except ValueError:
+            pass
+
+
 def spielen(r, gfs, seconds, arbeiten=True):
     """Sekundenweise vorspulen; die GF starten die Maßnahmen, sobald ihr Fahrzeug vor Ort ist."""
     open_max = 0
@@ -459,7 +468,9 @@ def spielen(r, gfs, seconds, arbeiten=True):
         for pid, account, vid in gfs if arbeiten else ():
             v = r['vehicles'][vid]
             inc = next((i for i in r['incidents'] if i['id'] == v['incident']), None)
-            if inc and not inc['closed'] and not inc['working'] and v['phase'] == 'vorort':
+            if inc and not inc['closed'] and v['phase'] == 'vorort' and 'mn' in inc:
+                gf_waehlt_massnahmen(r, pid, account, inc, now)
+            elif inc and not inc['closed'] and not inc['working'] and v['phase'] == 'vorort':
                 act(r, pid, account, 'work', now=now, incident=inc['id'])
         open_max = max(open_max, sum(not i['closed'] for i in r['incidents']))
     return open_max

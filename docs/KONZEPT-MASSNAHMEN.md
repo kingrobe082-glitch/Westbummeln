@@ -1,6 +1,6 @@
 # Konzept: Maßnahmen je Einsatz
 
-Stand: 27.11.2026 · Status: **Konzept, noch kein Code** · Basis: `main` @ 9333e11
+Stand: 27.11.2026 · Status: **PR A (F1) umgesetzt**, B–D offen · Basis: `main` @ 9333e11 (Stand nach PR A: Abschnitt 7.7)
 
 > **Kurz gesagt:** Statt „Maßnahmen starten“ und einem Balken bis 100 % wählt der Gruppenführer
 > echte Maßnahmen wie *Erkunden*, *Wasserversorgung aufbauen* oder *Angriffsleitung legen*. Jede dauert ein paar
@@ -628,6 +628,48 @@ inc = {
   greifen sie automatisch, sobald es einen Katalogeintrag gibt, und bis dahin läuft der Allgemein-Ablauf.
 - Mit #17 hängen die Fahrzeiten von der Route ab. Personen- und Brand-Timer laufen ab Notruf, die Richtzeiten
   in der Bilanz rechnen deshalb mit der tatsächlichen Eintreffzeit (`zeiten['eintreffen']`).
+
+### 7.7 Stand nach PR A und Vorausschau: mehr Fahrzeugtypen, größere Einsätze
+
+**Umgesetzt in PR A** (Abweichungen zum Plan oben): Logik in `game/massnahmen.py`, Daten in `game/katalog.py`.
+Fahrzeuge werden dort über **Fähigkeiten** beschrieben (`FAHRZEUGTYPEN`), Maßnahmen verlangen Fähigkeiten
+(`braucht`) statt Typnamen. Der ganze Zustand steht in `inc['mn']` (JSON, Zufall aus Einsatz-ID + Zähler).
+Die Eskalation F1 → F2 ändert Titel und Stichwort, setzt eine Nachforderung nach F2-AAO, die KI-Leitstelle
+erfüllt sie nach 10 s (auch mit KI-Besatzung, Frage 4). Bilanz mit Punkten und Sternen kommt schon in PR A
+(Frage 5: nur im Raum). Schwierigkeit fest auf *Normal* (KI-Fehlerquote 15 %), Einstellung folgt in PR D.
+
+**Neue Fahrzeugtypen brauchen nur Daten** – drei Stellen, keine neue Logik:
+
+| Typ | Fähigkeiten (`katalog.FAHRZEUGTYPEN`) | Sitze → Trupps | Wache (Vorschlag) | Wofür |
+|---|---|---|---|---|
+| **TLF 3000** | `erkunden`, `pumpe`, `loeschwasser` · Tank 3000 l = 60 s | 3 → 1 | WB 1 West, WB 4 Ost (Ortsrand, wenig Hydranten) | Wasser für F1/F2 ohne Hydrant, Flächen-/Waldbrand, Wasser-Pendel |
+| **DLK 23-12** | `erkunden`, neu `hubrettung` | 3 → 1 | WB 2 Altstadt | F3 Y: Rettung aus 2. OG, Riegelstellung/Brandbekämpfung von oben |
+| **RW** | `erkunden`, `rettungssatz`, neu `heben`, `strom` | 3 → 1 | WB 5 Süd (Werkstraße/Gewerbe) | TH2 schwer (LKW, Bus), Fahrzeug anheben, Ausleuchten |
+| **ELW 1** | `erkunden`, `einsatzleitung` | 3 → 1 | WB 2 Altstadt | wie KdoW, ab F3/TH3 Pflicht: „Einsatzleitung übernehmen“, Abschnitte |
+
+1. `game/engine.py`: `FLEET` je Wache um die Typen ergänzen (heute fest `HLF 20`, `KdoW`, `LF 20` für WB 1–6) –
+   eine Liste `(wache, typ, sitze)` statt der festen Dreierschleife. Raum-IDs bleiben `WB-<wache>-<typ ohne Leerzeichen>`.
+2. `game/katalog.py`: Eintrag in `FAHRZEUGTYPEN`, neue Fähigkeiten in `FAEHIGKEIT_TEXT`, Maßnahmen, die sie
+   verlangen (z. B. F3 Y „Rettung über Drehleiter“ `braucht: (HUBRETTUNG,)`).
+3. **Grafiken:** `static/img/fahrzeuge/tlf.svg`, `dlk.svg`, `rw.svg`, `elw.svg` im Stil von #19 (Draufsicht,
+   gleiche Größe wie `lf.svg`; DLK etwas länger mit Leiterpark), dazu je eine Zeile in `css/fahrzeuge.css` und
+   `TYPES` in `static/js/fahrzeuge.js` (`TLF: 'tlf'`, `DLK: 'dlk'`, `RW: 'rw'`, `ELW: 'elw'`).
+
+**Größere Einsätze = mehr Fahrzeuge:** Je Katalog-Stichwort gibt es schon eine `aao`-Liste. Ab PR B ersetzt
+sie für Katalog-Einsätze die Zählung aus der Stichwortziffer (`needed_vehicles`): Die KI-Leitstelle und der
+AAO-Vorschlag alarmieren dann genau diese Typen. Vorschlag:
+
+| Stichwort | AAO | Eskalation → Nachforderung |
+|---|---|---|
+| F1 | LF 20 | → F2: HLF 20, KdoW (heute schon so) |
+| F1 Wald/Fläche (neu, PR C) | LF 20, TLF 3000 | → F2 Wald: 2. TLF, ELW 1 |
+| F2 | HLF 20, LF 20, KdoW | → F3 Y: HLF 20, DLK, ELW 1 |
+| F3 Y | 2 HLF 20, LF 20, DLK, ELW 1 | → F4 (Vollbrand): TLF, 2. LF, Nachbarwache |
+| TH2 | HLF 20, LF 20, KdoW | schwer (LKW): RW nachfordern |
+
+Damit wächst ein Einsatz von selbst mit: F1 → F2 → F3 bringt nacheinander HLF, KdoW, DLK und ELW auf die
+Karte, und jeder Typ hat dort eine Maßnahme, die nur er kann. **Reihenfolge:** PR B nimmt DLK + ELW mit
+(F2/F3 Y), PR C TLF + RW (Wald/Fläche, schwere TH). Vorher braucht es nur die vier Grafiken.
 
 ---
 

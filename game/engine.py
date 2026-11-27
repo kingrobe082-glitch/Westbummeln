@@ -13,7 +13,7 @@ import secrets
 import time
 from collections import deque
 
-from game import strassen
+from game import massnahmen, strassen
 from game.parsing import to_int
 
 # Koordinaten beziehen sich auf die vollständige Originalkarte inklusive Legende.
@@ -83,6 +83,7 @@ AI_INCIDENT_TYPES = [
 VOICE_SIGNALS = ('offer', 'answer', 'candidate', 'bye', 'channel')
 DISPATCHER_ONLY = 'Nur die besetzte Leitstelle darf diese Aktion ausführen'
 UNCHANGED = object()  # Rückgabe einer Aktion, die den Raum nicht verändert hat (rev bleibt gleich)
+NACHFORDERUNG_KI_DELAY = 10  # so lange nach einer Nachforderung alarmiert die KI-Leitstelle nach
 
 
 def _radio_noop(room_code, entry):
@@ -137,12 +138,15 @@ def default_sections():
     return {'Hauptabschnitt': {'leader': 'KI-Einsatzleitung', 'vehicles': []}}
 
 
-def new_incident(title, address, pos, creator, now):
-    return {
+def new_incident(title, address, pos, creator, now, seed=None):
+    inc = {
         'id': secrets.token_hex(4), 'title': title, 'address': address, 'pos': pos, 'creator': creator,
         'created': time.strftime('%H:%M:%S'), 'closed': False, 'assigned': [], 'working': False,
         'progress': 0, 'updated': now, 'sections': default_sections(),
     }
+    # Stichworte aus dem Katalog (bisher F1) bekommen Maßnahmen und Lage, alle anderen den Fortschrittsbalken.
+    massnahmen.init_einsatz(inc, now, seed)
+    return inc
 
 
 def clean_offline(r, now):
@@ -209,6 +213,8 @@ def ai_crew_block(r, inc):
     Fahrzeuge braucht als schon alarmiert sind und kein Spielerfahrzeug mehr frei ist."""
     if ai_mode(r):
         return ''
+    if massnahmen.offene_nachforderungen(inc, r['vehicles']):
+        return ''  # Nachforderungen dürfen mit KI-Besatzung fahren
     need = needed_vehicles(inc)
     active = sum(1 for vid in inc['assigned'] if vid in r['vehicles']
                  and r['vehicles'][vid]['incident'] == inc['id']
@@ -224,6 +230,8 @@ def alarm(r, inc, v, now):
     """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI)."""
     if v['id'] not in inc['assigned']:
         inc['assigned'].append(v['id'])
+    if massnahmen.ist_katalog(inc):
+        inc['mn']['zeiten'].setdefault('alarm', now)
     sections = inc.setdefault('sections', default_sections())
     if not any(v['id'] in section['vehicles'] for section in sections.values()):
         sections['Hauptabschnitt']['vehicles'].append(v['id'])
@@ -329,7 +337,7 @@ def _ai_new_incident(r, now):
         return False
     name, x, y = rng.choice(locations)
     title, _ = rng.choices(AI_INCIDENT_TYPES, weights=[t[1] for t in AI_INCIDENT_TYPES])[0]
-    r['incidents'].append(new_incident(title, name, [x, y], 'KI-Leitstelle', now))
+    r['incidents'].append(new_incident(title, name, [x, y], 'KI-Leitstelle', now, seed=f'{r["ai_seed"]}:{r["ai_seq"]}'))
     r['ai_last'] = now
     r['ai_seq'] += 1
     r['ai_gap'] = rng.uniform(AI_INCIDENT_MIN_GAP, AI_INCIDENT_MAX_GAP)
@@ -355,10 +363,28 @@ def run_ai(r, now):
             if v and ai_dispatch(r, inc, v, now):
                 changed = True
     for inc in open_incidents:
+        if massnahmen.ist_katalog(inc) and inc['mn']['nachforderungen']:
+            if _ai_nachforderung(r, inc, now):
+                changed = True
+            continue
         while len(inc['assigned']) < needed_vehicles(inc) and inc['progress'] < AI_REINFORCE_BELOW:
             v = _ai_vehicle(r, inc)
             if not v or not ai_dispatch(r, inc, v, now):
                 break
+            changed = True
+    return changed
+
+
+def _ai_nachforderung(r, inc, now):
+    """KI-Leitstelle erfüllt eine Nachforderung nach NACHFORDERUNG_KI_DELAY Sekunden: passender Typ,
+    zuerst Spielerfahrzeuge, sonst mit KI-Besatzung (auch im Mehrspielerbetrieb)."""
+    if now - inc['mn'].get('nachgefordert', now) < NACHFORDERUNG_KI_DELAY:
+        return False
+    changed = False
+    for kind in massnahmen.offene_nachforderungen(inc, r['vehicles']):
+        free = [v for v in r['vehicles'].values() if v['kind'] == kind and _free(v)]
+        free.sort(key=lambda v: (not v['owner'], _distance(v['base'], inc['pos'])))
+        if free and ai_dispatch(r, inc, free[0], now):
             changed = True
     return changed
 
@@ -371,7 +397,7 @@ def ai_group_leaders(r, now):
     solo = is_solo(r)
     changed = False
     for inc in r['incidents']:
-        if inc['closed'] or inc['working']:
+        if inc['closed'] or inc['working'] or massnahmen.ist_katalog(inc):
             continue
         on_site = [r['vehicles'][vid] for vid in inc['assigned']
                    if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort'
@@ -425,9 +451,12 @@ def update(r, now=None):
     if ai_group_leaders(r, now):
         changed = True
     for inc in r['incidents']:
-        if inc['closed'] or not inc['working']:
+        if inc['closed']:
             continue
-        if _progress_incident(r, inc, now):
+        if massnahmen.ist_katalog(inc):
+            _progress_katalog(r, inc, now)
+            changed = True
+        elif inc['working'] and _progress_incident(r, inc, now):
             changed = True
     if changed:
         _prune_incidents(r)
@@ -469,8 +498,42 @@ def _progress_incident(r, inc, now):
     return changed
 
 
-def _finish_incident(r, inc, now):
-    """Einsatz abschließen, Abschnitte leeren und alle noch zugeordneten Fahrzeuge heimschicken."""
+def _ki_fahrzeuge(r, inc, now):
+    """Unbesetzte Fahrzeuge vor Ort, für die der KI-GF Maßnahmen wählt (wie ai_group_leaders)."""
+    on_site = [v for v in massnahmen.vor_ort(inc, r['vehicles']) if not v['owner']]
+    if is_solo(r):
+        return on_site
+    waited = [v for v in on_site if now - max(v['phase_at'], v.get('unattended_since', 0)) >= UNATTENDED_DELAY]
+    for v in waited:
+        if v['id'] not in inc['mn']['ki_fz']:
+            inc['mn']['ki_fz'].append(v['id'])
+            emit(r, 'KI-Gruppenführer', f'KI übernimmt {v["call"]}: {inc["title"]}.')
+    return waited
+
+
+def _progress_katalog(r, inc, now):
+    """Katalog-Einsatz: Lage und Maßnahmen fortschreiben, KI-GF entscheiden lassen, bei Erfolg abschließen."""
+    for author, message in massnahmen.tick(inc, r['vehicles'], now, r['weather'], weather_work_factor(r)):
+        # Meldungen der Einsatzleitung nennen den Ort, Fahrzeugmeldungen erkennt man am Funkrufnamen.
+        emit(r, author, f'{inc["address"]}: {message}' if author == 'Einsatzleitung' else message)
+    if not massnahmen.fertig(inc):
+        for author, message in massnahmen.ki_waehlen(inc, _ki_fahrzeuge(r, inc, now), now,
+                                                     weather_work_factor(r)):
+            emit(r, author, message)
+        inc['progress'] = massnahmen.fortschritt(inc)
+    if massnahmen.fertig(inc):
+        _finish_incident(r, inc, now)
+        emit(r, 'Leitstelle', f'Einsatz {inc["title"]} abgearbeitet – Rückfahrt eingeleitet.')
+        emit(r, 'Leitstelle', massnahmen.bilanz_text(inc))
+
+
+def _finish_incident(r, inc, now, abgebrochen=False):
+    """Einsatz abschließen, Abschnitte leeren und alle noch zugeordneten Fahrzeuge heimschicken.
+
+    Katalog-Einsätze bekommen ihre Einsatzbilanz; der Maßnahmen-Zustand wird danach nicht mehr gebraucht."""
+    if massnahmen.ist_katalog(inc):
+        inc['bilanz'] = massnahmen.bilanz(inc, now, abgebrochen)
+        del inc['mn']
     inc.update(closed=True, progress=100, closed_at=now)
     for section in inc.get('sections', {}).values():
         section['vehicles'] = []
@@ -505,9 +568,12 @@ def _send_home(r, v, now):
     v['status'] = 1
 
 
-def _snapshot_incident(r, inc):
+def _snapshot_incident(r, inc, now):
     if not inc['closed']:
-        return {**inc, 'need': needed_vehicles(inc), 'ai_crew_block': ai_crew_block(r, inc)}
+        shown = {key: value for key, value in inc.items() if key != 'mn'}  # Variante erst nach dem Erkunden
+        if massnahmen.ist_katalog(inc):
+            shown['massnahmen'] = massnahmen.snapshot(inc, r['vehicles'], now)
+        return {**shown, 'need': needed_vehicles(inc), 'ai_crew_block': ai_crew_block(r, inc)}
     return {key: value for key, value in inc.items() if key != 'sections'}
 
 
@@ -519,7 +585,7 @@ def snapshot(r, now=None):
         'players': [{'id': p['id'], 'name': p['name'], 'vehicle': p['vehicle'], 'role': p['role']}
                     for p in r['players'].values()],
         'vehicles': list(r['vehicles'].values()),
-        'incidents': [_snapshot_incident(r, i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
+        'incidents': [_snapshot_incident(r, i, now) for i in r['incidents'] if not i['closed'] or id(i) in shown],
         'radio': r['radio'][-100:],
         'rev': r['rev'],
         'dispatcher': r['dispatcher'],
@@ -807,6 +873,8 @@ def _work(r, pid, p, data, now, is_developer):
     inc = _open_incident(r, data)
     if p['vehicle'] not in inc['assigned'] or r['vehicles'][p['vehicle']]['phase'] != 'vorort':
         raise ValueError('Zuerst muss ein Fahrzeug die Einsatzstelle erreichen')
+    if massnahmen.ist_katalog(inc):
+        raise ValueError('Bei diesem Einsatz wählst du die Maßnahmen unter „Meine Einsatzstelle“')
     inc['working'] = True
     inc['updated'] = now
     emit(r, 'Einsatzleitung', f'{inc["title"]}: Maßnahmen eingeleitet.')
@@ -819,9 +887,34 @@ def _close(r, pid, p, data, now, is_developer):
         raise ValueError('Einsatz nicht gefunden')
     if inc['closed']:
         raise ValueError('Einsatz ist bereits abgeschlossen')
-    _finish_incident(r, inc, now)
+    _finish_incident(r, inc, now, abgebrochen=True)
     _prune_incidents(r)
     emit(r, 'Leitstelle', f'Einsatz {inc["title"]} beendet, Rückfahrt.')
+    if inc.get('bilanz'):
+        emit(r, 'Leitstelle', massnahmen.bilanz_text(inc))
+
+
+def _gf_vor_ort(r, p, data):
+    """Einsatz und eigenes Fahrzeug für Maßnahmen-Aktionen: nur der GF eines Fahrzeugs vor Ort."""
+    if p['role'] != 'gf' or not p['vehicle']:
+        raise ValueError('Nur ein GF am Einsatzort kann Maßnahmen starten')
+    inc = _open_incident(r, data)
+    if not massnahmen.ist_katalog(inc):
+        raise ValueError('Für diesen Einsatz gibt es keine Maßnahmenliste')
+    v = r['vehicles'][p['vehicle']]
+    if v['id'] not in inc['assigned'] or v['incident'] != inc['id'] or v['phase'] != 'vorort':
+        raise ValueError('Zuerst muss dein Fahrzeug die Einsatzstelle erreichen')
+    return inc, v
+
+
+def _massnahme(r, pid, p, data, now, is_developer):
+    inc, v = _gf_vor_ort(r, p, data)
+    emit(r, v['call'], massnahmen.starten(inc, v, str(data.get('key', '')), now, weather_work_factor(r)))
+
+
+def _massnahme_stop(r, pid, p, data, now, is_developer):
+    inc, v = _gf_vor_ort(r, p, data)
+    emit(r, v['call'], massnahmen.abbrechen(inc, v, str(data.get('key', ''))))
 
 
 def _radio(r, pid, p, data, now, is_developer):
@@ -850,6 +943,8 @@ ACTIONS = {
     'section_assign': _section_assign,
     'section_leader': _section_leader,
     'work': _work,
+    'massnahme': _massnahme,
+    'massnahme_stop': _massnahme_stop,
     'close': _close,
     'radio': _radio,
 }
