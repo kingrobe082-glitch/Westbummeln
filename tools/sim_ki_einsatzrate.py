@@ -5,7 +5,7 @@ Nur ein Entwicklerwerkzeug, kein Teil der App. Die Zeit wird über `now` vorgesp
     python tools/sim_ki_einsatzrate.py                  # 1, 3 und 8 GF, je 30 Minuten, 5 Seeds
     python tools/sim_ki_einsatzrate.py --spieler 2 5 --minuten 60
 
-Jeder simulierte GF besetzt ein eigenes Fahrzeug (erst die HLF, dann die LF der Wachen 1–6) und startet die
+Jeder simulierte GF besetzt ein eigenes Fahrzeug (je zwei an den Wachen der alten Flotte, ALT_IDS) und startet die
 Maßnahmen REAKTION Sekunden nach Ankunft an der Einsatzstelle. Das Wetter wechselt wie im Spiel automatisch.
 
 Spalten der Ausgabe:
@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from game import engine  # noqa: E402
 
 START = 1_000_000.0
-ORDER = [f'WB-{unit}-{kind}' for kind in ('HLF20', 'LF20') for unit in range(1, 7)]
+ORDER = [engine.ALT_IDS[f'WB-{unit}-{kind}'] for kind in ('HLF20', 'LF20') for unit in range(1, 7)]
 
 
 def simulate(players, minutes=30, seed=1, reaction=5):
