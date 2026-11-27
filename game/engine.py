@@ -34,14 +34,14 @@ FLEET = [
 # Straßenpositionen wurden anhand der vom Spieler gelieferten Karte bestimmt.
 PLACES = [
     ('Hauptstraße', .39, .53), ('Marktplatz', .41, .65), ('Schulstraße', .59, .38),
-    ('Waldstraße', .28, .19), ('Dorfstraße', .56, .85), ('Nelkenweg', .77, .51),
+    ('Waldstraße', .28, .19), ('Dorfstraße', .575, .832), ('Nelkenweg', .77, .51),
     ('Mathias-Berg-Straße', .75, .59), ('Robin-Hof-Straße', .77, .69), ('Werkstraße', .86, .86),
-    ('Buchenstraße', .92, .52), ('Eichenstraße', .37, .23), ('Bachstraße', .34, .84),
+    ('Buchenstraße', .92, .52), ('Eichenstraße', .37, .23), ('Bachstraße', .335, .765),
     ('Flurstraße', .69, .26), ('Tannenweg', .87, .32), ('Ahornallee', .91, .39),
     ('Kreuzbergstraße', .82, .20), ('Jägerstraße', .215, .36), ('Scheunenweg', .51, .25),
     ('Blütenstraße', .35, .29), ('Sportplatzring', .32, .39), ('Kirchstraße', .56, .58),
     ('Rosenstraße', .49, .65), ('Sonnenstraße', .55, .68), ('Mozartweg', .91, .69),
-    ('Uferstraße', .43, .85), ('Mühlenweg', .29, .87), ('Gartenweg', .32, .94),
+    ('Uferstraße', .43, .818), ('Mühlenweg', .29, .87), ('Gartenweg', .32, .94),
     ('Wiesenstraße', .34, .985), ('Bummelbachweg', .51, .93), ('Dorflick', .69, .94),
     ('Bürgerstraße', .63, .92), ('Forstweg', .38, .09), ('Feldweg', .74, .10),
     ('Am Rathauspark', .32, .70), ('Erlenstraße', .92, .60),

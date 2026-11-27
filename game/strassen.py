@@ -51,7 +51,8 @@ JUNCTIONS = {
     'kirch_o': (.655, .551),         # Kirchstraße / Querstraße / Mathias-Berg-Straße
     'kreisel': (.843, .547),         # Kreisverkehr
     'mozart_w': (.830, .598),        # Robin-Hof-Straße / Mozartweg
-    'mozart_o': (.937, .660),        # Mozartweg / Gewerbepark / Randstraße
+    'mozart_o': (.937, .660),        # Mozartweg / östliche Randstraße
+    'mozart_gewerbe': (.868, .627),  # Mozartweg / Zufahrt Gewerbepark
     'erlen_o': (.976, .606),         # Erlenstraße, östliches Ende
     'buerger_m': (.672, .745),       # Bürgerstraße / Dorfblick (Nord) / Werkstraße
     'buerger_dorf': (.642, .818),    # Bürgerstraße / Dorfstraße
@@ -68,7 +69,7 @@ JUNCTIONS = {
     'markt_s': (.414, .706),         # Straße am Marktplatz / Zufahrt Marktplatz
     'rathaus_knick': (.362, .662),   # Am Rathauspark / Straße am Marktplatz
     'rathaus_w': (.317, .672),       # Am Rathauspark / Bachstraße
-    'ufer_muehle': (.362, .793),     # Uferstraße / Brücke zum Mühlenweg
+    'ufer_muehle': (.362, .793),     # Uferstraße / Bachstraße (keine Brücke zum Mühlenweg)
     'ufer_dorf': (.490, .815),       # Uferstraße geht in die Dorfstraße über
     'muehle_garten': (.245, .909),   # Mühlenweg / Gartenweg
     'garten_wiese': (.369, .957),    # Gartenweg / Wiesenstraße
@@ -120,8 +121,10 @@ STREETS = [
     ('Östliche Randstraße', ['erlen_o', (.965, .635), 'mozart_o']),
     ('Robin-Hof-Straße', ['kreisel', (.837, .569), 'mozart_w', (.818, .610), (.804, .633),
                           (.765, .657), (.733, .676), (.700, .694), 'buerger_m']),
-    ('Mozartweg', ['mozart_w', (.856, .623), (.895, .637), 'mozart_o']),
-    ('Gewerbepark', ['mozart_o', (.900, .670), (.865, .689), (.824, .712), (.781, .738), 'werk_gewerbe']),
+    ('Mozartweg', ['mozart_w', (.856, .623), 'mozart_gewerbe', (.895, .637), 'mozart_o']),
+    # Zufahrt zwischen Moped-Garage und den Hallen hindurch, nicht quer über die Dächer.
+    ('Gewerbepark', ['mozart_gewerbe', (.866, .674), (.851, .703), (.831, .720), (.807, .709), (.778, .710),
+                     (.762, .728), (.742, .765), 'werk_gewerbe']),
     ('Werkstraße', ['buerger_m', (.700, .772), 'werk_gewerbe', (.798, .801), (.846, .821), (.895, .835),
                     (.944, .860), (.970, .884), (.983, .913)]),
     ('Bürgerstraße', ['buerger_m', (.655, .786), 'buerger_dorf', (.632, .850), 'buerger_bach',
@@ -138,9 +141,12 @@ STREETS = [
     ('Bachstraße', ['rathaus_w', (.304, .713), (.306, .738), (.326, .767), (.349, .786), 'ufer_muehle']),
     ('Uferstraße', ['ufer_muehle', (.375, .796), (.408, .801), (.440, .806), 'ufer_dorf']),
     ('Dorfstraße', ['ufer_dorf', (.548, .818), 'buerger_dorf']),
-    ('Bummelbachweg', [(.405, .957), (.414, .933), (.427, .913), (.460, .903), (.538, .884),
-                       (.586, .882), 'buerger_bach']),
-    ('Mühlenweg', ['ufer_muehle', (.335, .842), (.300, .840), (.278, .840), (.258, .855),
+    # Der Bummelbachweg beginnt am Ende von Garten- und Wiesenstraße; über ihn und die Brücke der
+    # Bürgerstraße ist der Südwesten (Mühlenweg, GH4) angebunden.
+    ('Bummelbachweg', ['garten_wiese', (.386, .960), (.405, .957), (.414, .933), (.427, .913), (.460, .903),
+                       (.538, .884), (.586, .882), 'buerger_bach']),
+    # Der Mühlenweg endet am Ufer: Zwischen Bachstraße und Mühlenweg gibt es keine Brücke.
+    ('Mühlenweg', [(.335, .842), (.300, .840), (.278, .840), (.258, .855),
                    (.248, .884), 'muehle_garten']),
     ('Mühlenweg', ['muehle_garten', (.229, .938), (.216, .962)]),
     ('Gartenweg', ['muehle_garten', (.278, .899), (.310, .896), (.349, .896), (.362, .913),
@@ -163,6 +169,16 @@ STREET_CLASS = {
     'Querweg Ahornallee': 'wohn', 'Wiesenstraße': 'wohn', 'Gartenweg': 'wohn',
     'Forstweg': 'weg', 'Feldweg': 'weg', 'Bummelbachweg': 'weg', 'Mühlenweg': 'weg', 'Hofzufahrt': 'weg',
 }
+
+# Mittellinie des Bummelsbachs, von der Karte abgelesen (Prüfung in tests/test_strassennetz.py): Straßen
+# dürfen ihn nur auf einer Brücke queren. Die einzige Brücke ist die der Bürgerstraße (Brückenstraße).
+BUMMELSBACH = [
+    (.203, .574), (.210, .586), (.218, .605), (.225, .645), (.229, .664), (.234, .684), (.244, .703), (.255, .723),
+    (.266, .742), (.279, .762), (.291, .781), (.306, .801), (.322, .820), (.340, .835), (.365, .851), (.391, .859),
+    (.417, .864), (.443, .866), (.469, .863), (.495, .859), (.521, .855), (.547, .854), (.573, .850), (.599, .851),
+    (.628, .857), (.651, .866), (.677, .876), (.703, .891), (.729, .907), (.755, .918), (.781, .929), (.807, .945),
+]
+BRIDGES = [(.629, .858)]
 
 
 def _point(p):
