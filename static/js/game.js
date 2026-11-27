@@ -33,6 +33,23 @@ $('fmeAcknowledge').onclick = () => {
   $('fmeMessage').textContent += ' · Quittiert';
 };
 
+// Auswahl im Einsatz: Spielerfahrzeuge immer; unbesetzte (KI-Besatzung) nur, wenn der Server es erlaubt,
+// sonst ausgegraut mit Grund (z. B. „Bedarf gedeckt“ oder „erst freie Spielerfahrzeuge alarmieren“).
+function vehicleOptions(incident) {
+  const free = state.vehicles.filter(v => v.phase === 'wache' && v.status !== 6 && !v.incident);
+  const option = v => `<option value="${esc(v.id)}">${esc(v.call)}</option>`;
+  const owned = free.filter(v => v.owner), crewless = free.filter(v => !v.owner);
+  if (state.ai_mode) return free.map(option).join('');
+  let markup = owned.length ? `<optgroup label="Spielerfahrzeuge">${owned.map(option).join('')}</optgroup>` : '';
+  if (crewless.length) {
+    const block = incident.ai_crew_block;
+    const label = block ? `Mit KI-Besatzung – gesperrt: ${block}`
+      : `Mit KI-Besatzung – Einsatz braucht ${incident.need} Fahrzeuge`;
+    markup += `<optgroup label="${esc(label)}"${block ? ' disabled' : ''}>${crewless.map(option).join('')}</optgroup>`;
+  }
+  return markup;
+}
+
 function updateIncidents(markup) {
   if (markup === incidentMarkup) return;
   const container = $('incidents');
@@ -50,7 +67,8 @@ function updateIncidents(markup) {
   }
 }
 
-let me=null,state=null,room='',busy=false,focusIncident='';let pendingActions=0,stateRevision=0;const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const labels={1:'Frei über Funk',2:'Auf Wache',3:'Anfahrt',4:'Einsatzstelle',5:'Sprechwunsch',6:'Nicht einsatzbereit'};function notice(s){$('notice').textContent=s}async function api(action,data={}){let res=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify({action,room,id:me,...data})});let obj=await res.json();if(!res.ok){let err=Error(obj.error||'Serverfehler');err.kicked=Boolean(obj.kicked);throw err}return obj}async function send(action,data={}){pendingActions++;stateRevision++;try{let x=await api(action,data);if(x.state){setState(x.state);soundsFromState(state);render()}notice('')}catch(e){if(e.kicked)leaveRoom(e.message);else notice(e.message)}finally{pendingActions--}}
+let me=null,state=null,room='',busy=false,focusIncident='';let pendingActions=0,stateRevision=0;const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const labels={1:'Frei über Funk',2:'Auf Wache',3:'Anfahrt',4:'Einsatzstelle',5:'Sprechwunsch',6:'Nicht einsatzbereit'};function notice(s){$('notice').textContent=s}// Während eines Deploys ist der Server kurz weg (Netzfehler, 502/503/504 von Caddy, keine JSON-Antwort). Dann bleibt das Spiel im Raum und fragt weiter ab; die Räume werden beim Neustart wiederhergestellt (game/persistence.py).
+const RESTARTING='Server startet neu … gleich geht es im selben Raum weiter.';let serverDown=false;function restartError(){let err=Error(RESTARTING);err.restarting=true;return err}async function api(action,data={}){let res;try{res=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify({action,room,id:me,...data})})}catch(e){throw restartError()}let obj;try{obj=await res.json()}catch(e){obj=null}if(!obj||typeof obj!=='object'||[502,503,504].includes(res.status)&&!obj.error)throw restartError();if(!res.ok){let err=Error(obj.error||'Serverfehler');err.kicked=Boolean(obj.kicked);throw err}return obj}async function send(action,data={}){pendingActions++;stateRevision++;try{let x=await api(action,data);if(x.state){setState(x.state);soundsFromState(state);render()}notice('')}catch(e){if(e.kicked)leaveRoom(e.message);else notice(e.message)}finally{pendingActions--}}
 // Raum betreten: 'create_room' (Server vergibt den Code) oder 'join' mit eingegebenem Code.
 async function enterRoom(action){try{if(action==='join'){room=$('room').value.toUpperCase().trim();if(!room)throw Error('Bitte gib einen Raumcode ein.')}else room='';let x=await api(action);if(x.room)room=x.room;$('room').value=room;me=x.id;setState(x.state);soundsFromState(state);$('login').classList.add('hidden');['rolesPanel','dashboard','mapPanel','incidentsPanel','vehiclesPanel','controlPanel','sectionsPanel','radioPanel','voicePanel'].forEach(id=>$(id).classList.remove('hidden'));notice('');setNotice('');render()}catch(e){notice(e.message)}}
 $('join').onclick=()=>enterRoom('join');$('publicRoom').onclick=()=>{$('room').value=publicRoomCode;enterRoom('join')};$('createRoom').onclick=()=>enterRoom('create_room');$('room').onkeydown=e=>{if(e.key==='Enter')$('join').click()};
@@ -81,13 +99,37 @@ function serverNow() {
   return Date.now() / 1000 + clockOffset;
 }
 
-// Der Server legt beim Phasenwechsel Start, Ziel und Ankunftszeit (phase_until) fest.
+// Seitenverhältnis der Karte (1536 × 1024), damit Strecken wie auf dem Server (game/strassen.py) zählen.
+const MAP_ASPECT = 1.5;
+
+function mapDistance(a, b) {
+  return Math.hypot((a[0] - b[0]) * MAP_ASPECT, a[1] - b[1]);
+}
+
+// Punkt nach dem Anteil share der Gesamtlänge einer Route [[x, y], …].
+function routePoint(route, share) {
+  const total = route.slice(1).reduce((sum, point, i) => sum + mapDistance(route[i], point), 0);
+  let remaining = Math.min(1, Math.max(0, share)) * total;
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1], b = route[i], step = mapDistance(a, b);
+    if (step >= remaining) {
+      const t = step ? remaining / step : 1;
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    remaining -= step;
+  }
+  return route[route.length - 1];
+}
+
+// Der Server legt beim Phasenwechsel Weg (phase_route) und Ankunftszeit (phase_until) fest.
 // Hier wird nur noch dazwischen interpoliert: (jetzt − phase_at) / (phase_until − phase_at).
+// Fahrten aus älteren Räumen ohne Route laufen weiter gerade von phase_from nach phase_to.
 function position(v) {
-  const from = v.phase_from || v.base;
-  const to = v.phase_to || from;
   const span = (v.phase_until ?? v.phase_at) - v.phase_at;
   const share = span > 0 ? Math.min(1, Math.max(0, (serverNow() - v.phase_at) / span)) : 1;
+  if (Array.isArray(v.phase_route) && v.phase_route.length > 1) return routePoint(v.phase_route, share);
+  const from = v.phase_from || v.base;
+  const to = v.phase_to || from;
   return [from[0] + (to[0] - from[0]) * share, from[1] + (to[1] - from[1]) * share];
 }
 
@@ -101,12 +143,13 @@ function animateVehicles() {
       pin.style.left = `${x * 100}%`;
       pin.style.top = `${y * 100}%`;
     }
+    WBFahrzeuge.layout($('markers'));
   }
   requestAnimationFrame(animateVehicles);
 }
 requestAnimationFrame(animateVehicles);
 
-function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){let p=position(v);pins.push(`<span class="pin vehicle" data-vehicle-pin="${esc(v.id)}" title="${esc(v.call)} – ${esc(v.phase)}" style="left:${p[0]*100}%;top:${p[1]*100}%"></span>`)}$('markers').innerHTML=pins.join('');$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
+function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){pins.push(WBFahrzeuge.marker(v,position(v)))}$('markers').innerHTML=pins.join('');WBFahrzeuge.layout($('markers'));$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
 function render(){if(!state)return;
 updateFme(state);
 $('countOpen').textContent=state.incidents.filter(i=>!i.closed).length;
@@ -118,15 +161,15 @@ $('takeLs').textContent=developerAccount&&lsOwner&&!isLs
   ? 'Besetzte Leitstelle übernehmen'
   : 'Leitstelle übernehmen';$('leaveLs').disabled=!isLs;$('goGf').disabled=isLs;$('incidentsPanel').classList.remove('hidden');$('incidentsPanel').querySelectorAll('.quick, .screen-title, #title, #address, #create').forEach(el=>el.classList.toggle('hidden',!isLs));$('vehiclesPanel').classList.toggle('hidden',isLs);$('controlPanel').classList.toggle('hidden',!isGf);$('dashboard').classList.toggle('hidden',!isLs);$('create').disabled=!isLs;let mine=state.vehicles.find(v=>v.id===p?.vehicle);$('myVehicle').innerHTML=mine?`<b>${esc(mine.call)}</b><p><span class="fms" data-fms="${mine.status}">${mine.status}</span> ${esc(labels[mine.status])}${phaseLabel(mine.phase)===labels[mine.status]?'':' · '+esc(phaseLabel(mine.phase))}</p>`:'Noch kein Fahrzeug besetzt';$('statuses').innerHTML=Object.entries(labels).map(([n,t])=>`<button data-status="${n}" class="${mine?.status==n?'active':''}" ${!mine?'disabled':''}>${n} ${esc(t)}</button>`).join('');$('statuses').querySelectorAll('button').forEach(b=>b.onclick=()=>send('status',{status:Number(b.dataset.status)}));$('release').disabled=!mine||mine.phase!=='wache';
 $('vehicles').innerHTML=state.vehicles.filter(v=>( $('unitFilter').value==='all'||String(v.unit)===$('unitFilter').value )&&v.call.toLowerCase().includes($('vehicleSearch').value.trim().toLowerCase())).map(v=>{let owner=state.players.find(p=>p.id===v.owner);return `<div class="item"><b>${esc(v.call)}</b> <span class="fms" data-fms="${v.status}">${v.status}</span><div class="small">${owner?'GF: '+esc(owner.name):'GF frei'} · ${v.seats} Plätze · ${esc(phaseLabel(v.phase))}</div><button data-vehicle="${esc(v.id)}" ${isLs||(owner&&owner.id!==me)||v.phase!=='wache'?'disabled':''}>${owner?.id===me?'Dein Fahrzeug':'Übernehmen'}</button></div>`}).join('');$('vehicles').querySelectorAll('[data-vehicle]').forEach(b=>b.onclick=()=>send('claim',{vehicle:b.dataset.vehicle}));renderRoomAdmin();
-updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}" data-state="${i.closed?'closed':i.working?'working':'open'}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">${esc(i.address)} · <span class="mono">${esc(i.created)}</span></div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+` <span class="fms" data-fms="${v.status}">${v.status}</span>`).join(', ')||'noch keine'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${state.vehicles.filter(v=>(v.owner||state.ai_mode)&&v.phase==='wache'&&v.status!==6).map(v=>`<option value="${esc(v.id)}">${esc(v.call)}</option>`).join('')}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row"><button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'Discord · ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
+updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}" data-state="${i.closed?'closed':i.working?'working':'open'}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">${esc(i.address)} · <span class="mono">${esc(i.created)}</span></div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+` <span class="fms" data-fms="${v.status}">${v.status}</span>`).join(', ')||'noch keine'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${vehicleOptions(i)}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row"><button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'Discord · ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
 
 const phaseLabel=p=>({wache:'Auf Wache',anfahrt:'Anfahrt',vorort:'Einsatzstelle',rueckfahrt:'Rückfahrt'})[p]||p;
 
 function renderSections(){
  const own=state.players.find(p=>p.id===me),isLs=own?.role==='ls';
  $('sectionsPanel').classList.remove('hidden'); const overlay=$('weatherOverlay');if(overlay)overlay.className=({Regen:'rain',Nebel:'fog',Windig:'wind'})[state.weather]||'';
- $('aiInfo').textContent=state.ai_mode?(isLs?'🤖 KI-Gruppenführer aktiv: Unbesetzte Fahrzeuge können alarmiert werden und arbeiten selbstständig.':'🤖 KI-Leitstelle aktiv: Sie erstellt Einsätze und alarmiert Fahrzeuge automatisch.'):'👥 Multiplayer: KI-Automatik pausiert, solange mehrere Spieler online sind.';
- $('aiInfo').textContent += ` · 🌦 ${state.weather} · Fahrzeit ca. ${state.travel_time||12}s · Arbeitsfaktor ${Math.round((state.work_factor||1)*100)}%`; $('sectionsList').innerHTML=state.incidents.filter(i=>!i.closed).map(i=>{
+ $('aiInfo').textContent=state.ai_dispatcher?'KI-Leitstelle aktiv: Sie erstellt Einsätze und alarmiert Fahrzeuge automatisch, bis jemand die Leitstelle übernimmt.':state.ai_mode?'KI-Gruppenführer aktiv: Unbesetzte Fahrzeuge können alarmiert werden und arbeiten selbstständig.':'Mehrspieler: Zuerst Spielerfahrzeuge alarmieren. Unbesetzte Fahrzeuge fahren mit KI-Besatzung, aber nur, wenn das Stichwort mehr Fahrzeuge verlangt (F2 = 2, B3 = 3) und kein Spielerfahrzeug mehr frei ist.';
+ $('aiInfo').textContent += ` · Wetter: ${state.weather} · Fahrzeit ca. ${state.travel_time||12}s · Arbeitsfaktor ${Math.round((state.work_factor||1)*100)}%`; $('sectionsList').innerHTML=state.incidents.filter(i=>!i.closed).map(i=>{
  const sections=i.sections||{'Hauptabschnitt':{leader:'KI-Einsatzleitung',vehicles:[]}};
  const opts=Object.keys(sections).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
  const vehicles=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);
@@ -140,4 +183,4 @@ function renderSections(){
 $('quickKeywords').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('title').value=b.dataset.keyword;$('address').focus()});
 ['vehicleSearch','unitFilter','incidentFilter'].forEach(id=>$(id).addEventListener(id==='vehicleSearch'?'input':'change',()=>render()));
 $('refreshList').onclick=()=>render();
-setInterval(async()=>{if(!me||busy||pendingActions)return;busy=true;const revision=stateRevision;try{let x=await api('state');if(revision!==stateRevision)return;setState(x.state);soundsFromState(state);render()}catch(e){$('connection').textContent='Verbindung unterbrochen';$('connection').dataset.state='error';if(e.kicked||/Sitzung abgelaufen|Raum nicht gefunden/.test(String(e.message)))leaveRoom(e.message)}finally{busy=false}},1500);
+setInterval(async()=>{if(!me||busy||pendingActions)return;busy=true;const revision=stateRevision;try{let x=await api('state');if(serverDown){serverDown=false;notice('')}if(revision!==stateRevision)return;setState(x.state);soundsFromState(state);render()}catch(e){if(e.restarting){serverDown=true;$('connection').textContent='Server startet neu …';$('connection').dataset.state='error';notice(RESTARTING);return}$('connection').textContent='Verbindung unterbrochen';$('connection').dataset.state='error';if(e.kicked||/Sitzung abgelaufen|Raum nicht gefunden/.test(String(e.message)))leaveRoom(e.message)}finally{busy=false}},1500);

@@ -1,7 +1,8 @@
 """Konto-Endpunkte. Das JSON entspricht dem alten Server, angemeldet wird jetzt per Django-Sitzung."""
-import json
+import logging
 import secrets
 import threading
+import traceback
 
 from django.conf import settings
 from django.contrib.auth import login, logout
@@ -17,7 +18,9 @@ from moderation.bans import check_not_banned
 from moderation.errors import BannedError
 from moderation.roles import role_of
 from westbummeln.security import ip_limit, over_limit, too_many_requests
-from westbummeln.views import json_reply, not_found, read_json
+from westbummeln.views import BAD_REQUEST, account_id, json_reply, not_found, read_json
+
+logger = logging.getLogger(__name__)
 
 GOOGLE_NONCE_COOKIE = 'wb_google_nonce'
 ACTIONS = ('register', 'login', 'google', 'logout', 'change_password', 'logout_all', 'delete_account')
@@ -57,16 +60,34 @@ def account(request):
         return not_found(request)
     if request.content_type != 'application/json':
         return json_reply({'error': 'JSON erforderlich'}, 415)
+    action = None  # fürs Fehlerlog
     try:
-        return account_action(request)
+        data = read_json(request, 'Ungültige Anfragegröße')
+        action = data.get('action')
+        return account_action(request, data, action)
     except LoginLockedError as error:
         return json_reply({'error': str(error)}, 429)
     except BannedError as error:
         return json_reply({'error': str(error), 'banned': True}, 403)
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+    except ValueError as error:
+        # Bewusst geworfen, mit deutscher Meldung.
         return json_reply({'error': str(error)}, 400)
-    except Exception:
+    except (KeyError, TypeError, AttributeError) as error:
+        log_account_error(logging.WARNING, 'Ungültige Anfrage', request, action, error)
+        return json_reply({'error': BAD_REQUEST}, 400)
+    except Exception as error:
+        log_account_error(logging.ERROR, 'Serverfehler', request, action, error)
         return json_reply({'error': 'Serverfehler'}, 500)
+
+
+def log_account_error(level, what, request, action, error):
+    """Fehler in /account loggen: Aktion, Konto-ID, Fehlerart und Stelle im Code.
+
+    Ohne Fehlertext: der kann Namen, E-Mail-Adressen oder Passwörter enthalten (etwa eine Datenbankmeldung
+    zu einem doppelten Namen). Aus demselben Grund wird der Anfrage-Körper nie geloggt."""
+    stack = ''.join(traceback.format_tb(error.__traceback__))
+    logger.log(level, '%s in /account (Aktion %r, Konto %s): %s\n%s', what,
+               action if action in ACTIONS else None, account_id(request), type(error).__name__, stack.rstrip())
 
 
 def account_status(request):
@@ -92,9 +113,7 @@ def account_status(request):
     return response
 
 
-def account_action(request):
-    data = read_json(request, 'Ungültige Anfragegröße')
-    action = data.get('action')
+def account_action(request, data, action):
     if action not in ACTIONS:
         raise ValueError('Unbekannte Kontoaktion')
     if action == 'logout':
