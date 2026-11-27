@@ -9,8 +9,8 @@ const WBFme = (() => {
   const SOUND = document.querySelector('meta[name="fme-sound"]')?.content || '/static/sounds/Westbummeln_FME_ZVEI.wav';
   // So lange zeigt der Melder nur „Alarm“, bevor der Einsatztext erscheint (ms).
   const ALARM_PHASE = 2200;
-  // Der Ton läuft höchstens so oft hintereinander, wenn niemand quittiert.
-  const MAX_PLAYS = 3;
+  // Der Ton (10 s) läuft einmal; Quittieren beendet ihn vorher.
+  const MAX_PLAYS = 1;
 
   let buffer = null, loading = null, source = null, gain = null, textTimer = 0;
 

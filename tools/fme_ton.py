@@ -22,7 +22,8 @@ ZVEI_TONE = 0.070  # 70 ms je Ton (ZVEI-Norm)
 NOTES = {'A': 1760.0, 'C': 2093.0, 'B': 1864.66, 'H': 1975.53}
 MELODY = 'ACAB'
 PIP, PIP_GAP = 0.11, 0.07      # kurzer Pieps, kurze Lücke -> „pip pip pip pip“
-ROUNDS, ROUND_GAP = 5, 0.30
+ROUNDS, ROUND_GAP = 9, 0.30
+TOTAL = 10.0  # Gesamtlänge in Sekunden (Rest wird mit Stille aufgefüllt)
 
 samples = []
 phase = 0.0
@@ -74,6 +75,8 @@ for _round in range(ROUNDS):
         pip(NOTES[note], PIP, 0.55)
         pause(PIP_GAP)
     pause(ROUND_GAP)
+assert len(samples) <= RATE * TOTAL, 'Weckton länger als TOTAL'
+pause(TOTAL - len(samples) / RATE)
 
 with wave.open(sys.argv[1], 'wb') as w:
     w.setnchannels(1)
