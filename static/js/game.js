@@ -328,7 +328,9 @@ function gfReleased(vehicle) {
 }
 
 function gfCanComplete(vehicle, incident) {
-  return Boolean(vehicle && incident && !incident.closed && incident.working && vehicle.phase === 'vorort'
+  // Katalog-Einsätze (incident.massnahmen) schließt der GF über ihre Maßnahmen ab, nicht hier.
+  return Boolean(vehicle && incident && !incident.closed && !incident.massnahmen && incident.working
+    && vehicle.phase === 'vorort'
     && vehicle.incident === incident.id && incident.assigned.includes(vehicle.id) && !gfReleased(vehicle)
     && incident.progress >= state.complete_min);
 }

@@ -891,6 +891,9 @@ def _complete(r, pid, p, data, now, is_developer):
     (KI-Besatzungen zählen als fertig). Sonst arbeiten die übrigen Kräfte weiter."""
     v = _own_vehicle(r, p, 'Nur der GF des Fahrzeugs kann Maßnahmen abschließen')
     inc = _open_incident(r, data)
+    if inc.get('stichwort'):
+        # Katalog-Einsätze (docs/KONZEPT-MASSNAHMEN.md) werden über ihre Maßnahmen abgeschlossen.
+        raise ValueError('Bei diesem Einsatz über die Maßnahmen im Panel abschließen')
     if v['id'] not in inc['assigned'] or v['incident'] != inc['id'] or v['phase'] != 'vorort':
         raise ValueError('Dein Fahrzeug ist nicht an dieser Einsatzstelle')
     if released(r, v):

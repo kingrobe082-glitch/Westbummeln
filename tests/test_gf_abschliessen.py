@@ -176,6 +176,16 @@ def test_abschliessen_nur_fuer_eigenes_fahrzeug_am_einsatz(room, einsatz):
     assert not inc['closed']
 
 
+def test_katalog_einsatz_wird_ueber_massnahmen_abgeschlossen(room, einsatz):
+    """Einsätze mit Maßnahmenkatalog (inc['stichwort']) haben eigene Abschlussregeln."""
+    ls, ben, inc, now = einsatz
+    now = work_until(room, inc, engine.COMPLETE_MIN, now)
+    inc['stichwort'] = 'F1'
+    with pytest.raises(ValueError, match='über die Maßnahmen im Panel abschließen'):
+        act(room, ben, 2, 'complete', now=now, incident=inc['id'])
+    assert not inc['closed']
+
+
 # ------------------------------------------------------------ Zurück zur Wache
 
 def test_zurueck_zur_wache_nutzt_rueckfahrt_ueber_strassen(room, einsatz):
