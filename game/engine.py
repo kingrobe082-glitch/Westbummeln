@@ -201,11 +201,16 @@ def _free(v):
 
 
 def alarmable(v):
-    """Darf alarmiert werden: frei auf der Wache oder Status 1 unterwegs.
+    """Darf alarmiert werden: frei auf der Wache, Status 1 auf der Rückfahrt oder frei an der Einsatzstelle.
 
-    Status 1 gibt es auf der Rückfahrt und, wenn der GF sein Fahrzeug über Funk frei meldet, vor Ort.
-    So ein Fahrzeug ist vorbelastet (siehe alarm). Nie aus Status 3, 4 oder 6."""
-    return _free(v) or (v['status'] == 1 and v['phase'] in ('rueckfahrt', 'vorort'))
+    Frei an der Einsatzstelle heißt: Maßnahmen abgeschlossen bzw. Einsatz beendet, das Fahrzeug wartet
+    noch dort (released_at gesetzt) – oder, in älteren Räumen, der GF hat dort Status 1 gedrückt.
+    So ein Fahrzeug ist vorbelastet (siehe alarm). Nie während der Anfahrt, bei der Arbeit oder in Status 6."""
+    if _free(v):
+        return True
+    if v['phase'] == 'rueckfahrt':
+        return v['status'] == 1
+    return v['phase'] == 'vorort' and (v['status'] == 1 or v.get('released_at') is not None)
 
 
 def alarm_eta(r, v, pos, now):
@@ -246,8 +251,12 @@ def alarm(r, inc, v, now):
 
     Die Anfahrt beginnt dort, wo das Fahrzeug gerade ist. Kommt es nicht von der Wache (Status 1),
     verlässt es seinen alten Einsatz und gilt bis zur nächsten Ankunft auf der Wache als vorbelastet;
-    sein übriger Zustand (z. B. ein Wassertank) bleibt, wie er ist."""
+    sein übriger Zustand (z. B. ein Wassertank) bleibt, wie er ist. Liefert den Funkspruch zum Alarm."""
     from_station = v['phase'] == 'wache'
+    text = f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.'
+    if not from_station:
+        text += (' Aus Status 1 alarmiert, vorbelastet.' if v['status'] == 1
+                 else ' Frei an der Einsatzstelle alarmiert, vorbelastet.')
     start = list(v['base']) if from_station else vehicle_position(v, now)
     if not from_station:
         _leave_incident(r, v, inc)
@@ -259,27 +268,22 @@ def alarm(r, inc, v, now):
     # Ausrückzeit nur auf der Wache; ein Fahrzeug, das schon fährt, dreht einfach um.
     _start_trip(v, 'anfahrt', *plan_trip(r, v, start, inc['pos'], DEPARTURE_TIME if from_station else 0), now)
     v.update(status=3, incident=inc['id'], vorbelastet=not from_station)
+    return text
 
 
 def _leave_incident(r, v, new):
-    """Fahrzeug aus seinem bisherigen, noch offenen Einsatz austragen (Zuordnung und Abschnitte).
+    """Fahrzeug aus seinem bisherigen, noch offenen Einsatz austragen (Zuordnung, Abschnitte, Erledigt-Liste).
 
     Ein abgeschlossener Einsatz bleibt unverändert, damit seine Fahrzeugliste erhalten bleibt."""
     old = next((i for i in r['incidents'] if i['id'] == v.get('incident')), None)
     if not old or old is new or old['closed']:
         return
-    if v['id'] in old['assigned']:
-        old['assigned'].remove(v['id'])
+    for listed in (old['assigned'], old.get('done', [])):
+        if v['id'] in listed:
+            listed.remove(v['id'])
     for section in old.get('sections', {}).values():
         if v['id'] in section['vehicles']:
             section['vehicles'].remove(v['id'])
-
-
-def alarm_message(v, inc):
-    text = f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.'
-    if v.get('vorbelastet'):
-        text += ' Aus Status 1 alarmiert, vorbelastet.'
-    return text
 
 
 def drive_slowdown(r):
@@ -355,8 +359,7 @@ def _distance(a, b):
 def ai_dispatch(r, inc, v, now):
     if not alarmable(v):
         return False
-    alarm(r, inc, v, now)
-    emit(r, 'KI-Leitstelle', alarm_message(v, inc))
+    emit(r, 'KI-Leitstelle', alarm(r, inc, v, now))
     return True
 
 
@@ -832,8 +835,7 @@ def _dispatch(r, pid, p, data, now, is_developer):
         raise ValueError('Fahrzeug ist nicht frei')
     if not v['owner'] and (reason := ai_crew_block(r, inc)):
         raise ValueError(f'Unbesetztes Fahrzeug nicht alarmierbar: {reason}')
-    alarm(r, inc, v, now)
-    emit(r, 'Leitstelle', alarm_message(v, inc))
+    emit(r, 'Leitstelle', alarm(r, inc, v, now))
 
 
 def _section_add(r, pid, p, data, now, is_developer):

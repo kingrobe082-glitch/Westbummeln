@@ -94,6 +94,19 @@ def test_alarm_aus_status_1_vor_ort_verlaesst_alten_einsatz(room):
     assert v['id'] in new['assigned']
 
 
+def test_freigegebenes_fahrzeug_an_der_einsatzstelle(room):
+    """GF-Knöpfe: Nach „Maßnahmen abschließen“ wartet das Fahrzeug in Status 4 mit released_at vor Ort."""
+    ls, gf, old, v, now = vor_ort(room)
+    old.setdefault('done', []).append(v['id'])
+    v['released_at'] = now
+    assert v['status'] == 4 and engine.alarmable(v)
+    new = incident(room, ls, 'Werkstraße 3', now=now)
+    act(room, ls, 1, 'dispatch', now=now, incident=new['id'], vehicle=v['id'])
+    assert (v['phase'], v['status'], v['vorbelastet']) == ('anfahrt', 3, True)
+    assert v['id'] not in old['assigned'] and v['id'] not in old['done']
+    assert room['radio'][-1]['message'].endswith('Frei an der Einsatzstelle alarmiert, vorbelastet.')
+
+
 def test_alarm_in_status_3_4_6_verboten(room):
     ls, gf, inc, v, now = vor_ort(room)
     other = incident(room, ls, 'Werkstraße 3', now=now)
