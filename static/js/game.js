@@ -67,7 +67,8 @@ function updateIncidents(markup) {
   }
 }
 
-let me=null,state=null,room='',busy=false,focusIncident='';let pendingActions=0,stateRevision=0;const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const labels={1:'Frei über Funk',2:'Auf Wache',3:'Anfahrt',4:'Einsatzstelle',5:'Sprechwunsch',6:'Nicht einsatzbereit'};function notice(s){$('notice').textContent=s}async function api(action,data={}){let res=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify({action,room,id:me,...data})});let obj=await res.json();if(!res.ok){let err=Error(obj.error||'Serverfehler');err.kicked=Boolean(obj.kicked);throw err}return obj}async function send(action,data={}){pendingActions++;stateRevision++;try{let x=await api(action,data);if(x.state){setState(x.state);soundsFromState(state);render()}notice('')}catch(e){if(e.kicked)leaveRoom(e.message);else notice(e.message)}finally{pendingActions--}}
+let me=null,state=null,room='',busy=false,focusIncident='';let pendingActions=0,stateRevision=0;const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const labels={1:'Frei über Funk',2:'Auf Wache',3:'Anfahrt',4:'Einsatzstelle',5:'Sprechwunsch',6:'Nicht einsatzbereit'};function notice(s){$('notice').textContent=s}// Während eines Deploys ist der Server kurz weg (Netzfehler, 502/503/504 von Caddy, keine JSON-Antwort). Dann bleibt das Spiel im Raum und fragt weiter ab; die Räume werden beim Neustart wiederhergestellt (game/persistence.py).
+const RESTARTING='Server startet neu … gleich geht es im selben Raum weiter.';let serverDown=false;function restartError(){let err=Error(RESTARTING);err.restarting=true;return err}async function api(action,data={}){let res;try{res=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify({action,room,id:me,...data})})}catch(e){throw restartError()}let obj;try{obj=await res.json()}catch(e){obj=null}if(!obj||typeof obj!=='object'||[502,503,504].includes(res.status)&&!obj.error)throw restartError();if(!res.ok){let err=Error(obj.error||'Serverfehler');err.kicked=Boolean(obj.kicked);throw err}return obj}async function send(action,data={}){pendingActions++;stateRevision++;try{let x=await api(action,data);if(x.state){setState(x.state);soundsFromState(state);render()}notice('')}catch(e){if(e.kicked)leaveRoom(e.message);else notice(e.message)}finally{pendingActions--}}
 // Raum betreten: 'create_room' (Server vergibt den Code) oder 'join' mit eingegebenem Code.
 async function enterRoom(action){try{if(action==='join'){room=$('room').value.toUpperCase().trim();if(!room)throw Error('Bitte gib einen Raumcode ein.')}else room='';let x=await api(action);if(x.room)room=x.room;$('room').value=room;me=x.id;setState(x.state);soundsFromState(state);$('login').classList.add('hidden');['rolesPanel','dashboard','mapPanel','incidentsPanel','vehiclesPanel','controlPanel','sectionsPanel','radioPanel','voicePanel'].forEach(id=>$(id).classList.remove('hidden'));notice('');setNotice('');render()}catch(e){notice(e.message)}}
 $('join').onclick=()=>enterRoom('join');$('publicRoom').onclick=()=>{$('room').value=publicRoomCode;enterRoom('join')};$('createRoom').onclick=()=>enterRoom('create_room');$('room').onkeydown=e=>{if(e.key==='Enter')$('join').click()};
@@ -98,13 +99,37 @@ function serverNow() {
   return Date.now() / 1000 + clockOffset;
 }
 
-// Der Server legt beim Phasenwechsel Start, Ziel und Ankunftszeit (phase_until) fest.
+// Seitenverhältnis der Karte (1536 × 1024), damit Strecken wie auf dem Server (game/strassen.py) zählen.
+const MAP_ASPECT = 1.5;
+
+function mapDistance(a, b) {
+  return Math.hypot((a[0] - b[0]) * MAP_ASPECT, a[1] - b[1]);
+}
+
+// Punkt nach dem Anteil share der Gesamtlänge einer Route [[x, y], …].
+function routePoint(route, share) {
+  const total = route.slice(1).reduce((sum, point, i) => sum + mapDistance(route[i], point), 0);
+  let remaining = Math.min(1, Math.max(0, share)) * total;
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1], b = route[i], step = mapDistance(a, b);
+    if (step >= remaining) {
+      const t = step ? remaining / step : 1;
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    remaining -= step;
+  }
+  return route[route.length - 1];
+}
+
+// Der Server legt beim Phasenwechsel Weg (phase_route) und Ankunftszeit (phase_until) fest.
 // Hier wird nur noch dazwischen interpoliert: (jetzt − phase_at) / (phase_until − phase_at).
+// Fahrten aus älteren Räumen ohne Route laufen weiter gerade von phase_from nach phase_to.
 function position(v) {
-  const from = v.phase_from || v.base;
-  const to = v.phase_to || from;
   const span = (v.phase_until ?? v.phase_at) - v.phase_at;
   const share = span > 0 ? Math.min(1, Math.max(0, (serverNow() - v.phase_at) / span)) : 1;
+  if (Array.isArray(v.phase_route) && v.phase_route.length > 1) return routePoint(v.phase_route, share);
+  const from = v.phase_from || v.base;
+  const to = v.phase_to || from;
   return [from[0] + (to[0] - from[0]) * share, from[1] + (to[1] - from[1]) * share];
 }
 
@@ -118,12 +143,13 @@ function animateVehicles() {
       pin.style.left = `${x * 100}%`;
       pin.style.top = `${y * 100}%`;
     }
+    WBFahrzeuge.layout($('markers'));
   }
   requestAnimationFrame(animateVehicles);
 }
 requestAnimationFrame(animateVehicles);
 
-function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){let p=position(v);pins.push(`<span class="pin vehicle" data-vehicle-pin="${esc(v.id)}" title="${esc(v.call)} – ${esc(v.phase)}" style="left:${p[0]*100}%;top:${p[1]*100}%"></span>`)}$('markers').innerHTML=pins.join('');$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
+function renderMap(){let pins=[];for(let i of state.incidents.filter(i=>!i.closed)){pins.push(`<button class="pin ${focusIncident===i.id?'selected':''}" title="${esc(i.title)}" data-pin="${esc(i.id)}" style="left:${i.pos[0]*100}%;top:${i.pos[1]*100}%">!</button>`)}for(let v of state.vehicles.filter(v=>v.phase!=='wache')){pins.push(WBFahrzeuge.marker(v,position(v)))}$('markers').innerHTML=pins.join('');WBFahrzeuge.layout($('markers'));$('markers').querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>{focusIncident=b.dataset.pin;render();document.getElementById('inc-'+focusIncident)?.scrollIntoView({behavior:'smooth',block:'center'})})}
 function render(){if(!state)return;
 updateFme(state);
 $('countOpen').textContent=state.incidents.filter(i=>!i.closed).length;
@@ -155,4 +181,4 @@ function renderSections(){
 $('quickKeywords').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('title').value=b.dataset.keyword;$('address').focus()});
 ['vehicleSearch','unitFilter','incidentFilter'].forEach(id=>$(id).addEventListener(id==='vehicleSearch'?'input':'change',()=>render()));
 $('refreshList').onclick=()=>render();
-setInterval(async()=>{if(!me||busy||pendingActions)return;busy=true;const revision=stateRevision;try{let x=await api('state');if(revision!==stateRevision)return;setState(x.state);soundsFromState(state);render()}catch(e){$('connection').textContent='Verbindung unterbrochen';$('connection').dataset.state='error';if(e.kicked||/Sitzung abgelaufen|Raum nicht gefunden/.test(String(e.message)))leaveRoom(e.message)}finally{busy=false}},1500);
+setInterval(async()=>{if(!me||busy||pendingActions)return;busy=true;const revision=stateRevision;try{let x=await api('state');if(serverDown){serverDown=false;notice('')}if(revision!==stateRevision)return;setState(x.state);soundsFromState(state);render()}catch(e){if(e.restarting){serverDown=true;$('connection').textContent='Server startet neu …';$('connection').dataset.state='error';notice(RESTARTING);return}$('connection').textContent='Verbindung unterbrochen';$('connection').dataset.state='error';if(e.kicked||/Sitzung abgelaufen|Raum nicht gefunden/.test(String(e.message)))leaveRoom(e.message)}finally{busy=false}},1500);

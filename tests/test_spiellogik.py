@@ -1,7 +1,7 @@
 """Welle 2C: Spiellogik-Bugs. Zeit wird überall über `now` gesteuert."""
 import pytest
 
-from game import engine
+from game import engine, strassen
 
 NOW = 1_000_000.0
 
@@ -38,42 +38,81 @@ def keep_online(r, *pids, now):
 
 # ------------------------------------------------------------ Bug 1: Fahrzeit fest beim Alarm
 
+def on_streets(pos):
+    """Abstand zum nächsten Punkt auf dem Straßennetz."""
+    return strassen._project(pos)[0]
+
+
 def test_travel_time_is_fixed_at_alarm_despite_weather_change(room):
-    room['weather'] = 'Nebel'  # 20 s
+    room['weather'] = 'Nebel'  # 20 s für eine mittellange Route
     ls, gf, inc = leitstelle_mit_gf(room)
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
     v = room['vehicles']['WB-2-LF20']
-    assert v['phase_until'] == NOW + 20
-    room['weather'] = 'Sonnig'  # 12 s – darf die laufende Fahrt nicht verkürzen
-    engine.update(room, NOW + 12)
+    until = v['phase_until']
+    assert until == pytest.approx(NOW + engine.trip_duration(room, v['phase_route']))
+    room['weather'] = 'Sonnig'  # 12 statt 20 – darf die laufende Fahrt nicht verkürzen
+    engine.update(room, NOW + (until - NOW) * .7)
     assert v['phase'] == 'anfahrt'
-    engine.update(room, NOW + 20)
+    engine.update(room, until)
     assert v['phase'] == 'vorort'
 
 
 def test_return_trip_uses_fixed_duration(room):
-    room['weather'] = 'Regen'  # 17 s
+    room['weather'] = 'Regen'
     ls, gf, inc = leitstelle_mit_gf(room)
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    engine.update(room, NOW + 17)
-    act(room, ls, 1, 'close', now=NOW + 17, incident=inc['id'])
     v = room['vehicles']['WB-2-LF20']
-    assert (v['phase'], v['phase_at'], v['phase_until']) == ('rueckfahrt', NOW + 17, NOW + 34)
+    arrival = v['phase_until']
+    engine.update(room, arrival)
+    act(room, ls, 1, 'close', now=arrival, incident=inc['id'])
+    duration = engine.trip_duration(room, strassen.route(inc['pos'], v['base']))
+    assert (v['phase'], v['phase_at'], v['phase_until']) == ('rueckfahrt', arrival, pytest.approx(arrival + duration))
     assert v['phase_from'] == inc['pos'] and v['phase_to'] == list(v['base'])
+    assert v['phase_route'][0] == inc['pos'] and v['phase_route'][-1] == list(v['base'])
     room['weather'] = 'Nebel'
-    engine.update(room, NOW + 34)
+    engine.update(room, arrival + duration)
+    assert v['phase'] == 'wache'
+    assert 'phase_route' not in v
+
+
+def test_return_trip_takes_as_long_as_approach(room):
+    """Lars: „Ich bin viel zu schnell wieder an einer Wache.“ Früher dauerte jede Rückfahrt vom
+    Einsatzort pauschal travel_time, egal wie weit. Jetzt: gleiche Strecke, gleiche Fahrzeit."""
+    ls, gf, inc = leitstelle_mit_gf(room, vehicle='WB-6-LF20')
+    act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Werkstraße 3')
+    far = room['incidents'][-1]
+    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-6-LF20')
+    v = room['vehicles']['WB-6-LF20']
+    approach = v['phase_until'] - v['phase_at']
+    forward = strassen.length(v['phase_route'])
+    engine.update(room, v['phase_until'])
+    assert v['phase'] == 'vorort'
+    act(room, ls, 1, 'close', now=v['phase_until'] + 30, incident=far['id'])
+    assert v['phase'] == 'rueckfahrt'
+    assert strassen.length(v['phase_route']) == pytest.approx(forward)
+    assert v['phase_until'] - v['phase_at'] == pytest.approx(approach)
+    assert approach > engine.travel_time(room)  # langer Weg dauert länger als die Pauschale
+    engine.update(room, v['phase_at'] + approach * .9)
+    assert v['phase'] == 'rueckfahrt'  # nicht vorzeitig zurück
+    engine.update(room, v['phase_at'] + approach)
     assert v['phase'] == 'wache'
 
 
-def test_vehicle_position_interpolates_between_phase_at_and_until(room):
+def test_vehicle_position_follows_route(room):
     room['weather'] = 'Nebel'
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Werkstraße 3')
+    far = room['incidents'][-1]
+    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-2-LF20')
     v = room['vehicles']['WB-2-LF20']
-    base, target = v['base'], inc['pos']
-    half = engine.vehicle_position(v, NOW + 10)
-    assert half == pytest.approx([(base[0] + target[0]) / 2, (base[1] + target[1]) / 2])
-    assert engine.vehicle_position(v, NOW + 25) == pytest.approx(target)
+    route, span = v['phase_route'], v['phase_until'] - NOW
+    assert route[0] == list(v['base']) and route[-1] == far['pos']
+    assert len(route) > 5  # nicht mehr die Luftlinie
+    for share in (.1, .25, .5, .75, .9):
+        pos = engine.vehicle_position(v, NOW + span * share)
+        assert pos == pytest.approx(strassen.along(route, share)[0])
+        assert on_streets(pos) < 1e-3, share
+    assert engine.vehicle_position(v, NOW + span + 5) == pytest.approx(far['pos'])
 
 
 def test_snapshot_contains_server_time(room):
@@ -81,16 +120,52 @@ def test_snapshot_contains_server_time(room):
     assert act(room, pid, 1, 'state', now=NOW + 5)['state']['server_time'] == NOW + 5
 
 
+def test_snapshot_contains_route(room):
+    ls, gf, inc = leitstelle_mit_gf(room)
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    vehicles = {v['id']: v for v in engine.snapshot(room, NOW)['vehicles']}
+    assert vehicles['WB-2-LF20']['phase_route'] == room['vehicles']['WB-2-LF20']['phase_route']
+
+
 def test_closing_during_approach_returns_from_current_position(room):
     """Weiterer Fund: Abbruch während der Anfahrt ließ das Fahrzeug zum Einsatzort springen."""
-    ls, gf, inc = leitstelle_mit_gf(room)  # Sonnig: 12 s
+    ls, gf, inc = leitstelle_mit_gf(room)  # Sonnig
+    act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Werkstraße 3')
+    far = room['incidents'][-1]
+    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-2-LF20')
+    v = room['vehicles']['WB-2-LF20']
+    route, full = v['phase_route'], v['phase_until'] - NOW
+    abort = NOW + full * .4
+    here = engine.vehicle_position(v, abort)
+    act(room, ls, 1, 'close', now=abort, incident=far['id'])
+    assert v['phase'] == 'rueckfahrt'
+    assert v['phase_from'] == pytest.approx(here)
+    assert v['phase_to'] == list(v['base'])
+    assert v['phase_until'] == pytest.approx(abort + full * .4)  # 40 % des Wegs zurück = 40 % der Fahrzeit
+    # Zurück auf demselben Weg: die Rückroute ist der gefahrene Teil der Anfahrt, rückwärts.
+    walked = strassen.along(route, .4)[1]
+    assert v['phase_route'] == [pytest.approx(p) for p in walked[::-1]]
+    back = v['phase_until'] - abort
+    for share in (.2, .5, .8):
+        pos = engine.vehicle_position(v, abort + back * share)
+        assert pos == pytest.approx(strassen.along(route, .4 * (1 - share))[0])
+    engine.update(room, v['phase_until'])
+    assert v['phase'] == 'wache' and v['status'] == 2
+
+
+def test_vehicle_without_route_moves_linearly(room):
+    """Fahrten aus Räumen von vor dem Straßennetz haben keine phase_route und laufen weiter gerade."""
+    ls, gf, inc = leitstelle_mit_gf(room)
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
     v = room['vehicles']['WB-2-LF20']
-    halfway = engine.vehicle_position(v, NOW + 6)
+    del v['phase_route']
+    v['phase_until'] = NOW + 12
+    base, target = v['base'], inc['pos']
+    half = engine.vehicle_position(v, NOW + 6)
+    assert half == pytest.approx([(base[0] + target[0]) / 2, (base[1] + target[1]) / 2])
     act(room, ls, 1, 'close', now=NOW + 6, incident=inc['id'])
-    assert v['phase'] == 'rueckfahrt'
-    assert v['phase_from'] == pytest.approx(halfway)
-    assert v['phase_until'] == pytest.approx(NOW + 12)  # halber Weg zurück = halbe Fahrzeit
+    assert v['phase_route'] == [pytest.approx(half), list(base)]
+    assert v['phase_until'] == pytest.approx(NOW + 12)  # halber Weg zurück = halbe Fahrzeit (12 s Sonnig)
 
 
 # ------------------------------------------------------------ Bug 2: offene Einsätze bleiben sichtbar

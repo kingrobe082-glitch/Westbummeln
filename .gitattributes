@@ -6,3 +6,5 @@ Caddyfile     text eol=lf
 *.yml         text eol=lf
 *.yaml        text eol=lf
 .env.example  text eol=lf
+# Hook-Skripte des Backup-Containers (ohne Endung, run-parts verlangt das).
+deploy/backup-hooks/*  text eol=lf

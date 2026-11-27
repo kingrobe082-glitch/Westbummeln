@@ -4,7 +4,7 @@
 #
 #   IMAGE_TAG=<git-sha> ./remote-deploy.sh
 #
-# Ablauf: Image holen -> Datenbank sichern (backups/pre-deploy) -> Stack starten -> bis zu 90 s auf
+# Ablauf: Images holen (web und alle anderen) -> Datenbank sichern (backups/pre-deploy) -> Stack starten -> bis zu 90 s auf
 # den Healthcheck von web warten. Wird web nicht gesund, startet wieder die vorherige Version und
 # das Skript endet mit Exit-Code 1 (2, wenn auch der Rückweg scheitert). Bei Erfolg steht der Tag in
 # .deployed-tag und als IMAGE_TAG in .env, damit ein späteres "docker compose up -d" von Hand
@@ -43,6 +43,10 @@ if command -v flock >/dev/null; then   # util-linux, auf Ubuntu immer da
   flock -n 9 || die "Es läuft schon ein Deploy (.deploy.lock)."
 fi
 
+# Hook des Backup-Containers muss ausführbar sein, sonst überspringt run-parts ihn stillschweigend
+# (falls das Ausführungsrecht beim Commit unter Windows verloren ging).
+chmod 755 backup-hooks/* 2>/dev/null || true
+
 # Vorabprüfung, bevor irgendetwas umgestellt wird.
 IMAGE_TAG=$NEW_TAG docker compose config -q || die "docker compose config schlägt fehl. Es wurde nichts geändert."
 
@@ -61,9 +65,19 @@ else
 fi
 log "Neue Version: $NEW_TAG, bisher: ${PREV_TAG:-(keine)}"
 
-# --- Image holen (scheitert das, ist nichts verändert)
+# --- Images holen (scheitert web, ist nichts verändert)
 log "Hole $IMAGE_REPO:$NEW_TAG"
 IMAGE_TAG=$NEW_TAG docker compose pull --quiet web || die "Image $IMAGE_REPO:$NEW_TAG nicht ladbar. Es wurde nichts geändert."
+# Die übrigen Images (caddy, db, backup) auf den neuesten Stand ihres Tags bringen. "up -d" erstellt
+# danach nur die Container neu, deren Image sich wirklich geändert hat; sonst läuft z. B. die
+# Datenbank einfach weiter. Scheitert das (Docker Hub gestört), läuft der Deploy mit den lokalen
+# Images weiter.
+mapfile -t others < <(IMAGE_TAG=$NEW_TAG docker compose config --services | grep -vx web)
+if (( ${#others[@]} )); then
+  log "Hole Images für: ${others[*]}"
+  IMAGE_TAG=$NEW_TAG docker compose pull --quiet "${others[@]}" \
+    || log "WARNUNG: Nicht alle Images ladbar, es laufen die vorhandenen weiter."
+fi
 
 # --- Sicherung vor dem Deploy (nur wenn die Datenbank schon läuft)
 db_cid=$(docker compose ps -q db 2>/dev/null | head -n1 || true)
@@ -136,6 +150,17 @@ set_env_tag() {
 set_env_tag "$NEW_TAG"
 printf '%s\n' "$NEW_TAG" >.deployed-tag
 printf '%s %s\n' "$(date -Iseconds)" "$NEW_TAG" >>.deploy-history
+
+# --- Welches Image (Digest) läuft je Dienst? Damit lässt sich ein einzelnes Image-Update gezielt
+# zurückrollen (RUNBOOK.md "Updates"). Nur die letzten 300 Zeilen bleiben.
+for svc in $(docker compose config --services); do
+  cid=$(docker compose ps -q "$svc" 2>/dev/null | head -n1)
+  [[ -n "$cid" ]] || continue
+  img=$(docker inspect --format '{{.Image}}' "$cid")
+  ref=$(docker image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' "$img" 2>/dev/null || true)
+  printf '%s %s %s %s\n' "$(date -Iseconds)" "$NEW_TAG" "$svc" "${ref:-$img}"
+done >>.image-history
+tail -n 300 .image-history >.image-history.tmp && mv .image-history.tmp .image-history
 
 # --- Caddyfile geändert? Eine einzeln eingebundene Datei sieht der Container nach dem Ersetzen
 # nicht (Bind-Mount hält die alte Inode), deshalb vergleichen und Caddy bei Bedarf neu erstellen.
