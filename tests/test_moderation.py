@@ -536,6 +536,7 @@ def test_admin_post_without_csrf_is_rejected(people):
     assert not Ban.objects.exists()
 
 
+@pytest.mark.usefixtures("fixed_limit_window")
 def test_admin_posts_are_rate_limited(people, settings):
     _, users = people
     settings.RATE_LIMITS = {**settings.RATE_LIMITS, 'moderation': '2/m'}
