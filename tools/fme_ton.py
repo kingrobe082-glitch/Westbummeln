@@ -1,8 +1,8 @@
 """Erzeugt den FME-Alarmton (static/sounds/Westbummeln_FME_ZVEI.wav).
 
-Klang wie ein Funkmeldeempfänger am Gürtel: zweimal die ZVEI-Fünftonfolge (am Anfang und
-noch einmal in der Mitte), danach der Weckton
-als einzelne kurze Piezo-Pieps („pip pip“) in der Tonfolge A-C-A-B, mehrmals wiederholt.
+Klang wie ein Funkmeldeempfänger am Gürtel, genau 10 Sekunden:
+2x ZVEI · A-C-A-B · 3x ZVEI · A-C-A-B · 2x ZVEI · A-C-A-B · 3x ZVEI · A-C-A-B.
+ZVEI = Fünftonfolge der (fiktiven) Schleife, A-C-A-B = kurze Piezo-Pieps („pip pip“).
 Alles synthetisch erzeugt, keine Aufnahme.
 
 Aufruf: python tools/fme_ton.py static/sounds/Westbummeln_FME_ZVEI.wav
@@ -13,19 +13,23 @@ import sys
 import wave
 
 RATE = 44100
+TOTAL = 10.0  # Gesamtlänge in Sekunden (Rest wird mit Stille aufgefüllt)
+
 # ZVEI 1: Ziffer -> Frequenz in Hz, R = Wiederholton
 ZVEI1 = {'0': 2400, '1': 1060, '2': 1160, '3': 1270, '4': 1400, '5': 1530,
          '6': 1670, '7': 1830, '8': 2000, '9': 2200, 'R': 2600}
-CODE = '25431'   # fiktive Schleife „Westbummeln LZ“
+CODE = '25431'     # fiktive Schleife „Westbummeln LZ“
 ZVEI_TONE = 0.070  # 70 ms je Ton (ZVEI-Norm)
+ZVEI_GAP = 0.15    # Pause zwischen zwei Fünftonfolgen eines Blocks
 
-# Weckton: Noten in der 6. Oktave (hell wie ein Melder). B = deutsches B (B-Dur-Grundton, 1864,7 Hz).
+# Weckton: Noten in der 6. Oktave (hell wie ein Melder). B = deutsches B (1864,7 Hz).
 NOTES = {'A': 1760.0, 'C': 2093.0, 'B': 1864.66, 'H': 1975.53}
 MELODY = 'ACAB'
-PIP, PIP_GAP = 0.11, 0.07      # kurzer Pieps, kurze Lücke -> „pip pip pip pip“
-ROUND_GAP = 0.30
-ZVEI_REPEAT, ZVEI_GAP = 2, 0.25  # Fünftonfolge zweimal, wie bei echter Alarmierung
-TOTAL = 10.0  # Gesamtlänge in Sekunden (Rest wird mit Stille aufgefüllt)
+PIP, PIP_GAP = 0.11, 0.07  # kurzer Pieps, kurze Lücke -> „pip pip pip pip“
+BLOCK_GAP = 0.30           # Pause nach jedem ZVEI-Block und jeder A-C-A-B-Runde
+
+# Muster: so oft kommt die Fünftonfolge vor jeder A-C-A-B-Runde
+PATTERN = (2, 3, 2, 3)
 
 samples = []
 phase = 0.0
@@ -64,36 +68,28 @@ def pause(seconds):
 def five_tone(code):
     last = None
     for digit in code:
-        d = 'R' if digit == last else digit
-        sine(ZVEI1[d], ZVEI_TONE, 0.35)
+        sine(ZVEI1['R' if digit == last else digit], ZVEI_TONE, 0.35)
         last = digit
 
 
-def zvei_block():
-    for i in range(ZVEI_REPEAT):
+def zvei_block(times):
+    for i in range(times):
         five_tone(CODE)
-        pause(ZVEI_GAP if i < ZVEI_REPEAT - 1 else 0.30)
+        pause(ZVEI_GAP if i < times - 1 else BLOCK_GAP)
 
 
-def weckton(rounds):
-    for _round in range(rounds):
-        for note in MELODY:
-            pip(NOTES[note], PIP, 0.55)
-            pause(PIP_GAP)
-        pause(ROUND_GAP)
+def weckton():
+    for note in MELODY:
+        pip(NOTES[note], PIP, 0.55)
+        pause(PIP_GAP)
+    pause(BLOCK_GAP)
 
 
-ZVEI_BLOCK = ZVEI_REPEAT * len(CODE) * ZVEI_TONE + (ZVEI_REPEAT - 1) * ZVEI_GAP + 0.30
-ROUND = len(MELODY) * (PIP + PIP_GAP) + ROUND_GAP
-LEAD = 0.03
-# ZVEI · Weckton · ZVEI (Mitte) · Weckton, so viele A-C-A-B-Runden, wie noch in TOTAL passen.
-rounds = int((TOTAL - LEAD - 2 * ZVEI_BLOCK) / ROUND)
-pause(LEAD)
-zvei_block()
-weckton((rounds + 1) // 2)
-zvei_block()
-weckton(rounds // 2)
-assert len(samples) <= RATE * TOTAL, 'Weckton länger als TOTAL'
+pause(0.03)
+for times in PATTERN:
+    zvei_block(times)
+    weckton()
+assert len(samples) <= RATE * TOTAL, f'Ton länger als {TOTAL} s'
 pause(TOTAL - len(samples) / RATE)
 
 with wave.open(sys.argv[1], 'wb') as w:
