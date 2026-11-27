@@ -134,13 +134,13 @@ def test_status_1_waehrend_anfahrt_bleibt_gesperrt(room):
 
 def test_vorbelastung_bleibt_bis_zur_wache(room):
     ls, gf, old, v, now = auf_rueckfahrt(room)
-    v['tank'] = 40  # Füllstand, falls die Maßnahmen ihn schon führen
+    v['tank'] = 845.0  # Liter, falls die Maßnahmen (#45) ihn schon führen
     new = incident(room, ls, 'Werkstraße 3', now=now)
     act(room, ls, 1, 'dispatch', now=now, incident=new['id'], vehicle=v['id'])
-    assert v['tank'] == 40 and v['vorbelastet']
+    assert v['tank'] == 845.0 and v['vorbelastet']
     keep_online(room, v['phase_until'])
     engine.update(room, v['phase_until'])
-    assert v['phase'] == 'vorort' and v['tank'] == 40 and v['vorbelastet']
+    assert v['phase'] == 'vorort' and v['tank'] == 845.0 and v['vorbelastet']
     act(room, ls, 1, 'close', now=v['phase_until'], incident=new['id'])
     keep_online(room, v['phase_until'])
     engine.update(room, v['phase_until'])

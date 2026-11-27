@@ -56,12 +56,14 @@ function vehicleOptions(incident) {
 
 // „Florian WB 2 LF 20 · ca. 15 s“; Fahrzeuge unterwegs zusätzlich „S1 · auf Rückfahrt · Tank 40 %“
 // bzw. „S4 · frei am Einsatzort“ (Maßnahmen abgeschlossen, wartet noch an der Einsatzstelle)
-// (Tank, sobald es ihn gibt, sonst „vorbelastet“). Fahrzeit in 5-s-Schritten, damit die Liste ruhig bleibt.
+// Tank in Prozent, sobald es ihn gibt (v.tank in Litern, Größe je Typ in state.tank_voll; KdoW hat keinen),
+// sonst „vorbelastet“. Fahrzeit in 5-s-Schritten, damit die Liste ruhig bleibt.
 function alarmLabel(v, seconds) {
   let label = `${v.call} · ca. ${Math.max(5, Math.round(seconds / 5) * 5)} s`;
   if (v.phase === 'wache') return label;
   const where = v.phase === 'rueckfahrt' ? 'auf Rückfahrt' : 'frei am Einsatzort';
-  const load = typeof v.tank === 'number' ? `Tank ${Math.round(v.tank)} %` : 'vorbelastet';
+  const full = state.tank_voll?.[v.kind];
+  const load = typeof v.tank === 'number' && full > 0 ? `Tank ${Math.round(v.tank / full * 100)} %` : 'vorbelastet';
   return `${label} · S${v.status} · ${where} · ${load}`;
 }
 
