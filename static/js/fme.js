@@ -60,7 +60,20 @@ const WBFme = (() => {
   function setState(state) {
     const device = $('fmeDevice');
     if (device) device.dataset.state = state;
+    updateSoundButton();
   }
+
+  // Im Pop-up: Ist der Ton aus, zeigt der Melder eine Taste „Ton einschalten“, die den Alarmton nachholt.
+  function updateSoundButton() {
+    const button = $('fmeSound'), state = $('fmeDevice')?.dataset.state;
+    if (button) button.classList.toggle('hidden', (typeof soundOn !== 'undefined' && soundOn) || !['alarm', 'text'].includes(state));
+  }
+
+  document.addEventListener('wb:sound-on', () => {
+    const state = $('fmeDevice')?.dataset.state;
+    updateSoundButton();
+    if (state === 'alarm' || state === 'text') playSound();
+  });
 
   function clock() {
     const now = new Date();
@@ -103,6 +116,8 @@ const WBFme = (() => {
     setState('bereit');
     render(['Bereit']);
   }
+
+  $('fmeSound')?.addEventListener('click', () => { if (typeof initAudio === 'function' && !soundOn) initAudio(true); });
 
   // Ton schon beim ersten Einschalten laden, damit der erste Alarm ohne Verzögerung klingt.
   document.addEventListener('click', () => load(), {once: true, capture: true});
