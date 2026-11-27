@@ -67,3 +67,17 @@ def player(db):
     response = client.account('register', name='Florian1', email='florian@example.com', password='Funkgeraet-42')
     assert response.status_code == 200, response.json()
     return client
+
+
+@pytest.fixture
+def fixed_limit_window(monkeypatch):
+    """Die IP-Limits zählen in festen Zeitfenstern (int(time // Periode)). Fällt eine Testserie
+    zufällig über eine Fenstergrenze, beginnt die Zählung neu und der Test schlägt sporadisch fehl.
+    Deshalb steht die Uhr des Limiters in den Limit-Tests still (nicht global: andere Tests
+    stellen die Uhr selbst vor und brauchen dann neue Fenster)."""
+    from types import SimpleNamespace
+
+    import westbummeln.security
+
+    monkeypatch.setattr(westbummeln.security, 'time', SimpleNamespace(time=lambda: 1_800_000_000.0))
+

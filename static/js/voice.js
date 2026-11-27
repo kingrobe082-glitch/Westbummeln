@@ -24,7 +24,7 @@ async function voiceHandle(m){let {from,signal}=m;if(!voiceStream)return;
  let e=voicePeers.get(from);if(e?.pc.remoteDescription&&e.pending?.length){for(let c of e.pending.splice(0))await e.pc.addIceCandidate(c)}
  }catch(e){voiceStatus('Funkfehler: '+e.message)}
 }
-function voicePtt(on){if(!voiceStream)return;voiceStream.getAudioTracks().forEach(t=>t.enabled=on);let b=$('voicePtt');b.textContent=on?'🔴 SENDET – loslassen zum Beenden':'🎙️ Zum Sprechen gedrückt halten';b.style.background=on?'#a52732':''}
+function voicePtt(on){if(!voiceStream)return;voiceStream.getAudioTracks().forEach(t=>t.enabled=on);let b=$('voicePtt');b.textContent=on?'SENDET – loslassen zum Beenden':'Sprechtaste (gedrückt halten)';b.classList.toggle('sending',on)}
 $('voiceJoin').onclick=async()=>{if(!me)return voiceStatus('Bitte zuerst dem Spiel beitreten');if(!window.isSecureContext)return voiceStatus('Für Mikrofonfunk HTTPS oder localhost erforderlich.');try{
  voiceStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});voicePtt(false);$('voiceJoin').disabled=true;$('voiceLeave').disabled=false;$('voicePtt').disabled=false;voiceSeq=0;voiceStatus('Verbunden · Kanal '+$('voiceChannel').selectedOptions[0].text+' · Sprechtaste halten');
  }catch(e){voiceStatus('Mikrofon nicht verfügbar: '+e.message)}};

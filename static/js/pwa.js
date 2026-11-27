@@ -76,7 +76,7 @@
     installButton.type = 'button';
     installButton.id = 'installApp';
     installButton.className = 'pwaInstall';
-    installButton.textContent = '📲 App installieren';
+    installButton.textContent = 'Als App installieren';
     installButton.addEventListener('click', async () => {
       if (!installEvent) return;
       const prompt = installEvent;

@@ -11,13 +11,13 @@ body.gf-mode #vehiclesPanel.open #vehiclesBody{margin-top:10px}
 body.gf-mode #vehiclesPanel:not(.open) #vehiclesBody{display:none}
 body.gf-mode #vehiclesPanel{padding:8px;align-self:start}
 
-/* „Rolle wählen“ als eine Zeile: Raumcode · Rolle + Fahrzeug · Fahrzeug verlassen */
-body.gf-mode #rolesPanel{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:8px 13px}
+/* „Raum und Rolle“ als eine Zeile: Raumcode · Rolle + Fahrzeug · Fahrzeug verlassen */
+body.gf-mode #rolesPanel{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding:8px 12px}
 body.gf-mode #rolesPanel>h2,body.gf-mode #roleInfo,body.gf-mode #rolesPanel>.row{display:none}
 body.gf-mode #rolesPanel .roomBadge{margin:0}
-body.gf-mode #rolesPanel .roomBadge strong{font-size:18px;padding:2px 9px}
+body.gf-mode #rolesPanel .roomBadge strong{font-size:18px;padding:1px 8px}
 body.gf-mode .gfLine{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-left:auto}
-body.gf-mode .gfLine b{color:#fff}
+body.gf-mode .gfLine b{color:var(--text)}
 /* „Fahrzeug verlassen“ steht jetzt oben in der Rollenzeile */
 body.gf-mode #release{display:none}
 

@@ -1,6 +1,6 @@
 'use strict';
 // Mini-Fahrzeuge auf der Einsatzkarte: nur das Aussehen der Fahrzeugmarker.
-// Grafik je Typ (static/img/fahrzeuge/*.svg über css/fahrzeuge.css), Namensschild,
+// Grafik je Typ (Seitenansichten: LF/HLF lf20.webp, KdoW kdow-seite.svg; über css/fahrzeuge.css), Namensschild,
 // Drehung in Fahrtrichtung und Versatz, wenn mehrere Fahrzeuge an derselben Stelle stehen.
 // Position (left/top in %) und Klick-Verhalten kommen aus game.js.
 const WBFahrzeuge = (() => {
@@ -108,6 +108,8 @@ const WBFahrzeuge = (() => {
         s.setProperty('--hd', `${(item.angle * 180 / Math.PI).toFixed(1)}deg`);
         s.setProperty('--rs', Math.abs(Math.sin(item.angle)).toFixed(3));
         s.setProperty('--rc', Math.abs(Math.cos(item.angle)).toFixed(3));
+        // Die Seitenansichten zeigen nach links: bei Fahrt nach rechts spiegeln statt drehen.
+        s.setProperty('--fx', Math.cos(item.angle) > 0.001 ? '-1' : '1');
         s.setProperty('--ox', `${(ox + shiftX).toFixed(1)}px`);
         s.setProperty('--oy', `${(oy + shiftY).toFixed(1)}px`);
       }

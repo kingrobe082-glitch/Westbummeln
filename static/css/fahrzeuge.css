@@ -26,7 +26,7 @@
   filter:drop-shadow(0 0 .7px #fff) drop-shadow(0 1px 2px #000d);
 }
 /* Als Button (Fahrzeug anklickbar): Tastaturfokus an der Grafik zeigen */
-#markers .veh:focus-visible .veh-body{outline:2px solid #ffd16e;outline-offset:2px}
+#markers .veh:focus-visible .veh-body{outline:2px solid var(--focus,#f0c24b);outline-offset:2px}
 .veh-hlf .veh-body{background-image:url("../img/fahrzeuge/hlf.svg")}
 .veh-lf .veh-body{background-image:url("../img/fahrzeuge/lf.svg")}
 .veh-kdow .veh-body{background-image:url("../img/fahrzeuge/kdow.svg")}
@@ -43,10 +43,22 @@
   position:absolute;z-index:2;left:0;
   top:calc(var(--rs,0)*var(--w)/2 + var(--rc,1)*var(--h)/2 + 2px);
   transform:translateX(-50%);
-  padding:1px 4px;border-radius:4px;background:#0b1420c7;border:1px solid #ffffff2e;
-  font:600 10px/1.25 system-ui,Arial,sans-serif;letter-spacing:.02em;white-space:nowrap;color:#fff;
+  padding:1px 4px;border-radius:2px;background:#0e1013d9;border:1px solid #ffffff26;
+  font:600 10px/1.25 var(--mono,monospace);letter-spacing:0;white-space:nowrap;color:#fff;
 }
-.veh-rueckfahrt .veh-label{color:#d4e2f0}
+.veh-rueckfahrt .veh-label{color:var(--muted,#8b95a0)}
+
+/* Seitenansichten: LF und HLF als Foto (LF 20), der KdoW mit eigener Grafik (kdow-seite.svg).
+   Sie drehen sich nicht, sondern werden nur waagerecht gespiegelt (--fx aus fahrzeuge.js),
+   damit kein Fahrzeug auf dem Kopf steht. */
+.veh-hlf,.veh-lf{--bw:40px;--bh:17px;--lx:8%;--ly:2%;--lw:8%;--lh:9%}
+.veh-kdow{--bw:30px;--bh:13px;--lx:41.7%;--ly:2%;--lw:24.3%;--lh:8%}
+.veh-hlf .veh-body,.veh-lf .veh-body,.veh-kdow .veh-body{
+  background-size:contain;transform:translate(-50%,-50%) scaleX(var(--fx,1));
+}
+.veh-hlf .veh-body,.veh-lf .veh-body{background-image:url("../img/fahrzeuge/lf20.webp")}
+.veh-kdow .veh-body{background-image:url("../img/fahrzeuge/kdow-seite.svg")}
+.veh-hlf .veh-label,.veh-lf .veh-label,.veh-kdow .veh-label{top:calc(var(--h)/2 + 2px)}
 
 /* Handy: kleinere Fahrzeuge und Schilder; auf sehr schmalen Karten nur die Grafik */
 @media(max-width:600px){
