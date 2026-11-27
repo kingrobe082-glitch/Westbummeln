@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 
-from game import engine, rooms
+from game import engine, flotte, rooms
 from westbummeln.security import ip_limit
 from westbummeln.views import BAD_REQUEST, account_id, json_reply, not_found, read_json
 
@@ -17,7 +17,8 @@ ROOM_RE = re.compile(r'[A-Z0-9-]{2,16}')
 
 @ensure_csrf_cookie
 def index(request):
-    response = render(request, 'index.html')
+    # Feste Flottendaten (Einheiten, Standort-Schilder) gehen einmal mit der Seite, nicht mit jeder Abfrage.
+    response = render(request, 'index.html', {'flotte': flotte.frontend_daten()})
     response['Cache-Control'] = 'no-cache'
     return response
 

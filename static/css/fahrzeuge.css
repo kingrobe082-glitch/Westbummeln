@@ -15,10 +15,6 @@
   transform:none;margin:var(--oy,0px) 0 0 var(--ox,0px);
   transition:margin .25s ease-out;
 }
-.veh-hlf{--bw:34px;--bh:14px;--lx:76.5%;--ly:28.6%;--lw:5.9%;--lh:42.9%}
-.veh-lf{--bw:29px;--bh:13px;--lx:72.4%;--ly:28.8%;--lw:6.9%;--lh:42.3%}
-.veh-kdow{--bw:24px;--bh:12px;--lx:36.4%;--ly:29.5%;--lw:9.1%;--lh:41%}
-
 .veh-body{
   position:absolute;z-index:1;left:0;top:0;width:var(--w);height:var(--h);
   background:center/100% 100% no-repeat;
@@ -27,9 +23,6 @@
 }
 /* Als Button (Fahrzeug anklickbar): Tastaturfokus an der Grafik zeigen */
 #markers .veh:focus-visible .veh-body{outline:2px solid var(--focus,#f0c24b);outline-offset:2px}
-.veh-hlf .veh-body{background-image:url("../img/fahrzeuge/hlf.svg")}
-.veh-lf .veh-body{background-image:url("../img/fahrzeuge/lf.svg")}
-.veh-kdow .veh-body{background-image:url("../img/fahrzeuge/kdow.svg")}
 /* Blaulicht: leuchtet über dem dunklen Lichtbalken der Grafik */
 .veh-light{
   position:absolute;left:var(--lx);top:var(--ly);width:var(--lw);height:var(--lh);
@@ -48,17 +41,30 @@
 }
 .veh-rueckfahrt .veh-label{color:var(--muted,#8b95a0)}
 
-/* Seitenansichten: LF und HLF als Foto (LF 20), der KdoW mit eigener Grafik (kdow-seite.svg).
-   Sie drehen sich nicht, sondern werden nur waagerecht gespiegelt (--fx aus fahrzeuge.js),
-   damit kein Fahrzeug auf dem Kopf steht. */
-.veh-hlf,.veh-lf{--bw:40px;--bh:17px;--lx:8%;--ly:2%;--lw:8%;--lh:9%}
-.veh-kdow{--bw:30px;--bh:13px;--lx:41.7%;--ly:2%;--lw:24.3%;--lh:8%}
-.veh-hlf .veh-body,.veh-lf .veh-body,.veh-kdow .veh-body{
-  background-size:contain;transform:translate(-50%,-50%) scaleX(var(--fx,1));
-}
-.veh-hlf .veh-body,.veh-lf .veh-body{background-image:url("../img/fahrzeuge/lf20.webp")}
-.veh-kdow .veh-body{background-image:url("../img/fahrzeuge/kdow-seite.svg")}
-.veh-hlf .veh-label,.veh-lf .veh-label,.veh-kdow .veh-label{top:calc(var(--h)/2 + 2px)}
+/* Seitenansichten je Typgruppe (v.grafik aus game/flotte.py): großes Löschfahrzeug als Foto (LF 20),
+   alle anderen als eigene Zeichnungen im selben Stil. Sie drehen sich nicht, sondern werden nur waagerecht
+   gespiegelt (--fx aus fahrzeuge.js), damit kein Fahrzeug auf dem Kopf steht.
+   --bw/--bh: Größe auf der Karte (Maßstab ca. 0,135 px je Zeicheneinheit, Höhe 100 = 13,5–17 px);
+   --lx/--ly/--lw/--lh: Lage des Blaulichtbalkens in der Grafik. */
+.veh-lf-gross{--bw:40px;--bh:17px;--lx:8%;--ly:2%;--lw:8%;--lh:9%;--img:url("../img/fahrzeuge/lf20.webp")}
+.veh-lf-klein{--bw:34px;--bh:15px;--lx:8%;--ly:4%;--lw:19%;--lh:7%;--img:url("../img/fahrzeuge/lf10-seite.svg")}
+.veh-tlf{--bw:37px;--bh:15px;--lx:7.2%;--ly:4%;--lw:17.6%;--lh:7%;--img:url("../img/fahrzeuge/tlf-seite.svg")}
+.veh-dlk{--bw:40px;--bh:15px;--lx:6.7%;--ly:4%;--lw:16.3%;--lh:7%;--img:url("../img/fahrzeuge/dlk-seite.svg")}
+.veh-rw{--bw:36px;--bh:15px;--lx:7.5%;--ly:4%;--lw:18.3%;--lh:7%;--img:url("../img/fahrzeuge/rw-seite.svg")}
+.veh-gw{--bw:36px;--bh:15px;--lx:7.5%;--ly:4%;--lw:18.3%;--lh:7%;--img:url("../img/fahrzeuge/gw-seite.svg")}
+.veh-wlf{--bw:39px;--bh:15px;--lx:6.9%;--ly:4%;--lw:16.9%;--lh:7%;--img:url("../img/fahrzeuge/wlf-seite.svg")}
+.veh-mtw{--bw:31px;--bh:13.5px;--lx:20%;--ly:2%;--lw:24.3%;--lh:7%;--img:url("../img/fahrzeuge/mtw-seite.svg")}
+.veh-kdow{--bw:30px;--bh:13px;--lx:41.7%;--ly:2%;--lw:24.3%;--lh:8%;--img:url("../img/fahrzeuge/kdow-seite.svg")}
+.veh-atv{--bw:20px;--bh:13.5px;--lx:38.7%;--ly:4%;--lw:10.7%;--lh:7%;--img:url("../img/fahrzeuge/atv-seite.svg")}
+.veh-anh,.veh-ab{--bw:23px;--bh:13.5px;--lx:0;--ly:0;--lw:0;--lh:0;--img:url("../img/fahrzeuge/anh-seite.svg")}
+.veh-body{background-image:var(--img);background-size:contain;transform:translate(-50%,-50%) scaleX(var(--fx,1))}
+.veh-label{top:calc(var(--h)/2 + 2px)}
+
+/* Gespann: der Anhänger hängt hinten am Zugfahrzeug (rechts, die Grafiken zeigen nach links),
+   der Abrollbehälter liegt auf dem Wechsellader. Beide spiegeln sich mit der Grafik des Zugfahrzeugs. */
+.veh-tow{position:absolute;background:center/100% 100% no-repeat}
+.veh-tow-anh{left:96%;top:0;width:calc(var(--h)*1.7);height:var(--h);background-image:url("../img/fahrzeuge/anh-seite.svg")}
+.veh-tow-ab{left:33.8%;top:14%;width:63.8%;height:44%;background-image:url("../img/fahrzeuge/ab-seite.svg")}
 
 /* Handy: kleinere Fahrzeuge und Schilder; auf sehr schmalen Karten nur die Grafik */
 @media(max-width:600px){

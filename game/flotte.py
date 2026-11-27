@@ -24,7 +24,7 @@ EINHEITEN = {
     'LZ1': {
         'name': 'LZ 1 Mitte', 'standort_nr': 1, 'fachgebiet': 'Brandschutz',
         'wehrleitung': 'Samuel', 'stv': 'Felix', 'pos': [.41, .49],
-        'karte': 'Gebäude „Freiwillige Feuerwehr Westbummeln“ (D4)', 'schild': [.417, .436],
+        'karte': 'Gebäude „Freiwillige Feuerwehr Westbummeln“ (D4)', 'schild': [.395, .432],
     },
     'LZ2': {
         'name': 'LZ 2 Altstadt', 'standort_nr': 2, 'fachgebiet': 'Wasserversorgung',

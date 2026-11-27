@@ -18,9 +18,11 @@ def test_index_page_sets_csrf_cookie_and_links_static_files():
     for asset in ('/static/css/app.css', '/static/js/app.js', '/static/js/game.js', '/static/js/voice.js',
                   '/static/js/account.js', '/static/js/fahrzeuge.js', '/static/css/fahrzeuge.css',
                   '/static/js/gf-layout.js', '/static/css/gf-layout.css',
+                  '/static/js/flotte.js', '/static/css/flotte.css',
                   '/static/karte.webp'):
         assert asset in html
     assert client.get('/index.html').status_code == 200
+    assert 'id="flotte-daten"' in html and 'LZ 2 Altstadt' in html  # Einheiten für Schilder und Filter
 
 
 def test_health_check_ignores_host_header():
