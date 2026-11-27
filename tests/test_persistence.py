@@ -293,3 +293,18 @@ def test_room_with_ai_incidents_is_saved_and_continues_the_same_way():
     rooms.rooms.clear()
     reference = ki_verlauf(ki_room(seed=11), T + 120, 300)
     assert after_restart == reference and len(reference) > 2
+
+
+def test_old_room_without_geraetehaus_vehicles_gets_them_on_load():
+    """Räume von vor den Gerätehaus-Fahrzeugen (18 statt 23 Fahrzeuge) laden ohne Absturz und werden ergänzt."""
+    r, anna, ben = busy_room()
+    code = r['code']
+    for vid in [vid for vid, v in r['vehicles'].items() if str(v['unit']).startswith('GH')]:
+        del r['vehicles'][vid]
+    assert len(r['vehicles']) == 18
+    restart(T + 5 + DOWN)
+    r = rooms.rooms[code]
+    assert len(r['vehicles']) == 23
+    assert r['vehicles']['WB-GH4-LF10']['phase'] == 'wache'
+    assert r['vehicles']['WB-1-HLF20']['owner'] == ben  # laufendes Spiel bleibt erhalten
+    act(r, 1, anna, 'state', T + 6 + DOWN)
