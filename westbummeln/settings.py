@@ -244,6 +244,12 @@ AI_MAX_OPEN_EXTRA = int(os.environ.get('AI_MAX_OPEN_EXTRA', '1'))
 AI_MAX_OPEN = int(os.environ.get('AI_MAX_OPEN', '8'))
 AI_MAX_WAITING = int(os.environ.get('AI_MAX_WAITING', '2'))  # kein neuer Einsatz, solange so viele ohne Fahrzeug warten
 
+# Fahrzeiten (game/strassen.py, game/engine.py): Spiel-Meter pro Sekunde je Straßenklasse der Kartenlegende
+# und Sekunden vom Alarm bis zur Abfahrt. Das Spiel läuft im Zeitraffer (Fahrt im Ort ~10 s, quer ~30 s).
+DRIVE_SPEED = {road: float(os.environ.get(f'DRIVE_SPEED_{road.upper()}', default))
+               for road, default in (('haupt', '160'), ('neben', '120'), ('wohn', '90'), ('weg', '50'))}
+DRIVE_DEPARTURE_TIME = float(os.environ.get('DRIVE_DEPARTURE_TIME', '3'))
+
 # Logs gehen nach stdout und landen so in `docker compose logs web`. Die App-Logger schreiben ab INFO
 # (per LOG_LEVEL änderbar), alles andere ab WARNING. Die App-Logger haben keinen eigenen Handler, sondern
 # reichen an den Root-Logger weiter – so sieht auch pytests caplog jede Meldung.

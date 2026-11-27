@@ -55,13 +55,14 @@ def on_streets(pos):
 
 
 def test_travel_time_is_fixed_at_alarm_despite_weather_change(room):
-    room['weather'] = 'Nebel'  # 20 s für eine mittellange Route
+    room['weather'] = 'Nebel'
     ls, gf, inc = leitstelle_mit_gf(room)
+    expected = engine.eta(room, room['vehicles']['WB-2-LF20'], inc['pos'])
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
     v = room['vehicles']['WB-2-LF20']
     until = v['phase_until']
-    assert until == pytest.approx(NOW + engine.trip_duration(room, v['phase_route']))
-    room['weather'] = 'Sonnig'  # 12 statt 20 – darf die laufende Fahrt nicht verkürzen
+    assert until == pytest.approx(NOW + expected)
+    room['weather'] = 'Sonnig'  # schneller – darf die laufende Fahrt nicht verkürzen
     engine.update(room, NOW + (until - NOW) * .7)
     assert v['phase'] == 'anfahrt'
     engine.update(room, until)
@@ -75,8 +76,8 @@ def test_return_trip_uses_fixed_duration(room):
     v = room['vehicles']['WB-2-LF20']
     arrival = v['phase_until']
     engine.update(room, arrival)
+    duration = engine.plan_trip(room, v, inc['pos'], v['base'])[1][-1]
     act(room, ls, 1, 'close', now=arrival, incident=inc['id'])
-    duration = engine.trip_duration(room, strassen.route(inc['pos'], v['base']))
     assert (v['phase'], v['phase_at'], v['phase_until']) == ('rueckfahrt', arrival, pytest.approx(arrival + duration))
     assert v['phase_from'] == inc['pos'] and v['phase_to'] == list(v['base'])
     assert v['phase_route'][0] == inc['pos'] and v['phase_route'][-1] == list(v['base'])
@@ -88,7 +89,8 @@ def test_return_trip_uses_fixed_duration(room):
 
 def test_return_trip_takes_as_long_as_approach(room):
     """Lars: „Ich bin viel zu schnell wieder an einer Wache.“ Früher dauerte jede Rückfahrt vom
-    Einsatzort pauschal travel_time, egal wie weit. Jetzt: gleiche Strecke, gleiche Fahrzeit."""
+    Einsatzort pauschal travel_time, egal wie weit. Jetzt: gleiche Strecke, gleiche Fahrzeit
+    (nur ohne die Ausrückzeit der Anfahrt)."""
     ls, gf, inc = leitstelle_mit_gf(room, vehicle='WB-6-LF20')
     act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Werkstraße 3')
     far = room['incidents'][-1]
@@ -101,11 +103,12 @@ def test_return_trip_takes_as_long_as_approach(room):
     act(room, ls, 1, 'close', now=v['phase_until'] + 30, incident=far['id'])
     assert v['phase'] == 'rueckfahrt'
     assert strassen.length(v['phase_route']) == pytest.approx(forward)
-    assert v['phase_until'] - v['phase_at'] == pytest.approx(approach)
-    assert approach > engine.travel_time(room)  # langer Weg dauert länger als die Pauschale
-    engine.update(room, v['phase_at'] + approach * .9)
+    back = approach - engine.departure_time(v)
+    assert v['phase_until'] - v['phase_at'] == pytest.approx(back)
+    assert approach > 20  # quer über die Karte
+    engine.update(room, v['phase_at'] + back * .9)
     assert v['phase'] == 'rueckfahrt'  # nicht vorzeitig zurück
-    engine.update(room, v['phase_at'] + approach)
+    engine.update(room, v['phase_at'] + back)
     assert v['phase'] == 'wache'
 
 
@@ -116,12 +119,14 @@ def test_vehicle_position_follows_route(room):
     far = room['incidents'][-1]
     act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-2-LF20')
     v = room['vehicles']['WB-2-LF20']
-    route, span = v['phase_route'], v['phase_until'] - NOW
+    route, times, span = v['phase_route'], v['phase_times'], v['phase_until'] - NOW
     assert route[0] == list(v['base']) and route[-1] == far['pos']
     assert len(route) > 5  # nicht mehr die Luftlinie
-    for share in (.1, .25, .5, .75, .9):
+    assert len(times) == len(route) and times[-1] == pytest.approx(span)
+    assert engine.vehicle_position(v, NOW + engine.departure_time(v)) == list(v['base'])  # Ausrückzeit
+    for share in (.25, .5, .75, .9):
         pos = engine.vehicle_position(v, NOW + span * share)
-        assert pos == pytest.approx(strassen.along(route, share)[0])
+        assert pos == pytest.approx(strassen.at_time(route, times, span * share)[0])
         assert on_streets(pos) < 1e-3, share
     assert engine.vehicle_position(v, NOW + span + 5) == pytest.approx(far['pos'])
 
@@ -145,21 +150,23 @@ def test_closing_during_approach_returns_from_current_position(room):
     far = room['incidents'][-1]
     act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-2-LF20')
     v = room['vehicles']['WB-2-LF20']
-    route, full = v['phase_route'], v['phase_until'] - NOW
-    abort = NOW + full * .4
+    route, times, full = v['phase_route'], v['phase_times'], v['phase_until'] - NOW
+    elapsed = full * .4
+    abort = NOW + elapsed
     here = engine.vehicle_position(v, abort)
     act(room, ls, 1, 'close', now=abort, incident=far['id'])
     assert v['phase'] == 'rueckfahrt'
     assert v['phase_from'] == pytest.approx(here)
     assert v['phase_to'] == list(v['base'])
-    assert v['phase_until'] == pytest.approx(abort + full * .4)  # 40 % des Wegs zurück = 40 % der Fahrzeit
+    # Zurück dauert so lange, wie das Fahrzeug schon gefahren ist (ohne die Ausrückzeit).
+    back = elapsed - engine.departure_time(v)
+    assert v['phase_until'] == pytest.approx(abort + back)
     # Zurück auf demselben Weg: die Rückroute ist der gefahrene Teil der Anfahrt, rückwärts.
-    walked = strassen.along(route, .4)[1]
+    walked = strassen.at_time(route, times, elapsed)[1]
     assert v['phase_route'] == [pytest.approx(p) for p in walked[::-1]]
-    back = v['phase_until'] - abort
     for share in (.2, .5, .8):
         pos = engine.vehicle_position(v, abort + back * share)
-        assert pos == pytest.approx(strassen.along(route, .4 * (1 - share))[0])
+        assert pos == pytest.approx(strassen.at_time(route, times, elapsed - back * share)[0], abs=1e-3)
     engine.update(room, v['phase_until'])
     # Zurück auf der Wache; Status 2 gibt der GF selbst.
     assert v['phase'] == 'wache' and v['incident'] is None
@@ -170,7 +177,7 @@ def test_vehicle_without_route_moves_linearly(room):
     ls, gf, inc = leitstelle_mit_gf(room)
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
     v = room['vehicles']['WB-2-LF20']
-    del v['phase_route']
+    del v['phase_route'], v['phase_times']
     v['phase_until'] = NOW + 12
     base, target = v['base'], inc['pos']
     half = engine.vehicle_position(v, NOW + 6)

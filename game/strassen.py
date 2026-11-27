@@ -1,4 +1,4 @@
-"""Straßennetz der Einsatzkarte und kürzeste Wege darauf.
+"""Straßennetz der Einsatzkarte und schnellste Wege darauf.
 
 Koordinaten wie überall im Spiel: Anteile (0–1) der vollständigen Karte static/karte.webp
 (1536 × 1024 Pixel, inklusive Legende). Die Straßen wurden von der Karte abgelesen; jede Straße ist
@@ -6,12 +6,26 @@ eine Punktfolge, gemeinsame Kreuzungen stehen in JUNCTIONS und werden über ihre
 
 Für Abstände wird x mit dem Seitenverhältnis der Karte gestreckt, damit eine Strecke in x-Richtung
 genauso lang zählt wie eine gleich lange Strecke in y-Richtung.
+
+Jede Straße hat eine Klasse wie in der Kartenlegende (Hauptstraße, Nebenstraße, Wohnstraße,
+Weg/Feldweg). Die Fahrzeit einer Strecke ist Länge in Metern / Geschwindigkeit ihrer Klasse; der
+schnellste Weg (plan) darf deshalb einen längeren Umweg über die Hauptstraße nehmen.
 """
 import heapq
 from functools import lru_cache
 from itertools import pairwise
 
 ASPECT = 1536 / 1024
+# Maßstabsleiste unten rechts auf der Karte: 0–500 m sind 231 Pixel. Eine Abstandseinheit ist die Kartenhöhe (1024 px).
+METERS_PER_UNIT = 1024 * 500 / 231
+
+# Straßenklassen der Kartenlegende und Fahrgeschwindigkeit in Spiel-Metern pro Sekunde. Das Spiel läuft
+# im Zeitraffer: Eine Fahrt im Ort dauert ~10 s, quer über die Karte ~30 s. Per Env änderbar
+# (DRIVE_SPEED_* in westbummeln/settings.py, übertragen in game/apps.py).
+CLASSES = ('haupt', 'neben', 'wohn', 'weg')
+CLASS_NAMES = {'haupt': 'Hauptstraße', 'neben': 'Nebenstraße', 'wohn': 'Wohnstraße', 'weg': 'Weg / Feldweg'}
+SPEED = {'haupt': 160, 'neben': 120, 'wohn': 90, 'weg': 50}
+DOCK_CLASS = 'wohn'  # Anbindung von Wache oder Einsatzort an die nächste Straße (Hofeinfahrt)
 
 JUNCTIONS = {
     'forst': (.430, .045),           # Forstweg / Abzweig Richtung Jägerstraße Ost
@@ -37,7 +51,8 @@ JUNCTIONS = {
     'kirch_o': (.655, .551),         # Kirchstraße / Querstraße / Mathias-Berg-Straße
     'kreisel': (.843, .547),         # Kreisverkehr
     'mozart_w': (.830, .598),        # Robin-Hof-Straße / Mozartweg
-    'mozart_o': (.937, .660),        # Mozartweg / Gewerbepark / Randstraße
+    'mozart_o': (.937, .660),        # Mozartweg / östliche Randstraße
+    'mozart_gewerbe': (.868, .627),  # Mozartweg / Zufahrt Gewerbepark
     'erlen_o': (.976, .606),         # Erlenstraße, östliches Ende
     'buerger_m': (.672, .745),       # Bürgerstraße / Dorfblick (Nord) / Werkstraße
     'buerger_dorf': (.642, .818),    # Bürgerstraße / Dorfstraße
@@ -54,7 +69,7 @@ JUNCTIONS = {
     'markt_s': (.414, .706),         # Straße am Marktplatz / Zufahrt Marktplatz
     'rathaus_knick': (.362, .662),   # Am Rathauspark / Straße am Marktplatz
     'rathaus_w': (.317, .672),       # Am Rathauspark / Bachstraße
-    'ufer_muehle': (.362, .793),     # Uferstraße / Brücke zum Mühlenweg
+    'ufer_muehle': (.362, .793),     # Uferstraße / Bachstraße (keine Brücke zum Mühlenweg)
     'ufer_dorf': (.490, .815),       # Uferstraße geht in die Dorfstraße über
     'muehle_garten': (.245, .909),   # Mühlenweg / Gartenweg
     'garten_wiese': (.369, .957),    # Gartenweg / Wiesenstraße
@@ -106,8 +121,10 @@ STREETS = [
     ('Östliche Randstraße', ['erlen_o', (.965, .635), 'mozart_o']),
     ('Robin-Hof-Straße', ['kreisel', (.837, .569), 'mozart_w', (.818, .610), (.804, .633),
                           (.765, .657), (.733, .676), (.700, .694), 'buerger_m']),
-    ('Mozartweg', ['mozart_w', (.856, .623), (.895, .637), 'mozart_o']),
-    ('Gewerbepark', ['mozart_o', (.900, .670), (.865, .689), (.824, .712), (.781, .738), 'werk_gewerbe']),
+    ('Mozartweg', ['mozart_w', (.856, .623), 'mozart_gewerbe', (.895, .637), 'mozart_o']),
+    # Zufahrt zwischen Moped-Garage und den Hallen hindurch, nicht quer über die Dächer.
+    ('Gewerbepark', ['mozart_gewerbe', (.866, .674), (.851, .703), (.831, .720), (.807, .709), (.778, .710),
+                     (.762, .728), (.742, .765), 'werk_gewerbe']),
     ('Werkstraße', ['buerger_m', (.700, .772), 'werk_gewerbe', (.798, .801), (.846, .821), (.895, .835),
                     (.944, .860), (.970, .884), (.983, .913)]),
     ('Bürgerstraße', ['buerger_m', (.655, .786), 'buerger_dorf', (.632, .850), 'buerger_bach',
@@ -124,15 +141,44 @@ STREETS = [
     ('Bachstraße', ['rathaus_w', (.304, .713), (.306, .738), (.326, .767), (.349, .786), 'ufer_muehle']),
     ('Uferstraße', ['ufer_muehle', (.375, .796), (.408, .801), (.440, .806), 'ufer_dorf']),
     ('Dorfstraße', ['ufer_dorf', (.548, .818), 'buerger_dorf']),
-    ('Bummelbachweg', [(.405, .957), (.414, .933), (.427, .913), (.460, .903), (.538, .884),
-                       (.586, .882), 'buerger_bach']),
-    ('Mühlenweg', ['ufer_muehle', (.335, .842), (.300, .840), (.278, .840), (.258, .855),
+    # Der Bummelbachweg beginnt am Ende von Garten- und Wiesenstraße; über ihn und die Brücke der
+    # Bürgerstraße ist der Südwesten (Mühlenweg, GH4) angebunden.
+    ('Bummelbachweg', ['garten_wiese', (.386, .960), (.405, .957), (.414, .933), (.427, .913), (.460, .903),
+                       (.538, .884), (.586, .882), 'buerger_bach']),
+    # Der Mühlenweg endet am Ufer: Zwischen Bachstraße und Mühlenweg gibt es keine Brücke.
+    ('Mühlenweg', [(.335, .842), (.300, .840), (.278, .840), (.258, .855),
                    (.248, .884), 'muehle_garten']),
     ('Mühlenweg', ['muehle_garten', (.229, .938), (.216, .962)]),
     ('Gartenweg', ['muehle_garten', (.278, .899), (.310, .896), (.349, .896), (.362, .913),
                    (.367, .943), 'garten_wiese']),
     ('Wiesenstraße', ['garten_wiese', (.330, .957), (.287, .956)]),
 ]
+
+# Klasse je Straßenname, abgelesen an Breite und Zeichnung auf der Karte. Namen auf -weg sind Feld- und
+# Schotterwege, außer sie sind auf der Karte als Wohnstraße mit Häusern gezeichnet (Nelkenweg, Tannenweg …).
+STREET_CLASS = {
+    'Hauptstraße': 'haupt', 'Kreuzbergstraße': 'haupt', 'Schulstraße': 'haupt', 'Waldstraße': 'haupt',
+    'Jägerstraße West': 'haupt', 'Robin-Hof-Straße': 'haupt', 'Werkstraße': 'haupt', 'Bürgerstraße': 'haupt',
+    'Sportplatzring': 'neben', 'Kirchstraße': 'neben', 'Mathias-Berg-Straße': 'neben', 'Ahornallee': 'neben',
+    'Erlenstraße': 'neben', 'Uferstraße': 'neben', 'Dorfstraße': 'neben', 'Jägerstraße Ost': 'neben',
+    'Eichenstraße': 'neben', 'Flurstraße': 'neben', 'Scheunenweg': 'neben', 'Querstraße': 'neben',
+    'Am Rathauspark': 'neben', 'Bachstraße': 'neben', 'Tannenfeld': 'neben', 'Östliche Randstraße': 'neben',
+    'Zufahrt Kreisel': 'neben', 'Gewerbepark': 'neben', 'Am Marktplatz': 'neben', 'Zufahrt FW West': 'neben',
+    'Blütenstraße': 'wohn', 'Tannenweg': 'wohn', 'Nelkenweg': 'wohn', 'Buchenstraße': 'wohn', 'Mozartweg': 'wohn',
+    'Sonnenstraße': 'wohn', 'Rosengasse': 'wohn', 'Gasse': 'wohn', 'Dorfblick': 'wohn', 'Marktplatz': 'wohn',
+    'Querweg Ahornallee': 'wohn', 'Wiesenstraße': 'wohn', 'Gartenweg': 'wohn',
+    'Forstweg': 'weg', 'Feldweg': 'weg', 'Bummelbachweg': 'weg', 'Mühlenweg': 'weg', 'Hofzufahrt': 'weg',
+}
+
+# Mittellinie des Bummelsbachs, von der Karte abgelesen (Prüfung in tests/test_strassennetz.py): Straßen
+# dürfen ihn nur auf einer Brücke queren. Die einzige Brücke ist die der Bürgerstraße (Brückenstraße).
+BUMMELSBACH = [
+    (.203, .574), (.210, .586), (.218, .605), (.225, .645), (.229, .664), (.234, .684), (.244, .703), (.255, .723),
+    (.266, .742), (.279, .762), (.291, .781), (.306, .801), (.322, .820), (.340, .835), (.365, .851), (.391, .859),
+    (.417, .864), (.443, .866), (.469, .863), (.495, .859), (.521, .855), (.547, .854), (.573, .850), (.599, .851),
+    (.628, .857), (.651, .866), (.677, .876), (.703, .891), (.729, .907), (.755, .918), (.781, .929), (.807, .945),
+]
+BRIDGES = [(.629, .858)]
 
 
 def _point(p):
@@ -146,8 +192,10 @@ def distance(a, b):
 def _build():
     nodes = []
     index = {}
-    edges = set()
-    for _, points in STREETS:
+    edges = {}
+    rank = {c: i for i, c in enumerate(CLASSES)}
+    for name, points in STREETS:
+        road = STREET_CLASS[name]
         ids = []
         for p in points:
             xy = tuple(_point(p))
@@ -157,16 +205,19 @@ def _build():
             ids.append(index[xy])
         for a, b in pairwise(ids):
             if a != b:
-                edges.add((min(a, b), max(a, b)))
+                key = (min(a, b), max(a, b))
+                # Gehört ein Stück zu zwei Straßen, zählt die schnellere Klasse.
+                if key not in edges or rank[road] < rank[edges[key]]:
+                    edges[key] = road
     neighbours = {i: [] for i in range(len(nodes))}
-    for a, b in edges:
+    for (a, b), road in edges.items():
         length = distance(nodes[a], nodes[b])
-        neighbours[a].append((b, length))
-        neighbours[b].append((a, length))
-    return nodes, sorted(edges), neighbours
+        neighbours[a].append((b, length, road))
+        neighbours[b].append((a, length, road))
+    return nodes, sorted(edges), edges, neighbours
 
 
-NODES, EDGES, NEIGHBOURS = _build()
+NODES, EDGES, EDGE_CLASS, NEIGHBOURS = _build()
 
 
 def _project(p):
@@ -185,8 +236,12 @@ def _project(p):
     return best
 
 
-def _dijkstra(sources):
-    """sources: {Knoten: Startabstand}. Liefert Abstände und Vorgänger."""
+def _seconds(a, b, road, speeds):
+    return distance(a, b) * METERS_PER_UNIT / speeds[road]
+
+
+def _dijkstra(sources, speeds):
+    """sources: {Knoten: Startzeit}. Liefert Fahrzeiten und Vorgänger."""
     dist = dict(sources)
     prev = {}
     queue = [(d, n) for n, d in sources.items()]
@@ -195,8 +250,8 @@ def _dijkstra(sources):
         d, n = heapq.heappop(queue)
         if d > dist.get(n, float('inf')):
             continue
-        for m, length in NEIGHBOURS[n]:
-            nd = d + length
+        for m, length, road in NEIGHBOURS[n]:
+            nd = d + length * METERS_PER_UNIT / speeds[road]
             if nd < dist.get(m, float('inf')):
                 dist[m] = nd
                 prev[m] = n
@@ -204,37 +259,75 @@ def _dijkstra(sources):
     return dist, prev
 
 
-@lru_cache(maxsize=1024)
-def _route(start, target):
+@lru_cache(maxsize=4096)
+def _plan(start, target, speed_key):
+    speeds = dict(zip(CLASSES, speed_key, strict=True))
     _, (sa, sb), s_dock = _project(start)
     _, (ta, tb), t_dock = _project(target)
-    middle = []
-    if {sa, sb} != {ta, tb}:
-        dist, prev = _dijkstra({sa: distance(s_dock, NODES[sa]), sb: distance(s_dock, NODES[sb])})
-        end = min((ta, tb), key=lambda n: dist.get(n, float('inf')) + distance(NODES[n], t_dock))
-        if end in dist:
-            n = end
-            middle = [n]
-            while n in prev:
-                n = prev[n]
-                middle.append(n)
-            middle.reverse()
-    points = [start, s_dock, *(NODES[n] for n in middle), t_dock, target]
-    route = []
-    for p in points:
-        p = [round(p[0], 4), round(p[1], 4)]
-        if not route or distance(route[-1], p) > 1e-4:
-            route.append(p)
-    if len(route) == 1:
-        route.append(list(route[0]))
-    return route
+    s_road, t_road = EDGE_CLASS[(sa, sb)], EDGE_CLASS[(ta, tb)]
+    # Punkte jeweils mit der Klasse des Stücks, das zu ihnen hinführt.
+    legs = [(start, DOCK_CLASS), (s_dock, DOCK_CLASS)]
+    if {sa, sb} == {ta, tb}:
+        legs.append((t_dock, s_road))
+    else:
+        dist, prev = _dijkstra({n: _seconds(s_dock, NODES[n], s_road, speeds) for n in (sa, sb)}, speeds)
+        end = min((ta, tb), key=lambda n: dist.get(n, float('inf')) + _seconds(NODES[n], t_dock, t_road, speeds))
+        middle = [end]
+        while middle[-1] in prev:
+            middle.append(prev[middle[-1]])
+        middle.reverse()
+        legs.append((NODES[middle[0]], s_road))
+        legs += [(NODES[b], EDGE_CLASS[(min(a, b), max(a, b))]) for a, b in pairwise(middle)]
+        legs.append((t_dock, t_road))
+    legs.append((target, DOCK_CLASS))
+    points, times = [], []
+    for p, road in legs:
+        p = (round(p[0], 4), round(p[1], 4))
+        if not points:
+            points.append(p)
+            times.append(0.0)
+        elif distance(points[-1], p) > 1e-4:
+            times.append(times[-1] + _seconds(points[-1], p, road, speeds))
+            points.append(p)
+    if len(points) == 1:
+        points.append(points[0])
+        times.append(0.0)
+    return tuple(points), tuple(round(t, 2) for t in times)
 
 
-def route(start, target):
-    """Kürzester Weg über das Straßennetz als Punktliste [[x, y], …] von start bis target.
+def plan(start, target, speeds=None):
+    """Schnellster Weg über das Straßennetz: (Punkte [[x, y], …], Sekunden ab Abfahrt je Punkt).
 
-    Start und Ziel werden über den nächsten Punkt auf einer Straße angebunden (Hofeinfahrt)."""
-    return [list(p) for p in _route(tuple(start), tuple(target))]
+    speeds: Meter pro Sekunde je Straßenklasse (Standard SPEED). Start und Ziel werden über den
+    nächsten Punkt auf einer Straße angebunden (Hofeinfahrt)."""
+    speeds = SPEED if speeds is None else speeds
+    points, times = _plan(tuple(start), tuple(target), tuple(float(speeds[c]) for c in CLASSES))
+    return [list(p) for p in points], list(times)
+
+
+def route(start, target, speeds=None):
+    """Schnellster Weg als Punktliste [[x, y], …] von start bis target."""
+    return plan(start, target, speeds)[0]
+
+
+def at_time(points, times, t):
+    """Punkt zur Fahrzeit t (Sekunden ab phase_at) und die bis dahin gefahrene Teilstrecke.
+
+    times[i] ist der Zeitpunkt, an dem points[i] erreicht wird. Dazwischen geht es gleichmäßig voran,
+    auf langsamen Abschnitten also sichtbar langsamer."""
+    walked = [list(points[0])]
+    if t <= times[0]:
+        return list(points[0]), walked
+    for i in range(1, len(points)):
+        a, b = points[i - 1], points[i]
+        if t < times[i]:
+            span = times[i] - times[i - 1]
+            share = (t - times[i - 1]) / span if span > 0 else 1
+            here = [a[0] + (b[0] - a[0]) * share, a[1] + (b[1] - a[1]) * share]
+            walked.append(here)
+            return here, walked
+        walked.append(list(b))
+    return list(points[-1]), walked
 
 
 def length(points):
