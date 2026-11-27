@@ -1,7 +1,9 @@
 # Produktions-Image für Westbummeln (Django + gunicorn + WhiteNoise).
 # Gebaut von der GitHub Action (.github/workflows/release.yml) als
 # ghcr.io/kingrobe082-glitch/westbummeln:<git-sha>. Betrieb: deploy/RUNBOOK.md.
-FROM python:3.13-slim
+# Python-Minor und Debian-Release fest. Patches und Debian-Sicherheitsupdates holt der wöchentliche
+# Neubau (release.yml, schedule). Python-Upgrade: hier und in .python-version zusammen ändern.
+FROM python:3.13-slim-trixie
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

@@ -7,11 +7,17 @@
 #
 # Nach außen offen sind nur 80/443 von Caddy. web und db veröffentlichen keine Ports.
 # Speichergrenzen (Summe ~740 MB, typisch belegt ~300 MB): siehe RUNBOOK.md.
+#
+# Image-Versionen (RUNBOOK.md "Updates"): Die Tags sind so gewählt, dass sie nur kompatible Updates
+# bekommen. remote-deploy.sh zieht bei jedem Deploy alle Images neu (mindestens wöchentlich durch den
+# geplanten Neubau), Compose startet nur Container neu, deren Image sich wirklich geändert hat.
+# Größere Sprünge (Caddy-Minor) kommen als Dependabot-PR (.github/dependabot.yml).
 name: westbummeln
 
 services:
   caddy:
-    image: caddy:2-alpine
+    # Minor fest (2.11.x), Patches kommen beim Deploy. Neue Minor-Version: Dependabot-PR.
+    image: caddy:2.11-alpine
     restart: unless-stopped
     ports:
       - "80:80"
@@ -68,6 +74,9 @@ services:
     logging: *logging
 
   db:
+    # Major 17 fest. Minor-Updates (17.x) sind reine Fehler- und Sicherheitskorrekturen mit gleichem
+    # Datenformat und kommen beim Deploy (vorher sichert remote-deploy.sh die Datenbank). Ein
+    # Major-Upgrade (18, 19 …) braucht Dump und Restore: RUNBOOK.md "Updates". Dependabot ignoriert es.
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -108,6 +117,8 @@ services:
   # Tägliche Sicherung nach /opt/westbummeln/backups (daily/, weekly/, monthly/, last/).
   # Aufbewahrung: 7 Tage + 4 Wochen + 3 Monate. Einspielen: RUNBOOK.md "Backup einspielen".
   backup:
+    # Major muss zur Datenbank passen (pg_dump 17). Das Projekt veröffentlicht keine Minor-Tags,
+    # nur 17-alpine (laufend neu gebaut) und Commit-Tags; deshalb 17-alpine, Updates beim Deploy.
     image: prodrigestivill/postgres-backup-local:17-alpine
     restart: unless-stopped
     # Schreibt als Benutzer deploy (UID/GID aus .env, Standard 1000), damit deploy die Dateien

@@ -73,7 +73,9 @@ gh workflow run release.yml -f ref=<sha>
 gh run watch
 ```
 
-Manuelle Deploys setzen `latest` nicht um. Mit *rebuild* wird das Image auch dann neu gebaut, wenn es schon existiert.
+Manuelle Deploys setzen `latest` nicht um. Mit *rebuild* wird das Image auch dann neu gebaut, wenn es schon existiert;
+es bekommt dann den Tag `<sha>-rebuild-<datum>`, damit das bisherige Image `<sha>` für einen Rollback erhalten bleibt.
+Jeden Montag läuft derselbe Neubau automatisch für `main` (Sicherheitsupdates, `deploy/RUNBOOK.md` Abschnitt 8).
 Ein Commit, der nicht in `main` enthalten ist, wird mit Warnung trotzdem deployt.
 
 ## Rollback
