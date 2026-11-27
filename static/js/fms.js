@@ -16,7 +16,11 @@ const WBFms = (() => {
     if (n === 3) return v.incident && (v.phase === 'wache' || v.phase === 'anfahrt') ? '' : 'Erst nach einer Alarmierung';
     if (n === 4) return v.phase === 'vorort' ? '' : 'Erst an der Einsatzstelle';
     if (n === 2 || n === 6) return v.phase === 'wache' && !v.incident ? '' : 'Nur auf der Wache ohne Einsatz';
-    if (n === 1) return v.phase === 'anfahrt' || alarmed ? 'Nicht während der Anfahrt' : '';
+    if (n === 1 && (v.phase === 'anfahrt' || alarmed)) return 'Nicht während der Anfahrt';
+    // An der Einsatzstelle heißt Status 1 „zurück zur Wache“ – erst, wenn das Fahrzeug frei ist (gfReleased in game.js).
+    if (n === 1 && v.phase === 'vorort' && typeof gfReleased === 'function' && !gfReleased(v)) {
+      return 'Erst „Maßnahmen abschließen“';
+    }
     return '';
   }
 

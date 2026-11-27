@@ -58,6 +58,7 @@ TIME_KEYS = frozenset({
     'speak_ok',          # Fahrzeug: Sprechaufforderung der Leitstelle
     'phase_until',       # Fahrzeug: Ankunft
     'unattended_since',  # Fahrzeug: seit wann ohne Spieler
+    'released_at',       # Fahrzeug: seit wann frei an der Einsatzstelle (wartet auf „Zurück zur Wache“)
     'updated',           # Einsatz: letzte Fortschrittsberechnung
     'closed_at',         # Einsatz: abgeschlossen um
     'at',                # Raum: Kick-Gedächtnis

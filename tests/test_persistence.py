@@ -294,3 +294,21 @@ def test_room_with_ai_incidents_is_saved_and_continues_the_same_way():
     rooms.rooms.clear()
     reference = ki_verlauf(ki_room(seed=11), T + 120, 300)
     assert after_restart == reference and len(reference) > 2
+
+
+def test_waiting_vehicle_keeps_its_return_delay_over_restart():
+    """Ein freies Fahrzeug an der Einsatzstelle (Zurück zur Wache) fährt nach dem Neustart nicht sofort los."""
+    r, anna, ben = busy_room()
+    code = r['code']
+    v = r['vehicles']['WB-1-HLF20']
+    arrival = v['phase_until']
+    act(r, 1, anna, 'close', arrival, incident=r['incidents'][0]['id'])
+    assert v['phase'] == 'vorort' and v['released_at'] == arrival
+    restart(arrival + DOWN)
+    r = rooms.rooms[code]
+    v = r['vehicles']['WB-1-HLF20']
+    assert v['released_at'] == arrival + DOWN
+    engine.update(r, arrival + DOWN + 1)
+    assert v['phase'] == 'vorort'
+    act(r, 2, ben, 'return_home', arrival + DOWN + 2, 'Ben')
+    assert v['phase'] == 'rueckfahrt'

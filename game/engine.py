@@ -49,6 +49,12 @@ PLACES = [
 STATIONS = [*BASE.values(), (.38, .16), (.90, .37), (.88, .23), (.27, .84), (.92, .84)]
 OFFLINE_TIMEOUT = 30
 UNATTENDED_DELAY = 20  # Sekunden, bis die KI ein unbesetztes Fahrzeug vor Ort übernimmt
+# „Maßnahmen abschließen“ (GF): erst ab COMPLETE_MIN % Fortschritt, damit niemand einen Einsatz bei 0 % beendet.
+# Ab COMPLETE_ALL % ist der Einsatz damit abgearbeitet, auch wenn andere GF noch arbeiten.
+COMPLETE_MIN = 50
+COMPLETE_ALL = 80
+# So lange wartet ein freies Spielerfahrzeug an der Einsatzstelle auf „Zurück zur Wache“, dann fährt es selbst.
+RETURN_DELAY = 60
 SNAPSHOT_CLOSED = 20  # so viele abgeschlossene Einsätze sieht das Frontend
 KEEP_CLOSED = 50  # so viele abgeschlossene Einsätze bleiben im Speicher
 WEATHER = ['Sonnig', 'Bewölkt', 'Regen', 'Nebel', 'Windig']
@@ -141,7 +147,7 @@ def new_incident(title, address, pos, creator, now):
     return {
         'id': secrets.token_hex(4), 'title': title, 'address': address, 'pos': pos, 'creator': creator,
         'created': time.strftime('%H:%M:%S'), 'closed': False, 'assigned': [], 'working': False,
-        'progress': 0, 'updated': now, 'sections': default_sections(),
+        'progress': 0, 'updated': now, 'sections': default_sections(), 'done': [],
     }
 
 
@@ -222,7 +228,8 @@ def ai_crew_block(r, inc):
     need = needed_vehicles(inc)
     active = sum(1 for vid in inc['assigned'] if vid in r['vehicles']
                  and r['vehicles'][vid]['incident'] == inc['id']
-                 and r['vehicles'][vid]['phase'] in ('anfahrt', 'vorort'))
+                 and r['vehicles'][vid]['phase'] in ('anfahrt', 'vorort')
+                 and not released(r, r['vehicles'][vid]))
     if active >= need:
         return f'Bedarf gedeckt ({need} Fahrzeug{"e" if need > 1 else ""} laut Stichwort)'
     if any(v['owner'] and _free(v) for v in r['vehicles'].values()):
@@ -261,6 +268,7 @@ def trip_duration(r, route):
 
 def _start_trip(v, phase, route, duration, now):
     """Fahrt entlang route beginnen. Weg und Ankunftszeit stehen ab jetzt fest; ein Wetterwechsel ändert sie nicht."""
+    v.pop('released_at', None)
     v.update(phase=phase, phase_at=now, phase_until=now + duration, phase_from=list(route[0]),
              phase_to=list(route[-1]), phase_route=route)
 
@@ -396,7 +404,7 @@ def ai_group_leaders(r, now):
             continue
         on_site = [r['vehicles'][vid] for vid in inc['assigned']
                    if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort'
-                   and not r['vehicles'][vid]['owner']]
+                   and not r['vehicles'][vid]['owner'] and not released(r, r['vehicles'][vid])]
         if solo and on_site:
             emit(r, 'KI-Gruppenführer', f'{inc["title"]}: Mannschaft beginnt Maßnahmen.')
         else:
@@ -450,6 +458,8 @@ def update(r, now=None):
                 v['status'] = 2
                 emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
         changed = True
+    if _return_waiting(r, now):
+        changed = True
     # Alarmiertes Fahrzeug ohne Spieler (z. B. Verbindung verloren): KI-Besatzung rückt aus.
     for v in r['vehicles'].values():
         if v['phase'] == 'wache' and v['incident'] and not _manual(v):
@@ -496,7 +506,8 @@ def _latest_closed(incidents, count):
 def _progress_incident(r, inc, now):
     changed = False
     active = [r['vehicles'][vid] for vid in inc['assigned']
-              if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort']
+              if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort'
+              and not released(r, r['vehicles'][vid])]
     if active:
         elapsed = now - inc.get('updated', now)
         speed = min(3.5, 1.2 + len(active) * .55) * weather_work_factor(r)
@@ -504,30 +515,72 @@ def _progress_incident(r, inc, now):
         changed = True
         for section in inc.get('sections', {}).values():
             present = sum(1 for vid in section['vehicles']
-                          if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort')
+                          if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort'
+                          and not released(r, r['vehicles'][vid]))
             if present:
                 section_speed = min(3, 0.8 + present * .55) * weather_work_factor(r)
                 section['progress'] = min(100, section.get('progress', 0) + elapsed * section_speed)
     inc['updated'] = now
     if inc['progress'] >= 100:
-        _finish_incident(r, inc, now)
-        emit(r, 'Leitstelle', f'Einsatz {inc["title"]} abgearbeitet – Rückfahrt eingeleitet.')
+        _finish_incident(r, inc, now, 'abgearbeitet')
         changed = True
     return changed
 
 
-def _finish_incident(r, inc, now):
-    """Einsatz abschließen, Abschnitte leeren und alle noch zugeordneten Fahrzeuge heimschicken."""
+def _finish_incident(r, inc, now, word):
+    """Einsatz abschließen, Abschnitte leeren, Fahrzeuge freigeben und „Einsatz … {word}“ melden.
+
+    Fahrzeuge auf Anfahrt und mit KI-Besatzung fahren sofort heim. Spielerfahrzeuge an der Einsatzstelle
+    bleiben dort frei stehen, bis ihr GF „Zurück zur Wache“ (oder Status 1) meldet; nach RETURN_DELAY
+    Sekunden fahren sie von selbst (siehe _return_waiting)."""
     inc.update(closed=True, progress=100, closed_at=now)
     for section in inc.get('sections', {}).values():
         section['vehicles'] = []
+    waiting = False
     for vid in inc['assigned']:
         v = r['vehicles'].get(vid)
-        if v and v['incident'] == inc['id'] and v['phase'] in ('anfahrt', 'vorort'):
-            _send_home(r, v, now)
-        elif v and v['incident'] == inc['id'] and v['phase'] == 'wache':
+        if not v or v['incident'] != inc['id']:
+            continue
+        if v['phase'] == 'wache':
+            # Alarmiert, aber noch nicht ausgerückt (Status 3 fehlt): bleibt einfach auf der Wache.
             v['incident'] = None
             v.pop('alarmed_at', None)
+            continue
+        if v['phase'] not in ('anfahrt', 'vorort'):
+            continue
+        if v['phase'] == 'vorort' and v['owner']:
+            v.setdefault('released_at', now)
+            waiting = True
+        else:
+            _send_home(r, v, now)
+    tail = 'Einsatzstelle frei, Fahrzeuge melden Rückfahrt.' if waiting else 'Rückfahrt eingeleitet.'
+    emit(r, 'Leitstelle', f'Einsatz {inc["title"]} {word} – {tail}')
+
+
+def released(r, v):
+    """Steht das Fahrzeug frei an der Einsatzstelle (Maßnahmen abgeschlossen oder Einsatz beendet)?"""
+    if v['phase'] != 'vorort':
+        return False
+    if v.get('released_at') is not None:
+        return True
+    inc = next((i for i in r['incidents'] if i['id'] == v['incident']), None)
+    return inc is None or inc['closed']
+
+
+def _return_waiting(r, now):
+    """Freie Fahrzeuge an der Einsatzstelle fahren heim, wenn kein Spieler sie führt oder der GF zu lange wartet."""
+    changed = False
+    for v in r['vehicles'].values():
+        if not released(r, v):
+            continue
+        since = v.get('released_at', v['phase_at'])
+        if v['owner'] and now - since < RETURN_DELAY:
+            continue
+        _send_home(r, v, now)  # Spielerfahrzeuge behalten ihren Status, den gibt der GF selbst
+        emit(r, v['call'], 'Einsatzstelle verlassen, Rückfahrt zur Wache.' if _manual(v)
+             else 'Status 1 – Einsatzstelle verlassen, Rückfahrt zur Wache.')
+        changed = True
+    return changed
 
 
 def _send_home(r, v, now):
@@ -583,6 +636,9 @@ def snapshot(r, now=None):
         'weather_mode': r['weather_mode'],
         'travel_time': travel_time(r),
         'work_factor': weather_work_factor(r),
+        'complete_min': COMPLETE_MIN,
+        'complete_all': COMPLETE_ALL,
+        'return_delay': RETURN_DELAY,
     }
 
 
@@ -789,6 +845,9 @@ def _status(r, pid, p, data, now, is_developer):
         raise ValueError(f'Status {status} nur auf der Wache ohne Einsatz')
     if status == 1 and (v['phase'] == 'anfahrt' or alarmed):
         raise ValueError('Status 1 nicht während der Anfahrt')
+    if v['phase'] == 'vorort' and status == 1:
+        # „Frei über Funk“ an der Einsatzstelle heißt: Einsatzstelle verlassen, zurück zur Wache.
+        return _return_home(r, pid, p, data, now, is_developer)
     v['status'] = status
     if status == 3 and v['phase'] == 'wache':
         inc = next((i for i in r['incidents'] if i['id'] == v['incident'] and not i['closed']), None)
@@ -902,9 +961,57 @@ def _close(r, pid, p, data, now, is_developer):
         raise ValueError('Einsatz nicht gefunden')
     if inc['closed']:
         raise ValueError('Einsatz ist bereits abgeschlossen')
-    _finish_incident(r, inc, now)
+    _finish_incident(r, inc, now, 'beendet')
     _prune_incidents(r)
-    emit(r, 'Leitstelle', f'Einsatz {inc["title"]} beendet, Rückfahrt.')
+
+
+def _own_vehicle(r, p, message):
+    if p['role'] != 'gf' or not p['vehicle'] or p['vehicle'] not in r['vehicles']:
+        raise ValueError(message)
+    return r['vehicles'][p['vehicle']]
+
+
+def _complete(r, pid, p, data, now, is_developer):
+    """GF meldet: Maßnahmen seines Fahrzeugs abgeschlossen, Einsatzstelle übergeben.
+
+    Danach steht das Fahrzeug frei an der Einsatzstelle (Zurück zur Wache). Der Einsatz ist abgearbeitet,
+    wenn er mindestens COMPLETE_ALL % erreicht hat oder kein anderes Spielerfahrzeug mehr daran arbeitet
+    (KI-Besatzungen zählen als fertig). Sonst arbeiten die übrigen Kräfte weiter."""
+    v = _own_vehicle(r, p, 'Nur der GF des Fahrzeugs kann Maßnahmen abschließen')
+    inc = _open_incident(r, data)
+    if inc.get('stichwort'):
+        # Katalog-Einsätze (docs/KONZEPT-MASSNAHMEN.md) werden über ihre Maßnahmen abgeschlossen.
+        raise ValueError('Bei diesem Einsatz über die Maßnahmen im Panel abschließen')
+    if v['id'] not in inc['assigned'] or v['incident'] != inc['id'] or v['phase'] != 'vorort':
+        raise ValueError('Dein Fahrzeug ist nicht an dieser Einsatzstelle')
+    if released(r, v):
+        raise ValueError('Maßnahmen sind bereits abgeschlossen')
+    if not inc['working']:
+        raise ValueError('Zuerst Maßnahmen starten')
+    if inc['progress'] < COMPLETE_MIN:
+        raise ValueError(f'Noch zu früh: Abschließen ab {COMPLETE_MIN} % Fortschritt '
+                         f'(jetzt {int(inc["progress"])} %)')
+    inc.setdefault('done', []).append(v['id'])
+    v['released_at'] = now
+    emit(r, v['call'], 'Maßnahmen abgeschlossen, Einsatzstelle übergeben.')
+    still_working = [o for o in (r['vehicles'].get(vid) for vid in inc['assigned'])
+                     if o and o['owner'] and o['incident'] == inc['id']
+                     and o['phase'] in ('anfahrt', 'vorort') and not released(r, o)]
+    if inc['progress'] >= COMPLETE_ALL or not still_working:
+        _finish_incident(r, inc, now, 'abgearbeitet')
+        _prune_incidents(r)
+
+
+def _return_home(r, pid, p, data, now, is_developer):
+    """GF schickt sein freies Fahrzeug von der Einsatzstelle zurück: Status 1, an der Wache Status 2."""
+    v = _own_vehicle(r, p, 'Nur der GF des Fahrzeugs kann es zurückschicken')
+    if v['phase'] != 'vorort':
+        raise ValueError('Dein Fahrzeug steht nicht an einer Einsatzstelle')
+    if not released(r, v):
+        raise ValueError('Fahrzeug ist noch im Einsatz – erst „Maßnahmen abschließen“')
+    _send_home(r, v, now)
+    v['status'] = 1  # Spielerfahrzeuge setzt _send_home nicht selbst auf Status 1
+    emit(r, v['call'], 'Status 1 – Einsatzstelle verlassen, Rückfahrt zur Wache.')
 
 
 def _radio(r, pid, p, data, now, is_developer):
@@ -934,6 +1041,8 @@ ACTIONS = {
     'section_assign': _section_assign,
     'section_leader': _section_leader,
     'work': _work,
+    'complete': _complete,
+    'return_home': _return_home,
     'close': _close,
     'radio': _radio,
 }

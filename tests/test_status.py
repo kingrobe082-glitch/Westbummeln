@@ -49,6 +49,11 @@ def test_ankunft_und_rueckkehr_setzen_keinen_status(room, lage):
     assert (v['phase'], v['status']) == ('vorort', 3)
     assert room['radio'][-1]['message'] == 'Einsatzstelle erreicht – bitte Status 4 geben.'
     act(room, ls, 1, 'close', now=v['phase_at'], incident=inc['id'])
+    assert (v['phase'], v['status']) == ('vorort', 3) and engine.released(room, v)
+    # Ohne „Zurück zur Wache“ fährt das Fahrzeug nach RETURN_DELAY selbst, ohne Status zu setzen.
+    for pid in (ls, gf):
+        room['players'][pid]['last'] = v['phase_at'] + engine.RETURN_DELAY
+    engine.update(room, v['phase_at'] + engine.RETURN_DELAY)
     assert (v['phase'], v['status']) == ('rueckfahrt', 3)
     engine.update(room, v['phase_until'])
     assert (v['phase'], v['status'], v['incident']) == ('wache', 3, None)

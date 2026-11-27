@@ -69,8 +69,9 @@ def test_full_mission_flow(room):
     act(room, gf, 2, 'work', now=arrival, incident=inc['id'])
     engine.update(room, arrival + 100)
     assert inc['closed'] and inc['progress'] == 100
-    assert (vehicle['phase'], vehicle['status']) == ('rueckfahrt', 4)
-    act(room, gf, 2, 'status', now=arrival + 100, status=1)
+    assert vehicle['phase'] == 'vorort' and engine.released(room, vehicle)  # wartet auf den GF
+    act(room, gf, 2, 'return_home', now=arrival + 100)
+    assert (vehicle['phase'], vehicle['status']) == ('rueckfahrt', 1)
     engine.update(room, arrival + 200)
     assert (vehicle['phase'], vehicle['status'], vehicle['incident']) == ('wache', 1, None)
     act(room, gf, 2, 'status', now=arrival + 200, status=2)
