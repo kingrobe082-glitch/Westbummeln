@@ -1,6 +1,7 @@
 """Erzeugt den FME-Alarmton (static/sounds/Westbummeln_FME_ZVEI.wav).
 
-Klang wie ein Funkmeldeempfänger am Gürtel: zweimal die ZVEI-Fünftonfolge, danach der Weckton
+Klang wie ein Funkmeldeempfänger am Gürtel: zweimal die ZVEI-Fünftonfolge (am Anfang und
+noch einmal in der Mitte), danach der Weckton
 als einzelne kurze Piezo-Pieps („pip pip“) in der Tonfolge A-C-A-B, mehrmals wiederholt.
 Alles synthetisch erzeugt, keine Aufnahme.
 
@@ -68,17 +69,30 @@ def five_tone(code):
         last = digit
 
 
-pause(0.03)
-for i in range(ZVEI_REPEAT):
-    five_tone(CODE)
-    pause(ZVEI_GAP if i < ZVEI_REPEAT - 1 else 0.30)
-# So viele A-C-A-B-Runden, wie noch in TOTAL passen.
+def zvei_block():
+    for i in range(ZVEI_REPEAT):
+        five_tone(CODE)
+        pause(ZVEI_GAP if i < ZVEI_REPEAT - 1 else 0.30)
+
+
+def weckton(rounds):
+    for _round in range(rounds):
+        for note in MELODY:
+            pip(NOTES[note], PIP, 0.55)
+            pause(PIP_GAP)
+        pause(ROUND_GAP)
+
+
+ZVEI_BLOCK = ZVEI_REPEAT * len(CODE) * ZVEI_TONE + (ZVEI_REPEAT - 1) * ZVEI_GAP + 0.30
 ROUND = len(MELODY) * (PIP + PIP_GAP) + ROUND_GAP
-for _round in range(int((TOTAL - len(samples) / RATE) / ROUND)):
-    for note in MELODY:
-        pip(NOTES[note], PIP, 0.55)
-        pause(PIP_GAP)
-    pause(ROUND_GAP)
+LEAD = 0.03
+# ZVEI · Weckton · ZVEI (Mitte) · Weckton, so viele A-C-A-B-Runden, wie noch in TOTAL passen.
+rounds = int((TOTAL - LEAD - 2 * ZVEI_BLOCK) / ROUND)
+pause(LEAD)
+zvei_block()
+weckton((rounds + 1) // 2)
+zvei_block()
+weckton(rounds // 2)
 assert len(samples) <= RATE * TOTAL, 'Weckton länger als TOTAL'
 pause(TOTAL - len(samples) / RATE)
 
