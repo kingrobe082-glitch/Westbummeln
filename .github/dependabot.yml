@@ -1,0 +1,74 @@
+# Wöchentliche Update-PRs (Montag früh), gruppiert, ohne Automerge. Jeder PR läuft durch die CI;
+# gemergt wird von Hand, danach deployt release.yml wie bei jedem anderen Merge.
+# Was automatisch passiert und was nicht: deploy/RUNBOOK.md, Abschnitt "Updates".
+version: 2
+
+updates:
+  # Images in deploy/docker-compose.prod.yml (Caddy, Postgres, Backup).
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(images)"
+    groups:
+      server-images:
+        patterns: ["*"]
+    ignore:
+      # Postgres-Major nie automatisch: braucht Dump und Restore (RUNBOOK.md "Updates").
+      # Das Backup-Image muss dieselbe Major-Version haben wie die Datenbank.
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+      - dependency-name: prodrigestivill/postgres-backup-local
+        update-types: ["version-update:semver-major"]
+
+  # Basis-Image im Dockerfile. Patches und Debian-Sicherheitsupdates holt der wöchentliche Neubau
+  # (release.yml), ein Python-Upgrade (3.13 -> 3.14) wird von Hand zusammen mit .python-version gemacht.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps(docker)"
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # Actions in .github/workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(actions)"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Python-Pakete (requirements.txt, requirements-dev.txt). Kleine Updates in einem PR,
+  # Major-Sprünge (z. B. Django 6) einzeln.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(pip)"
+    groups:
+      python-klein:
+        update-types: ["minor", "patch"]

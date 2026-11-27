@@ -1,7 +1,9 @@
 # Produktions-Image für Westbummeln (Django + gunicorn + WhiteNoise).
 # Gebaut von der GitHub Action (.github/workflows/release.yml) als
 # ghcr.io/kingrobe082-glitch/westbummeln:<git-sha>. Betrieb: deploy/RUNBOOK.md.
-FROM python:3.13-slim
+# Python-Minor und Debian-Release fest. Patches und Debian-Sicherheitsupdates holt der wöchentliche
+# Neubau (release.yml, schedule). Python-Upgrade: hier und in .python-version zusammen ändern.
+FROM python:3.13-slim-trixie
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -29,7 +31,10 @@ RUN DJANGO_ENV=prod \
     DATABASE_URL=postgresql://build:build@build/build \
     ALLOWED_HOSTS=build \
     python manage.py collectstatic --noinput \
-    && chmod +x /app/entrypoint.sh
+    && chmod +x /app/entrypoint.sh \
+    && mkdir -p /app/state && chown app:app /app/state
+# /app/state gehört app: Ein neues Docker-Volume (room-state) übernimmt beim ersten Einhängen diese
+# Rechte, damit gunicorn dort die Spielräume sichern kann (game/persistence.py).
 
 USER app
 EXPOSE 8000

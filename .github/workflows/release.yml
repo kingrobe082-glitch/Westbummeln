@@ -1,5 +1,6 @@
 # Automatisches Release: Merge auf main -> CI grün -> Image bauen -> Deploy auf den Server.
-# Ablauf, Rollback und benötigte Secrets: deploy/RELEASE.md
+# Dazu jeden Montag ein Neubau von main mit frischem Basis-Image (Sicherheitsupdates).
+# Ablauf, Rollback und benötigte Secrets: deploy/RELEASE.md, Updates: deploy/RUNBOOK.md
 name: Release
 
 run-name: Release ${{ github.event.workflow_run.head_sha || inputs.ref || github.sha }}
@@ -25,6 +26,11 @@ on:
         required: false
         default: false
         type: boolean
+  # Wöchentlicher Neubau ohne Code-Änderung (Montag 03:17 UTC, nach der täglichen Sicherung):
+  # holt Sicherheitsupdates des Python-Basis-Images und von Debian und rollt sie aus. Dabei zieht
+  # remote-deploy.sh auch Caddy, Postgres und Backup neu. Läuft nur, wenn die CI für main grün ist.
+  schedule:
+    - cron: "17 3 * * 1"
 
 permissions:
   contents: read
@@ -47,6 +53,9 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read   # CI-Status für den geplanten Neubau abfragen
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
       tag: ${{ steps.modus.outputs.tag }}
@@ -91,10 +100,29 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           SHA: ${{ steps.sha.outputs.sha }}
+          REBUILD: ${{ inputs.rebuild || false }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Ein Neubau desselben Commits bekommt einen eigenen Tag (<sha>-rebuild-<datum>). So bleibt
+          # das bisherige Image unter <sha> erhalten und remote-deploy.sh kann darauf zurückrollen.
+          rebuild_tag="$SHA-rebuild-$(date -u +%Y%m%d%H%M)"
           if [ "$EVENT" = "workflow_run" ]; then
             { echo "tag=$SHA"; echo "latest=true"; echo "deploy=true"; } >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "schedule" ]; then
+            # Nur Commits neu bauen, für die die CI auf main grün war (sonst würde ein roter Stand
+            # ausgerollt, den der normale Release absichtlich übersprungen hat).
+            gruen=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&status=success" --jq '.total_count')
+            if [ "${gruen:-0}" -gt 0 ]; then
+              { echo "tag=$rebuild_tag"; echo "latest=true"; echo "deploy=true"; } >> "$GITHUB_OUTPUT"
+              echo "Wöchentlicher Neubau von $SHA als $rebuild_tag." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::warning title=Neubau übersprungen::Die CI für main ($SHA) ist nicht grün. Erst main reparieren."
+              { echo "tag=$SHA"; echo "latest=false"; echo "deploy=false"; } >> "$GITHUB_OUTPUT"
+            fi
+          elif [ "$REBUILD" = "true" ]; then
+            # Manueller Neubau: latest bleibt beim Stand von main.
+            { echo "tag=$rebuild_tag"; echo "latest=false"; echo "deploy=true"; } >> "$GITHUB_OUTPUT"
           else
             # Manuelles Deploy (auch Rollback): latest bleibt beim Stand von main.
             { echo "tag=$SHA"; echo "latest=false"; echo "deploy=true"; } >> "$GITHUB_OUTPUT"
@@ -129,6 +157,8 @@ jobs:
   build:
     name: Image bauen
     needs: vorbereiten
+    # false nur beim geplanten Neubau, wenn die CI auf main nicht grün ist.
+    if: needs.vorbereiten.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -197,6 +227,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Immer das aktuelle Basis-Image holen. Beim wöchentlichen Neubau zusätzlich ohne Cache,
+          # damit auch apt (curl) und pip die neuesten erlaubten Versionen holen.
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -214,6 +248,7 @@ jobs:
       cancel-in-progress: false
     env:
       SHA: ${{ needs.vorbereiten.outputs.sha }}
+      TAG: ${{ needs.vorbereiten.outputs.tag }}
     steps:
       - name: Ist der Commit noch aktuell?
         id: aktuell
@@ -225,7 +260,7 @@ jobs:
           # Automatische Deploys nur für den neuesten Stand von main. Ist main schon weiter,
           # deployt der Lauf des neueren Commits. So überholt ein langsamer alter Lauf
           # nie einen neueren Deploy.
-          if [ "$EVENT" = "workflow_run" ]; then
+          if [ "$EVENT" = "workflow_run" ] || [ "$EVENT" = "schedule" ]; then
             main_sha=$(git ls-remote "$REPO_URL" refs/heads/main | cut -f1)
             if [ "$main_sha" != "$SHA" ]; then
               echo "::notice title=Deploy übersprungen::main steht schon auf $main_sha, dieser Lauf ($SHA) ist veraltet."
@@ -312,11 +347,12 @@ jobs:
 
       - name: remote-deploy.sh ausführen
         if: steps.aktuell.outputs.go == 'true'
-        # SHA ist eine von git rev-parse geprüfte 40-stellige Hex-ID, lokales Expandieren ist gewollt.
+        # TAG ist die von git rev-parse geprüfte 40-stellige Hex-ID, beim Neubau mit Suffix
+        # -rebuild-<ziffern> (siehe "Modus festlegen"). Lokales Expandieren ist gewollt.
         run: |
           # shellcheck disable=SC2029
           # chmod: falls das Ausführungsrecht beim Commit unter Windows verloren ging.
-          ssh server "cd '$DEPLOY_PATH' && chmod +x remote-deploy.sh && IMAGE_TAG='$SHA' ./remote-deploy.sh"
+          ssh server "cd '$DEPLOY_PATH' && chmod +x remote-deploy.sh && IMAGE_TAG='$TAG' ./remote-deploy.sh"
 
       - name: Server bei ghcr.io abmelden
         if: always() && steps.ssh.outcome == 'success'

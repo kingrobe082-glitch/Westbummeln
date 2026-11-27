@@ -26,7 +26,7 @@ Internet ──80/443──▶ caddy ──web:8000──▶ web (gunicorn, 1 Wo
 |---|---|---|
 | `docker-compose.prod.yml`, `Caddyfile`, `*.sh`, `.env.example`, `RUNBOOK.md` | GitHub Action (aus `deploy/`) | werden bei jedem Deploy überschrieben, nie hier ändern |
 | `.env` | einmalig `./env-init.sh`, danach von Hand | Domain und **alle Geheimnisse** (chmod 600) |
-| `.deployed-tag`, `.deploy-history` | `remote-deploy.sh` | laufende Version, Liste aller Deploys |
+| `.deployed-tag`, `.deploy-history`, `.image-history` | `remote-deploy.sh` | laufende Version, Liste aller Deploys, Image-Digests je Dienst (Abschnitt 8) |
 | `backups/` | Container `backup`, `remote-deploy.sh` | Datenbank-Sicherungen |
 
 - Nach außen offen sind nur 80 und 443 (TCP und UDP für HTTP/3) von Caddy. `web` und `db` haben
@@ -35,8 +35,14 @@ Internet ──80/443──▶ caddy ──web:8000──▶ web (gunicorn, 1 Wo
 - Die Daten liegen in Docker-Volumes: `westbummeln_db-data` (Datenbank) und
   `westbummeln_caddy-data` (Zertifikate). **Nie** `docker compose down -v` ausführen: `-v` löscht
   die Datenbank.
-- Spielräume liegen im Arbeitsspeicher von `web`. Ein Neustart von `web` beendet laufende
-  Einsätze, Konten bleiben erhalten.
+- Spielräume liegen im Arbeitsspeicher von `web`. Beim Herunterfahren und alle 30 s (bei Änderungen)
+  sichert `web` sie nach `/app/state/rooms.json` im Volume `westbummeln_room-state` und lädt sie beim
+  Start wieder (`game/persistence.py`). Ein Deploy oder Neustart unterbricht ein Spiel deshalb nur
+  kurz („Server startet neu …“), Räume, Einsätze und Spieler bleiben. Nach einem Absturz fehlen
+  höchstens die letzten 30 s. Ist die Datei unlesbar (z. B. Rollback auf eine ältere Version mit
+  anderem Format), startet `web` mit leeren Räumen und legt sie als `rooms.json.broken` daneben.
+  Alle laufenden Spiele bewusst beenden: `docker compose stop web`,
+  `docker compose run --rm --no-deps --entrypoint rm web /app/state/rooms.json`, `docker compose up -d`.
 - `.env` enthält `COMPOSE_FILE=docker-compose.prod.yml`, deshalb reicht überall `docker compose …`.
 
 ## 1. Erstinstallation
@@ -113,7 +119,8 @@ df -h /; docker system df                     # Plattenplatz
 
 Jeder Deploy läuft über `IMAGE_TAG=<sha> ./remote-deploy.sh`:
 
-1. Image `ghcr.io/kingrobe082-glitch/westbummeln:<sha>` holen (scheitert das, bleibt alles wie es ist).
+1. Image `ghcr.io/kingrobe082-glitch/westbummeln:<sha>` holen (scheitert das, bleibt alles wie es ist),
+   dazu die aktuellen Images von caddy, db und backup (Abschnitt 8; scheitert das, nur Warnung).
 2. Datenbank nach `backups/pre-deploy/<zeit>_vor_<sha>.dump` sichern (die letzten 5 bleiben).
 3. Stack starten. Beim Start führt `web` `migrate` und `bootstrap_accounts` aus.
 4. Bis zu 90 s auf den Healthcheck von `web` warten. Ist `web` nicht gesund, startet automatisch
@@ -270,3 +277,54 @@ Wird ein Container wegen seiner Grenze beendet, steht in `docker inspect <contai
 | Kein Zertifikat | Port 80 und 443 müssen aus dem Internet erreichbar sein (ufw **und** AWS-Security-Group), der A-Record von `DOMAIN` muss auf die aktuelle öffentliche IP zeigen (Abschnitt 5). Log: `docker compose logs caddy`. Bei Let's-Encrypt-Limits weicht Caddy auf ZeroSSL aus. |
 | „docker compose config schlägt fehl“ | `.env` nicht lesbar (`ls -l .env`, Besitzer muss `deploy` sein) oder Pflichtwert fehlt. |
 | Platte voll | `docker system df`, `docker image prune -a` (löscht alle nicht laufenden Images), alte Sicherungen in `backups/pre-deploy` löschen. |
+
+## 8. Updates
+
+**Was automatisch passiert**
+
+| Was | Wann | Wie |
+|---|---|---|
+| Patches von Caddy (2.11.x), Postgres (17.x), Backup-Image | bei jedem Deploy | `remote-deploy.sh` zieht alle Images neu. Compose startet nur Container neu, deren Image sich geändert hat; vorher sichert das Skript die Datenbank (`backups/pre-deploy`). |
+| Python-Basis-Image, Debian-Pakete, Python-Pakete im Rahmen von `requirements.txt` | Montag 03:17 UTC (04:17/05:17 Berlin) | Geplanter Lauf von **Actions → Release**: baut `main` ohne Cache neu (Tag `<sha>-rebuild-<datum>`) und deployt ihn. Läuft nur, wenn die CI für `main` grün ist. Dabei kommen auch die Patches aus der Zeile darüber. |
+| Neue Minor-Versionen (Caddy 2.12, Actions, Python-Pakete) | Montag 05:00 Berlin | **Dependabot** öffnet gruppierte PRs (`.github/dependabot.yml`). Nichts wird automatisch gemergt: CI abwarten, Changelog überfliegen, mergen → normaler Release. |
+| Postgres-Major (18, 19 …), Python-Minor (3.14) | nie automatisch | Von Hand, siehe unten. |
+
+Welche Image-Version je Dienst lief, steht in **`.image-history`** (Zeit, Tag, Dienst, Digest; die
+letzten 300 Zeilen). Ein Neustart von `db` oder `caddy` dauert wenige Sekunden; ein Neustart von
+`web` beendet laufende Einsätze (siehe Überblick), das passiert beim Montags-Neubau immer.
+
+Achtung: GitHub schaltet geplante Läufe ab, wenn im Repo 60 Tage lang nichts passiert. Dann
+**Actions → Release → „Enable workflow“** klicken.
+
+**Update zurückrollen**
+
+- *web* (Code oder Basis-Image): wie jeder Rollback (Abschnitt 3). Nach einem Montags-Neubau steht
+  in `.deploy-history` davor der Tag ohne `-rebuild-…`; `IMAGE_TAG=<vorheriger-tag> ./remote-deploy.sh`.
+  Startet der Neubau nicht, rollt das Skript selbst zurück.
+- *Dependabot-PR*: auf GitHub „Revert“ und mergen, der Release rollt den alten Stand aus.
+- *caddy, db, backup* (Patch beim Deploy): den Digest der letzten guten Version aus `.image-history`
+  holen und bis zur Korrektur fest eintragen – in `deploy/docker-compose.prod.yml` (PR), z. B.
+  `image: postgres:17-alpine@sha256:…`. Notfalls direkt auf dem Server dieselbe Zeile in der Datei
+  ändern und `docker compose up -d db` (wird beim nächsten Deploy überschrieben).
+  Für `db` gilt: Eine ältere 17.x startet auf denselben Daten, ein Wechsel der Major-Version nicht.
+
+**Postgres-Major-Upgrade (z. B. 17 → 18), später von Hand**
+
+1. Wartungsfenster ankündigen, `docker compose stop web backup`.
+2. Dump ziehen: `docker compose exec -T db pg_dump -U westbummeln -d westbummeln -Fc > backups/vor-pg18.dump`
+   und prüfen, dass die Datei nicht leer ist (`ls -l`), zusätzlich nach außen kopieren.
+3. Im Repo `postgres:18-alpine` **und** `prodrigestivill/postgres-backup-local:18-alpine` eintragen,
+   `postgres:18` auch in `.github/workflows/ci.yml`. Für `db` ein **neues** Volume nehmen
+   (`db-data-18`), das alte `db-data` bleibt unangetastet als Rückweg. Ab Postgres 18 wird das
+   Volume unter `/var/lib/postgresql` eingebunden (nicht mehr `…/data`), siehe Image-Doku. PR, CI grün.
+4. `docker compose stop db`, dann PR mergen. Der Release startet eine neue, leere Datenbank,
+   `web` legt per `migrate` das Schema an.
+5. Rückweg, falls etwas schiefgeht: PR reverten – die alte Version startet wieder auf `db-data`.
+6. `docker compose stop web`, Dump einspielen wie in Abschnitt 4 („Backup einspielen“), `web` starten.
+7. Spiel prüfen (Login, Konten da). Altes Volume erst nach ein paar Wochen löschen.
+
+Alternativ `pg_upgrade` (Image `tianon/postgres-upgrade:17-to-18`) – schneller, bei dieser
+Datenmenge aber unnötig.
+
+**Python-Upgrade (z. B. 3.13 → 3.14):** `Dockerfile` (`FROM python:3.14-slim-trixie`) und
+`.python-version` im selben PR ändern, CI läuft dann mit der neuen Version.

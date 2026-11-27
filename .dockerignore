@@ -25,3 +25,6 @@ requirements-dev.txt
 *.md
 render.yaml
 tools
+
+# Lokal gesicherte Spielräume (game/persistence.py)
+state
