@@ -275,7 +275,9 @@ def test_ai_mode_still_starts_work_immediately(room):
     join(room, 1, 'Anna')
     engine.update(room, NOW)
     inc = room['incidents'][0]
-    engine.update(room, NOW + 12)
+    # Der KI-Einsatzort ist zufällig, die Fahrzeit hängt von der Strecke ab: bis zur Ankunft vorspulen.
+    arrival = max(room['vehicles'][vid]['phase_until'] for vid in inc['assigned'])
+    engine.update(room, arrival)
     assert inc['working']
 
 
