@@ -60,7 +60,11 @@ TIME_KEYS = frozenset({
     'unattended_since',  # Fahrzeug: seit wann ohne Spieler
     'updated',           # Einsatz: letzte Fortschrittsberechnung
     'closed_at',         # Einsatz: abgeschlossen um
-    'at',                # Raum: Kick-Gedächtnis
+    'at',                # Raum: Kick-Gedächtnis; Einsatz: Warnung seit (Maßnahmen)
+    # Maßnahmen (game/massnahmen.py, inc['mn'])
+    'notruf', 'alarm', 'eintreffen', 'feuer_aus',  # Einsatzzeiten für die Bilanz
+    'start', 'ende',     # laufende Maßnahme
+    'nachgefordert',     # Stichworterhöhung mit Nachforderung
 })
 # Kleinere Zahlen sind keine Zeitpunkte, sondern Startwerte wie ai_last=0 („noch nie“).
 EPOCH_MIN = 1_000_000_000

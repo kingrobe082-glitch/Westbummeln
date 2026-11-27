@@ -1,6 +1,6 @@
 # Konzept: Maßnahmen je Einsatz
 
-Stand: 27.11.2026 · Status: **Konzept, noch kein Code** · Basis: `main` @ 9333e11
+Stand: 27.11.2026 · Status: **PR A (F1) umgesetzt**, B–D offen · Basis: `main` @ 9333e11 (Stand nach PR A: Abschnitt 7.7)
 
 > **Kurz gesagt:** Statt „Maßnahmen starten“ und einem Balken bis 100 % wählt der Gruppenführer
 > echte Maßnahmen wie *Erkunden*, *Wasserversorgung aufbauen* oder *Angriffsleitung legen*. Jede dauert ein paar
@@ -628,6 +628,64 @@ inc = {
   greifen sie automatisch, sobald es einen Katalogeintrag gibt, und bis dahin läuft der Allgemein-Ablauf.
 - Mit #17 hängen die Fahrzeiten von der Route ab. Personen- und Brand-Timer laufen ab Notruf, die Richtzeiten
   in der Bilanz rechnen deshalb mit der tatsächlichen Eintreffzeit (`zeiten['eintreffen']`).
+
+### 7.7 Stand nach PR A und Vorausschau: mehr Fahrzeugtypen, größere Einsätze
+
+**Umgesetzt in PR A** (Abweichungen zum Plan oben): Logik in `game/massnahmen.py`, Daten in `game/katalog.py`.
+Fahrzeuge werden dort über **Fähigkeiten** beschrieben (`FAHRZEUGTYPEN`), Maßnahmen verlangen Fähigkeiten
+(`braucht`) statt Typnamen. Der ganze Zustand steht in `inc['mn']` (JSON, Zufall aus Einsatz-ID + Zähler).
+Die Eskalation F1 → F2 ändert Titel und Stichwort, setzt eine Nachforderung nach F2-AAO, die KI-Leitstelle
+erfüllt sie nach 10 s (auch mit KI-Besatzung, Frage 4). Bilanz mit Punkten und Sternen kommt schon in PR A
+(Frage 5: nur im Raum). Schwierigkeit fest auf *Normal* (KI-Fehlerquote 15 %), Einstellung folgt in PR D.
+
+**Stichworte und Schlüssel:** Katalog-Schlüssel werden ohne Leerzeichen/Groß-Klein erkannt (`F1`, später `B 1`
+nach NRW-Schema). Der Code kennt keine festen Stichwort- oder Maßnahmen-Schlüssel, sondern fragt nach `wirkung`
+(`erkunden`, `wasser`, `loeschen`) und nach `gegen` (Gegenmaßnahme je Regel). Umbenennen = nur Daten ändern.
+Fähigkeiten heißen wie in `game/flotte.py` (Session „Echte Flotte“): `loeschen`, `pumpe`, `wasserversorgung`,
+`wasser_transport`, `rettungssatz`, `hubrettung`, `fuehrung` …; Tankgröße `tank_l` je Typ.
+
+**Tank je Fahrzeug (umgesetzt):** Der Füllstand steht im Fahrzeug als `v['tank']` (Liter, JSON). Größe je Typ
+(`tank_l`, HLF 20 und LF 20 = 2000 l, KdoW 0). *Leeren:* Jeder löschende Trupp ohne Wasserversorgung zieht
+50 l/s aus dem Tank **seines** Fahrzeugs (2000 l = 40 s). Die Warnung bei ⅓ Rest und „Wasser aus“ gelten je
+Fahrzeug. *Füllen:* Steht die Wasserversorgung, speist der Hydrant ein (+40 l/s für alle Fahrzeuge vor Ort). Auf
+der Rückfahrt bleibt der Tank so leer, wie er ist (wichtig für Alarm aus Status 1), und erst auf der Wache ist er
+wieder voll. *Anzeige:* Balken mit Liter und Sekunden im GF-Panel, Zeile „Tank“ in der Fahrzeug-Info auf der Karte.
+**Für PR B:** TLF/Tankwagen mit `wasser_transport` können einspeisen oder pendeln (Tank eines anderen Fahrzeugs
+vor Ort auffüllen). Dazu kommt eine Maßnahme „Wasser einspeisen“ mit `braucht: (WASSER_TRANSPORT,)`, die
+dieselbe Nachspeise-Logik wie der Hydrant nutzt, nur aus dem eigenen Tank.
+
+**Neue Fahrzeugtypen brauchen nur Daten** – drei Stellen, keine neue Logik:
+
+| Typ | Fähigkeiten (`katalog.FAHRZEUGTYPEN`) | Sitze → Trupps | Wache (Vorschlag) | Wofür |
+|---|---|---|---|---|
+| **TLF 3000** | `loeschen`, `pumpe`, `wasser_transport` · `tank_l` 3000 (= 60 s) | 3 → 1 | WB 1 West, WB 4 Ost (Ortsrand, wenig Hydranten) | Wasser für F1/F2 ohne Hydrant, Flächen-/Waldbrand, Wasser-Pendel |
+| **DLK 23-12** | `hubrettung` | 3 → 1 | WB 2 Altstadt | F3 Y: Rettung aus 2. OG, Riegelstellung/Brandbekämpfung von oben |
+| **RW** | `rettungssatz`, `heben`, `strom` | 3 → 1 | WB 5 Süd (Werkstraße/Gewerbe) | TH2 schwer (LKW, Bus), Fahrzeug anheben, Ausleuchten |
+| **ELW 1** | `fuehrung` | 3 → 1 | WB 2 Altstadt | wie KdoW, ab F3/TH3 Pflicht: „Einsatzleitung übernehmen“, Abschnitte |
+
+1. `game/engine.py`: `FLEET` je Wache um die Typen ergänzen (heute fest `HLF 20`, `KdoW`, `LF 20` für WB 1–6) –
+   eine Liste `(wache, typ, sitze)` statt der festen Dreierschleife. Raum-IDs bleiben `WB-<wache>-<typ ohne Leerzeichen>`.
+2. `game/katalog.py`: Eintrag in `FAHRZEUGTYPEN`, neue Fähigkeiten in `FAEHIGKEIT_TEXT`, Maßnahmen, die sie
+   verlangen (z. B. F3 Y „Rettung über Drehleiter“ `braucht: (HUBRETTUNG,)`).
+3. **Grafiken:** `static/img/fahrzeuge/tlf.svg`, `dlk.svg`, `rw.svg`, `elw.svg` im Stil von #19 (Draufsicht,
+   gleiche Größe wie `lf.svg`; DLK etwas länger mit Leiterpark), dazu je eine Zeile in `css/fahrzeuge.css` und
+   `TYPES` in `static/js/fahrzeuge.js` (`TLF: 'tlf'`, `DLK: 'dlk'`, `RW: 'rw'`, `ELW: 'elw'`).
+
+**Größere Einsätze = mehr Fahrzeuge:** Je Katalog-Stichwort gibt es schon eine `aao`-Liste. Ab PR B ersetzt
+sie für Katalog-Einsätze die Zählung aus der Stichwortziffer (`needed_vehicles`): Die KI-Leitstelle und der
+AAO-Vorschlag alarmieren dann genau diese Typen. Vorschlag:
+
+| Stichwort | AAO | Eskalation → Nachforderung |
+|---|---|---|
+| F1 | LF 20 | → F2: HLF 20, KdoW (heute schon so) |
+| F1 Wald/Fläche (neu, PR C) | LF 20, TLF 3000 | → F2 Wald: 2. TLF, ELW 1 |
+| F2 | HLF 20, LF 20, KdoW | → F3 Y: HLF 20, DLK, ELW 1 |
+| F3 Y | 2 HLF 20, LF 20, DLK, ELW 1 | → F4 (Vollbrand): TLF, 2. LF, Nachbarwache |
+| TH2 | HLF 20, LF 20, KdoW | schwer (LKW): RW nachfordern |
+
+Damit wächst ein Einsatz von selbst mit: F1 → F2 → F3 bringt nacheinander HLF, KdoW, DLK und ELW auf die
+Karte, und jeder Typ hat dort eine Maßnahme, die nur er kann. **Reihenfolge:** PR B nimmt DLK + ELW mit
+(F2/F3 Y), PR C TLF + RW (Wald/Fläche, schwere TH). Vorher braucht es nur die vier Grafiken.
 
 ---
 

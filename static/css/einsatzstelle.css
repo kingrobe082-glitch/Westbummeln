@@ -1,0 +1,63 @@
+/* Maßnahmen je Einsatz: GF-Panel „Meine Einsatzstelle“, Lage in der Einsatzliste, Einsatzbilanz.
+   Farben aus app.css (ELS-Look). Ampel immer mit Symbol und Text, nie nur Farbe. */
+
+/* Ampel */
+.ampel{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border:1px solid var(--line-2);border-radius:2px;font-size:12px;font-weight:600;white-space:nowrap}
+.ampel[data-stufe="0"]{border-color:var(--ok);color:#8fd19e}
+.ampel[data-stufe="1"]{border-color:var(--warn);color:#f3cf6b}
+.ampel[data-stufe="2"]{border-color:#e07a1f;color:#f5a65b}
+.ampel[data-stufe="3"]{border-color:var(--alarm);color:#ff9a8f}
+.pill.esk{border-color:#e07a1f;color:#f5a65b}
+
+/* Kompakte Lage in der Einsatzliste */
+.mn-line{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin:6px 0 2px;font-size:13px}
+.mn-warn{margin:6px 0 0;padding:5px 8px;border:1px solid #6d5512;border-left:3px solid var(--warn);background:#221c0b;color:#f3dc9a;font-size:13px;border-radius:2px}
+.mn-nach{margin:6px 0 0;padding:5px 8px;border:1px solid #6e2b27;border-left:3px solid var(--alarm);background:#241211;color:#ffc2bb;font-size:13px;font-weight:600;border-radius:2px}
+.mn-nach.ok{border-color:#2c5a36;border-left-color:var(--ok);background:#112116;color:#a8ddb4;font-weight:400}
+
+/* GF-Panel */
+.scene{margin:10px 0;padding:10px;border:1px solid var(--line-2);border-left:3px solid var(--ok);background:var(--field);border-radius:2px}
+.scene[data-stufe="1"]{border-left-color:var(--warn)}
+.scene[data-stufe="2"]{border-left-color:#e07a1f}
+.scene[data-stufe="3"]{border-left-color:var(--alarm)}
+.scene-head{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.scene-head b{font-size:15px}
+.scene-head span{color:var(--muted);font-size:13px}
+.scene-lage{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:0 -10px 6px;padding:6px 10px;background:var(--head);border-top:1px solid var(--line);border-bottom:1px solid var(--line);font:600 14px var(--mono)}
+.scene h3{margin:12px 0 6px}
+.mn-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:48px;margin:0 0 6px;text-align:left;border-left:3px solid var(--primary)}
+.mn-btn:not(:disabled){background:#1b2a3a;border-color:#2f4c69;border-left-color:var(--primary-hover)}
+.mn-btn:not(:disabled):hover{background:#223650}
+.mn-btn.warn:not(:disabled){border-left-color:var(--warn)}
+.mn-btn:disabled{border-left-color:var(--line-2);opacity:.6}
+.mn-name{font-weight:600}
+.mn-sub{font-size:12px;color:var(--muted)}
+.mn-btn.warn .mn-sub{color:#f3cf6b}
+.mn-run{display:grid;grid-template-columns:1fr auto;gap:4px 8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.mn-run>div:first-child{grid-column:1/-1}
+.mn-run .mn-bar{margin:0}
+.mn-bar span{background:var(--fms3);transition:width .25s linear}
+.mn-state{font-size:12px;font-weight:600}
+.mn-state.ok{color:#8fd19e}
+.mn-state.bad{color:#ff9a8f}
+.mn-stop{min-height:36px;padding:4px 10px;font-size:12px}
+.mn-group summary{font-size:13px;color:var(--muted)}
+.mn-group ul{margin:0 0 6px;padding-left:18px}
+.mn-group li{margin:2px 0}
+
+/* Einsatzbilanz */
+.bilanz{margin-top:6px}
+.bilanz summary{padding:6px 0;font-weight:600}
+.bilanz dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0 0 4px;font-size:13px}
+.bilanz dt{color:var(--muted)}
+.bilanz dd{margin:0;font-family:var(--mono)}
+
+@media(max-width:600px){
+  .scene{margin:10px -4px}
+  .mn-btn{min-height:52px}
+}
+
+/* Tank-Füllstand des eigenen Fahrzeugs */
+.tankbar{flex:1 0 100%;height:6px;background:#0a0b0d;border:1px solid var(--line);overflow:hidden}
+.tankbar span{display:block;height:100%;background:var(--fms5);transition:width .4s linear}
+.tankbar[data-low=true] span{background:var(--warn)}
