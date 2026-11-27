@@ -7,6 +7,7 @@ gemeldet; die Meldungen gehen unverändert an das Frontend.
 Die Logik stammt aus dem alten server.py; Welle 2C hat Fahrzeiten, Einsatzliste und KI-Übernahme korrigiert.
 """
 import json
+import re
 import secrets
 import time
 from collections import deque
@@ -160,6 +161,30 @@ def ai_dispatcher(r):
 
 def _free(v):
     return v['phase'] == 'wache' and v['status'] != 6 and not v['incident']
+
+
+def needed_vehicles(inc):
+    """Fahrzeugbedarf laut Stichwort: die Stufe (F2 = 2, B3 = 3, TH1 = 1); ohne Stufe (BMA …) 1."""
+    match = re.match(r'\s*[^\W\d_]+\s*(\d)', inc['title'])
+    return max(1, int(match.group(1))) if match else 1
+
+
+def ai_crew_block(r, inc):
+    """Warum die Leitstelle gerade kein unbesetztes Fahrzeug (KI-Besatzung) alarmieren darf; '' = sie darf.
+
+    Allein im Raum immer erlaubt. Im Mehrspielerbetrieb nur, wenn der Einsatz laut Stichwort mehr
+    Fahrzeuge braucht als schon alarmiert sind und kein Spielerfahrzeug mehr frei ist."""
+    if ai_mode(r):
+        return ''
+    need = needed_vehicles(inc)
+    active = sum(1 for vid in inc['assigned'] if vid in r['vehicles']
+                 and r['vehicles'][vid]['incident'] == inc['id']
+                 and r['vehicles'][vid]['phase'] in ('anfahrt', 'vorort'))
+    if active >= need:
+        return f'Bedarf gedeckt ({need} Fahrzeug{"e" if need > 1 else ""} laut Stichwort)'
+    if any(v['owner'] and _free(v) for v in r['vehicles'].values()):
+        return 'erst freie Spielerfahrzeuge alarmieren'
+    return ''
 
 
 def alarm(r, inc, v, now):
@@ -368,9 +393,9 @@ def _send_home(r, v, now):
     v['status'] = 1
 
 
-def _snapshot_incident(inc):
+def _snapshot_incident(r, inc):
     if not inc['closed']:
-        return inc
+        return {**inc, 'need': needed_vehicles(inc), 'ai_crew_block': ai_crew_block(r, inc)}
     return {key: value for key, value in inc.items() if key != 'sections'}
 
 
@@ -382,7 +407,7 @@ def snapshot(r, now=None):
         'players': [{'id': p['id'], 'name': p['name'], 'vehicle': p['vehicle'], 'role': p['role']}
                     for p in r['players'].values()],
         'vehicles': list(r['vehicles'].values()),
-        'incidents': [_snapshot_incident(i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
+        'incidents': [_snapshot_incident(r, i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
         'radio': r['radio'][-100:],
         'rev': r['rev'],
         'dispatcher': r['dispatcher'],
@@ -613,10 +638,10 @@ def _dispatch(r, pid, p, data, now, is_developer):
     v = r['vehicles'].get(str(data.get('vehicle', '')))
     if not inc or inc['closed'] or not v:
         raise ValueError('Einsatz oder Fahrzeug nicht verfügbar')
-    if not v['owner'] and not ai_mode(r):
-        raise ValueError('Fahrzeug muss von einem Spieler besetzt sein (oder KI-Modus aktiv)')
     if not _free(v):
         raise ValueError('Fahrzeug ist nicht frei')
+    if not v['owner'] and (reason := ai_crew_block(r, inc)):
+        raise ValueError(f'Unbesetztes Fahrzeug nicht alarmierbar: {reason}')
     alarm(r, inc, v, now)
     emit(r, 'Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
 

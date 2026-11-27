@@ -249,6 +249,58 @@ def test_leitstelle_allein_alarmiert_mehrere_unbesetzte_fahrzeuge(room):
     assert inc['sections']['Hauptabschnitt']['vehicles'] == inc['assigned']
 
 
+
+@pytest.mark.parametrize('title, need', [
+    ('F1 · Kleinbrand', 1), ('F2 · Wohnungsbrand', 2), ('B3 · Großbrand', 3), ('TH 2 · Person eingeklemmt', 2),
+    ('BMA · Brandmeldeanlage', 1), ('Wasserschaden', 1),
+])
+def test_fahrzeugbedarf_aus_stichwort(title, need):
+    assert engine.needed_vehicles({'title': title}) == need
+
+
+def test_unbesetzt_bei_kleinem_einsatz_im_mehrspielerbetrieb_gesperrt(room):
+    ls, gf = join(room, 1, 'Anna'), join(room, 2, 'Ben')
+    act(room, ls, 1, 'take_ls')
+    act(room, gf, 2, 'claim', vehicle='WB-2-LF20')
+    act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Hauptstraße 5')
+    inc = room['incidents'][-1]
+    with pytest.raises(ValueError, match='erst freie Spielerfahrzeuge'):
+        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-HLF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    with pytest.raises(ValueError, match=r'Bedarf gedeckt \(1 Fahrzeug laut Stichwort\)'):
+        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-HLF20')
+    assert inc['assigned'] == ['WB-2-LF20']
+
+
+def test_groesserer_einsatz_bekommt_unbesetzte_fahrzeuge_mit_ki_besatzung(room):
+    ls, gf, inc = leitstelle_mit_gf(room)  # F2 · Wohnungsbrand: Bedarf 2
+    snap = next(i for i in engine.snapshot(room, NOW)['incidents'] if i['id'] == inc['id'])
+    assert snap['need'] == 2 and snap['ai_crew_block'] == 'erst freie Spielerfahrzeuge alarmieren'
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    assert engine.ai_crew_block(room, inc) == ''
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-HLF20')
+    assert inc['assigned'] == ['WB-2-LF20', 'WB-1-HLF20']
+    assert room['vehicles']['WB-1-HLF20']['owner'] is None
+    with pytest.raises(ValueError, match='Bedarf gedeckt'):
+        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-LF20')
+    # Die KI-Besatzung beginnt vor Ort nach der Wartezeit selbst mit den Maßnahmen.
+    engine.update(room, NOW + 20)
+    keep_online(room, ls, gf, now=NOW + 20)
+    engine.update(room, NOW + 20 + engine.UNATTENDED_DELAY)
+    assert inc['working']
+
+
+def test_zurueckfahrendes_fahrzeug_zaehlt_nicht_zum_bedarf(room):
+    ls, gf, inc = leitstelle_mit_gf(room)
+    carla = join(room, 3, 'Carla')
+    act(room, carla, 3, 'claim', vehicle='WB-5-HLF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-5-HLF20')
+    assert engine.ai_crew_block(room, inc).startswith('Bedarf gedeckt')
+    room['vehicles']['WB-5-HLF20'].update(phase='rueckfahrt')
+    assert engine.ai_crew_block(room, inc) == ''
+
+
 # ------------------------------------------------------------ KI-Leitstelle bei unbesetzter Leitstelle
 
 def zwei_gf_ohne_leitstelle(r):
