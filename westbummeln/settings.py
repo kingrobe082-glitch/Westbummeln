@@ -230,6 +230,16 @@ ROOM_MAX_PLAYERS = int(os.environ.get('ROOM_MAX_PLAYERS', '20'))  # Spieler pro 
 ROOM_MAX_TOTAL = int(os.environ.get('ROOM_MAX_TOTAL', '200'))  # Räume insgesamt
 ROOM_EMPTY_TTL = int(os.environ.get('ROOM_EMPTY_TTL', '1800'))  # Sekunden, bis ein leerer Raum gelöscht wird
 
+# KI-Leitstelle (läuft, solange kein Spieler die Leitstelle besetzt), siehe game/engine.py.
+# Abstand zwischen zwei KI-Einsätzen: Zufall zwischen MIN und MAX Sekunden, geteilt durch (1 + freie GF-Fahrzeuge).
+AI_INCIDENT_MIN_GAP = float(os.environ.get('AI_INCIDENT_MIN_GAP', '20'))
+AI_INCIDENT_MAX_GAP = float(os.environ.get('AI_INCIDENT_MAX_GAP', '60'))
+# Gleichzeitig offene KI-Einsätze: besetzte Fahrzeuge × PER_PLAYER + EXTRA, höchstens AI_MAX_OPEN.
+AI_MAX_OPEN_PER_PLAYER = int(os.environ.get('AI_MAX_OPEN_PER_PLAYER', '1'))
+AI_MAX_OPEN_EXTRA = int(os.environ.get('AI_MAX_OPEN_EXTRA', '1'))
+AI_MAX_OPEN = int(os.environ.get('AI_MAX_OPEN', '8'))
+AI_MAX_WAITING = int(os.environ.get('AI_MAX_WAITING', '2'))  # kein neuer Einsatz, solange so viele ohne Fahrzeug warten
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

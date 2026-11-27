@@ -310,7 +310,8 @@ def zwei_gf_ohne_leitstelle(r):
     return anna, ben
 
 
-def test_ki_leitstelle_laeuft_mit_mehreren_spielern_ohne_leitstelle(room):
+def test_ki_leitstelle_laeuft_mit_mehreren_spielern_ohne_leitstelle(room, monkeypatch):
+    monkeypatch.setattr(engine, 'AI_INCIDENT_TYPES', [('F1 · Kleinbrand', 1)])
     zwei_gf_ohne_leitstelle(room)
     assert engine.ai_dispatcher(room) and engine.snapshot(room, NOW)['ai_dispatcher']
     engine.update(room, NOW)
@@ -322,7 +323,8 @@ def test_ki_leitstelle_laeuft_mit_mehreren_spielern_ohne_leitstelle(room):
     assert inc['assigned'] == [nearest]
 
 
-def test_ki_leitstelle_verteilt_einsaetze_auf_freie_spielerfahrzeuge(room):
+def test_ki_leitstelle_verteilt_einsaetze_auf_freie_spielerfahrzeuge(room, monkeypatch):
+    monkeypatch.setattr(engine, 'AI_INCIDENT_TYPES', [('F1 · Kleinbrand', 1)])
     zwei_gf_ohne_leitstelle(room)
     engine.update(room, NOW)
     engine.update(room, NOW + 45)
@@ -350,3 +352,138 @@ def test_ki_leitstelle_springt_ein_wenn_leitstelle_frei_wird(room):
     act(room, ls, 1, 'leave_ls')
     engine.update(room, NOW)
     assert inc['assigned'] == ['WB-2-LF20']
+
+
+# ------------------------------------------------------------ KI-Einsatzrate
+
+def gf_raum(n, seed=1, leitstelle=False):
+    """Raum mit n GF auf eigenen Fahrzeugen (HLF der Wachen 1–6, dann LF); optional eine Leitstelle."""
+    r = engine.new_room('WB', seed=seed)
+    r['weather_mode'] = 'manual'
+    vehicles = [f'WB-{unit}-{kind}' for kind in ('HLF20', 'LF20') for unit in range(1, 7)]
+    gfs = []
+    for i in range(n):
+        pid = join(r, i, f'GF{i}')
+        act(r, pid, i, 'claim', vehicle=vehicles[i])
+        gfs.append((pid, i, vehicles[i]))
+    if leitstelle:
+        ls = join(r, 99, 'Leitstelle')
+        act(r, ls, 99, 'take_ls')
+    return r, gfs
+
+
+def spielen(r, gfs, seconds, arbeiten=True):
+    """Sekundenweise vorspulen; die GF starten die Maßnahmen, sobald ihr Fahrzeug vor Ort ist."""
+    open_max = 0
+    for t in range(seconds):
+        now = NOW + t
+        keep_online(r, *r['players'], now=now)
+        engine.update(r, now)
+        for pid, account, vid in gfs if arbeiten else ():
+            v = r['vehicles'][vid]
+            inc = next((i for i in r['incidents'] if i['id'] == v['incident']), None)
+            if inc and not inc['closed'] and not inc['working'] and v['phase'] == 'vorort':
+                act(r, pid, account, 'work', now=now, incident=inc['id'])
+        open_max = max(open_max, sum(not i['closed'] for i in r['incidents']))
+    return open_max
+
+
+def ki_einsaetze(r):
+    return [i for i in r['incidents'] if i['creator'] == 'KI-Leitstelle']
+
+
+def test_ki_einsatzrate_steigt_mit_mehr_spielern():
+    counts = {}
+    for n in (1, 3, 6):
+        r, gfs = gf_raum(n)
+        spielen(r, gfs, 600)
+        counts[n] = r['ai_seq']
+    assert counts[1] < counts[3] < counts[6]
+
+
+def test_ki_abstand_wird_kuerzer_je_mehr_gf_frei_sind():
+    r, gfs = gf_raum(0)
+    r['ai_gap'] = 40
+    assert engine.ai_incident_gap(r) == 40
+    r, gfs = gf_raum(3)
+    r['ai_gap'] = 40
+    assert engine.ai_incident_gap(r) == 10
+    r['vehicles'][gfs[0][2]]['phase'] = 'anfahrt'  # unterwegs = nicht frei
+    assert engine.ai_incident_gap(r) == 40 / 3
+
+
+def test_ki_obergrenze_offener_einsaetze_haengt_von_spielern_ab():
+    assert engine.ai_open_limit(gf_raum(0)[0]) == 2  # allein ohne Fahrzeug wie bisher: höchstens 2
+    assert engine.ai_open_limit(gf_raum(1)[0]) == 2
+    assert engine.ai_open_limit(gf_raum(3)[0]) == 4
+    assert engine.ai_open_limit(gf_raum(12)[0]) == 8
+
+
+def test_ki_obergrenze_greift_auch_wenn_niemand_arbeitet():
+    # Die GF fahren hin, starten aber nie Maßnahmen: Einsätze bleiben offen, die KI legt nicht endlos nach.
+    r, gfs = gf_raum(3)
+    assert spielen(r, gfs, 1800, arbeiten=False) == engine.ai_open_limit(r) == 4
+    assert sum(not i['assigned'] for i in r['incidents']) <= engine.AI_MAX_WAITING
+
+
+def test_ki_obergrenze_ist_einstellbar(monkeypatch):
+    monkeypatch.setattr(engine, 'AI_MAX_OPEN', 3)
+    r, gfs = gf_raum(6)
+    assert spielen(r, gfs, 600, arbeiten=False) == 3
+
+
+def test_keine_ki_einsaetze_bei_menschlicher_leitstelle():
+    r, gfs = gf_raum(6, leitstelle=True)
+    spielen(r, gfs, 900)
+    assert ki_einsaetze(r) == [] and r['ai_seq'] == 0
+
+
+def test_ki_zufall_ist_mit_seed_reproduzierbar():
+    def verlauf(seed):
+        r, gfs = gf_raum(3, seed=seed)
+        spielen(r, gfs, 600)
+        return [(i['title'], i['address']) for i in ki_einsaetze(r)]
+    assert verlauf(7) == verlauf(7)
+    assert verlauf(7) != verlauf(8)
+
+
+def test_ki_alarmiert_passende_fahrzeugzahl(monkeypatch):
+    monkeypatch.setattr(engine, 'AI_INCIDENT_TYPES', [('F2 · Wohnungsbrand', 1)])
+    r, gfs = gf_raum(3)
+    engine.update(r, NOW)
+    inc = r['incidents'][0]
+    assert engine.needed_vehicles(inc) == 2 and len(inc['assigned']) == 2
+    assert all(vid in {g[2] for g in gfs} for vid in inc['assigned'])
+
+
+def test_ki_alarmiert_erst_jeden_einsatz_dann_nach(monkeypatch):
+    monkeypatch.setattr(engine, 'AI_INCIDENT_TYPES', [('F3 · Dachstuhlbrand', 1)])
+    r, gfs = gf_raum(2)
+    engine.update(r, NOW)
+    first = r['incidents'][0]
+    assert len(first['assigned']) == 2  # nur zwei GF-Fahrzeuge da
+    engine.update(r, NOW + 100)  # zweiter Einsatz: kein Fahrzeug frei, er wartet
+    assert len(r['incidents']) == 2 and r['incidents'][1]['assigned'] == []
+
+
+def test_ki_alarmiert_nicht_mehr_nach_ab_halber_arbeit(monkeypatch):
+    monkeypatch.setattr(engine, 'AI_INCIDENT_TYPES', [('F2 · Wohnungsbrand', 1)])
+    r, gfs = gf_raum(1)
+    engine.update(r, NOW)
+    inc = r['incidents'][0]
+    inc['progress'] = engine.AI_REINFORCE_BELOW
+    pid = join(r, 5, 'Neu')
+    act(r, pid, 5, 'claim', vehicle='WB-6-LF20')
+    engine.update(r, NOW + 1)
+    assert inc['assigned'] == [gfs[0][2]]
+
+
+def test_ki_einsaetze_haben_verschiedene_stichworte():
+    r, gfs = gf_raum(6)
+    spielen(r, gfs, 1800)
+    assert len({i['title'] for i in ki_einsaetze(r)}) >= 6
+
+
+def test_ki_settings_werden_an_die_spiellogik_uebergeben():
+    from django.conf import settings as django_settings
+    assert all(getattr(engine, name) == getattr(django_settings, name) for name in engine.AI_SETTINGS)
