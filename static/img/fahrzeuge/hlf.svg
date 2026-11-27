@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 28" width="68" height="28">
+<!-- HLF 20 in Draufsicht, Front nach rechts. Eigene Zeichnung für Westbummeln. -->
+<rect x="1.5" y="2.5" width="65" height="23" rx="3.5" fill="#c81d1d" stroke="#4d0909" stroke-width="1.5"/>
+<rect x="3" y="3.6" width="61" height="2" fill="#fff"/>
+<rect x="3" y="22.4" width="61" height="2" fill="#fff"/>
+<rect x="4" y="6.6" width="42" height="14.8" rx="1.5" fill="#a51515"/>
+<rect x="7.5" y="9" width="33" height="10" fill="none" stroke="#dfe4ea" stroke-width="1.4"/>
+<path d="M11.5 9v10M15.5 9v10M19.5 9v10M23.5 9v10M27.5 9v10M31.5 9v10M35.5 9v10" stroke="#dfe4ea" stroke-width="1"/>
+<rect x="49" y="6.6" width="16" height="14.8" rx="2" fill="#e2312b"/>
+<rect x="61.4" y="7.2" width="3.6" height="13.6" rx="1.2" fill="#a9d2f5"/>
+<rect x="52" y="8" width="4" height="12" rx="1.5" fill="#1d3a7a"/>
+<rect x="2.6" y="7.5" width="1.6" height="3" fill="#1d3a7a"/>
+<rect x="2.6" y="17.5" width="1.6" height="3" fill="#1d3a7a"/>
+<rect x="65.6" y="4.4" width="1.4" height="3" fill="#fff3b8"/>
+<rect x="65.6" y="20.6" width="1.4" height="3" fill="#fff3b8"/>
+</svg>

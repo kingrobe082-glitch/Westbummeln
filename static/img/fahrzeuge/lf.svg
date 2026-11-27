@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 58 26" width="58" height="26">
+<!-- LF 20 in Draufsicht, Front nach rechts: kürzer als das HLF, Dachkästen statt Leiter. Eigene Zeichnung für Westbummeln. -->
+<rect x="1.5" y="2.5" width="55" height="21" rx="3.5" fill="#c81d1d" stroke="#4d0909" stroke-width="1.5"/>
+<rect x="3" y="3.6" width="51" height="2" fill="#fff"/>
+<rect x="3" y="20.4" width="51" height="2" fill="#fff"/>
+<rect x="4" y="6.6" width="32" height="12.8" rx="1.5" fill="#a51515"/>
+<rect x="6.5" y="8.4" width="12" height="9.2" rx="1" fill="#8c1111" stroke="#dfe4ea" stroke-width="1.1"/>
+<rect x="21.5" y="8.4" width="12" height="9.2" rx="1" fill="#8c1111" stroke="#dfe4ea" stroke-width="1.1"/>
+<rect x="39" y="6.6" width="16" height="12.8" rx="2" fill="#e2312b"/>
+<rect x="51.4" y="7.2" width="3.6" height="11.6" rx="1.2" fill="#a9d2f5"/>
+<rect x="42" y="7.5" width="4" height="11" rx="1.5" fill="#1d3a7a"/>
+<rect x="2.6" y="7" width="1.6" height="3" fill="#1d3a7a"/>
+<rect x="2.6" y="16" width="1.6" height="3" fill="#1d3a7a"/>
+<rect x="55.6" y="4.4" width="1.4" height="3" fill="#fff3b8"/>
+<rect x="55.6" y="18.6" width="1.4" height="3" fill="#fff3b8"/>
+</svg>

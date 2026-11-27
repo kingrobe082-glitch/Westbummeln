@@ -30,7 +30,8 @@ Internet ──80/443──▶ caddy ──web:8000──▶ web (gunicorn, 1 Wo
 | `backups/` | Container `backup`, `remote-deploy.sh` | Datenbank-Sicherungen |
 
 - Nach außen offen sind nur 80 und 443 (TCP und UDP für HTTP/3) von Caddy. `web` und `db` haben
-  keine veröffentlichten Ports. `db` und `backup` hängen in einem internen Netz ohne Internet.
+  keine veröffentlichten Ports. `db` hängt nur in einem internen Netz ohne Internet; `backup` zusätzlich im
+  Netz `frontend`, damit es nach jeder Sicherung healthchecks.io anpingen kann (MONITORING.md).
 - Die Daten liegen in Docker-Volumes: `westbummeln_db-data` (Datenbank) und
   `westbummeln_caddy-data` (Zertifikate). **Nie** `docker compose down -v` ausführen: `-v` löscht
   die Datenbank.
@@ -150,6 +151,9 @@ passiert ist (neue Konten), geht dabei verloren.
 `*-latest.sql.gz` ist jeweils ein Verweis auf die neueste Datei.
 
 **Sofort sichern:** `docker compose exec backup /backup.sh`
+
+**Überwachung:** Ist `BACKUP_PING_URL` in `.env` gesetzt, meldet jede Sicherung sich bei
+healthchecks.io; bleibt sie aus oder scheitert, kommt eine Mail. Einrichten: `MONITORING.md`.
 
 **Auf den PC holen** (die Sicherungen liegen auf derselben Platte wie die Datenbank, ab und zu
 eine Kopie ziehen), PowerShell:

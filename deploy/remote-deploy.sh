@@ -43,6 +43,10 @@ if command -v flock >/dev/null; then   # util-linux, auf Ubuntu immer da
   flock -n 9 || die "Es läuft schon ein Deploy (.deploy.lock)."
 fi
 
+# Hook des Backup-Containers muss ausführbar sein, sonst überspringt run-parts ihn stillschweigend
+# (falls das Ausführungsrecht beim Commit unter Windows verloren ging).
+chmod 755 backup-hooks/* 2>/dev/null || true
+
 # Vorabprüfung, bevor irgendetwas umgestellt wird.
 IMAGE_TAG=$NEW_TAG docker compose config -q || die "docker compose config schlägt fehl. Es wurde nichts geändert."
 
