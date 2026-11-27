@@ -234,6 +234,16 @@ ROOM_EMPTY_TTL = int(os.environ.get('ROOM_EMPTY_TTL', '1800'))  # Sekunden, bis 
 # room-state (docker-compose.prod.yml). Leer = abgeschaltet.
 ROOM_STATE_FILE = os.environ.get('ROOM_STATE_FILE', str(BASE_DIR / 'state' / 'rooms.json')).strip()
 
+# KI-Leitstelle (läuft, solange kein Spieler die Leitstelle besetzt), siehe game/engine.py.
+# Abstand zwischen zwei KI-Einsätzen: Zufall zwischen MIN und MAX Sekunden, geteilt durch (1 + freie GF-Fahrzeuge).
+AI_INCIDENT_MIN_GAP = float(os.environ.get('AI_INCIDENT_MIN_GAP', '20'))
+AI_INCIDENT_MAX_GAP = float(os.environ.get('AI_INCIDENT_MAX_GAP', '60'))
+# Gleichzeitig offene KI-Einsätze: besetzte Fahrzeuge × PER_PLAYER + EXTRA, höchstens AI_MAX_OPEN.
+AI_MAX_OPEN_PER_PLAYER = int(os.environ.get('AI_MAX_OPEN_PER_PLAYER', '1'))
+AI_MAX_OPEN_EXTRA = int(os.environ.get('AI_MAX_OPEN_EXTRA', '1'))
+AI_MAX_OPEN = int(os.environ.get('AI_MAX_OPEN', '8'))
+AI_MAX_WAITING = int(os.environ.get('AI_MAX_WAITING', '2'))  # kein neuer Einsatz, solange so viele ohne Fahrzeug warten
+
 # Logs gehen nach stdout und landen so in `docker compose logs web`. Die App-Logger schreiben ab INFO
 # (per LOG_LEVEL änderbar), alles andere ab WARNING. Die App-Logger haben keinen eigenen Handler, sondern
 # reichen an den Root-Logger weiter – so sieht auch pytests caplog jede Meldung.

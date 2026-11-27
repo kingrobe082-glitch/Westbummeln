@@ -253,6 +253,48 @@ def test_everything_in_a_room_is_serializable():
     json.loads(persistence.dumps(T))
 
 
+# ------------------------------------------------------------------ KI-Leitstelle
+
+def ki_room(seed):
+    """Raum ohne Leitstelle mit zwei GF; die KI-Leitstelle legt Einsätze an und alarmiert."""
+    result = rooms.create_room(1, 'Anna', False, T)
+    r = rooms.rooms[result['room']]
+    r['ai_seed'] = seed
+    r['ai_last'] = T  # erster KI-Einsatz erst, wenn beide GF ihr Fahrzeug haben
+    anna = result['id']
+    ben = act(r, 2, None, 'join', T, 'Ben')['id']
+    act(r, 1, anna, 'claim', T, vehicle='WB-1-HLF20')
+    act(r, 2, ben, 'claim', T, 'Ben', vehicle='WB-4-LF20')
+    for t in range(1, 120):
+        for p in r['players'].values():
+            p['last'] = T + t
+        engine.update(r, T + t)
+    return r
+
+
+def ki_verlauf(r, start, seconds):
+    for t in range(seconds):
+        for p in r['players'].values():
+            p['last'] = start + t
+        engine.update(r, start + t)
+    return [(i['title'], i['address']) for i in r['incidents'] if i['creator'] == 'KI-Leitstelle']
+
+
+def test_room_with_ai_incidents_is_saved_and_continues_the_same_way():
+    r = ki_room(seed=11)
+    assert any(i['creator'] == 'KI-Leitstelle' for i in r['incidents'])
+    json.loads(persistence.dumps(T + 120))  # nichts im Raum, das JSON nicht kann
+    code = r['code']
+    assert restart(T + 120 + DOWN) == 1
+    restored = rooms.rooms[code]
+    assert restored['ai_seed'] == 11
+    after_restart = ki_verlauf(restored, T + 120 + DOWN, 300)
+    # Derselbe Raum ohne Neustart (eigener Speicherstand) legt dieselben Einsätze an.
+    rooms.rooms.clear()
+    reference = ki_verlauf(ki_room(seed=11), T + 120, 300)
+    assert after_restart == reference and len(reference) > 2
+
+
 def test_waiting_vehicle_keeps_its_return_delay_over_restart():
     """Ein freies Fahrzeug an der Einsatzstelle (Zurück zur Wache) fährt nach dem Neustart nicht sofort los."""
     r, anna, ben = busy_room()
