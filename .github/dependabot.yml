@@ -57,8 +57,9 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Python-Pakete (requirements.txt, requirements-dev.txt). Kleine Updates in einem PR,
-  # Major-Sprünge (z. B. Django 6) einzeln.
+  # Python-Pakete (requirements.txt, requirements-dev.txt): alle Updates einer Woche in EINEM PR
+  # (Lars: lieber ein Sammel-PR als viele einzelne). Django-Major (z. B. 6) nie automatisch,
+  # das wird von Hand gemacht.
   - package-ecosystem: pip
     directory: /
     schedule:
@@ -66,9 +67,12 @@ updates:
       day: monday
       time: "05:00"
       timezone: Europe/Berlin
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     commit-message:
       prefix: "deps(pip)"
     groups:
-      python-klein:
-        update-types: ["minor", "patch"]
+      python:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: django
+        update-types: ["version-update:semver-major"]
