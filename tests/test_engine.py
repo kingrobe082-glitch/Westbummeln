@@ -106,7 +106,7 @@ def test_radio_rate_limit(room):
 
 
 def test_ai_creates_and_dispatches_incident_for_single_player(room, monkeypatch):
-    monkeypatch.setattr(engine, 'AI_INCIDENT_TYPES', [('F1 · Kleinbrand', 1, 1)])
+    monkeypatch.setattr(engine, 'AI_INCIDENT_TYPES', [('F1 · Kleinbrand', 1)])
     join(room, 1, 'Anna')
     engine.update(room, NOW)
     assert len(room['incidents']) == 1

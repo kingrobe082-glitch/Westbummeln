@@ -8,6 +8,7 @@ Die Logik stammt aus dem alten server.py; Welle 2C hat Fahrzeiten, Einsatzliste 
 """
 import json
 import random
+import re
 import secrets
 import time
 from collections import deque
@@ -62,13 +63,14 @@ AI_MAX_WAITING = 2  # kein neuer Einsatz, solange so viele noch ganz ohne Fahrze
 AI_SETTINGS = ('AI_INCIDENT_MIN_GAP', 'AI_INCIDENT_MAX_GAP', 'AI_MAX_OPEN_PER_PLAYER', 'AI_MAX_OPEN_EXTRA',
                'AI_MAX_OPEN', 'AI_MAX_WAITING')
 AI_REINFORCE_BELOW = 50  # weitere Fahrzeuge alarmiert die KI nur, solange der Einsatz unter 50 % ist
-# Stichworte der KI-Leitstelle: (Stichwort, Fahrzeuge, Häufigkeit).
+# Stichworte der KI-Leitstelle: (Stichwort, Häufigkeit). Die Fahrzeugzahl ergibt sich aus der Stufe im Stichwort
+# (siehe needed_vehicles: F2 = 2, TH1 = 1, BMA = 1).
 AI_INCIDENT_TYPES = [
-    ('F1 · Kleinbrand', 1, 3), ('F1 · Mülltonnenbrand', 1, 2), ('F1 · PKW-Brand', 1, 2),
-    ('F2 · Wohnungsbrand', 2, 2), ('F2 · Kellerbrand', 2, 1), ('F3 · Dachstuhlbrand', 3, 1),
-    ('TH1 · Ölspur', 1, 2), ('TH1 · Baum auf Straße', 1, 2), ('TH1 · Türöffnung', 1, 2),
-    ('TH1 · Wasser im Keller', 1, 1), ('TH2 · Verkehrsunfall, eingeklemmte Person', 2, 1),
-    ('BMA · Brandmeldeanlage', 1, 3), ('ABC1 · Gasgeruch', 2, 1),
+    ('F1 · Kleinbrand', 3), ('F1 · Mülltonnenbrand', 2), ('F1 · PKW-Brand', 2),
+    ('F2 · Wohnungsbrand', 2), ('F2 · Kellerbrand', 1), ('F3 · Dachstuhlbrand', 1),
+    ('TH1 · Ölspur', 2), ('TH1 · Baum auf Straße', 2), ('TH1 · Türöffnung', 2),
+    ('TH1 · Wasser im Keller', 1), ('TH2 · Verkehrsunfall, eingeklemmte Person', 1),
+    ('BMA · Brandmeldeanlage', 3), ('ABC1 · Gasgeruch', 1),
 ]
 VOICE_SIGNALS = ('offer', 'answer', 'candidate', 'bye', 'channel')
 DISPATCHER_ONLY = 'Nur die besetzte Leitstelle darf diese Aktion ausführen'
@@ -185,6 +187,30 @@ def _free(v):
     return v['phase'] == 'wache' and v['status'] != 6 and not v['incident']
 
 
+def needed_vehicles(inc):
+    """Fahrzeugbedarf laut Stichwort: die Stufe (F2 = 2, B3 = 3, TH1 = 1); ohne Stufe (BMA …) 1."""
+    match = re.match(r'\s*[^\W\d_]+\s*(\d)', inc['title'])
+    return max(1, int(match.group(1))) if match else 1
+
+
+def ai_crew_block(r, inc):
+    """Warum die Leitstelle gerade kein unbesetztes Fahrzeug (KI-Besatzung) alarmieren darf; '' = sie darf.
+
+    Allein im Raum immer erlaubt. Im Mehrspielerbetrieb nur, wenn der Einsatz laut Stichwort mehr
+    Fahrzeuge braucht als schon alarmiert sind und kein Spielerfahrzeug mehr frei ist."""
+    if ai_mode(r):
+        return ''
+    need = needed_vehicles(inc)
+    active = sum(1 for vid in inc['assigned'] if vid in r['vehicles']
+                 and r['vehicles'][vid]['incident'] == inc['id']
+                 and r['vehicles'][vid]['phase'] in ('anfahrt', 'vorort'))
+    if active >= need:
+        return f'Bedarf gedeckt ({need} Fahrzeug{"e" if need > 1 else ""} laut Stichwort)'
+    if any(v['owner'] and _free(v) for v in r['vehicles'].values()):
+        return 'erst freie Spielerfahrzeuge alarmieren'
+    return ''
+
+
 def alarm(r, inc, v, now):
     """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI)."""
     if v['id'] not in inc['assigned']:
@@ -264,10 +290,8 @@ def _ai_new_incident(r, now):
     if not locations:
         return False
     name, x, y = rng.choice(locations)
-    title, needed, _ = rng.choices(AI_INCIDENT_TYPES, weights=[t[2] for t in AI_INCIDENT_TYPES])[0]
-    inc = new_incident(title, name, [x, y], 'KI-Leitstelle', now)
-    inc['needed'] = needed
-    r['incidents'].append(inc)
+    title, _ = rng.choices(AI_INCIDENT_TYPES, weights=[t[1] for t in AI_INCIDENT_TYPES])[0]
+    r['incidents'].append(new_incident(title, name, [x, y], 'KI-Leitstelle', now))
     r['ai_last'] = now
     r['ai_seq'] += 1
     r['ai_gap'] = rng.uniform(AI_INCIDENT_MIN_GAP, AI_INCIDENT_MAX_GAP)
@@ -293,7 +317,7 @@ def run_ai(r, now):
             if v and ai_dispatch(r, inc, v, now):
                 changed = True
     for inc in open_incidents:
-        while len(inc['assigned']) < inc.get('needed', 1) and inc['progress'] < AI_REINFORCE_BELOW:
+        while len(inc['assigned']) < needed_vehicles(inc) and inc['progress'] < AI_REINFORCE_BELOW:
             v = _ai_vehicle(r, inc)
             if not v or not ai_dispatch(r, inc, v, now):
                 break
@@ -428,9 +452,9 @@ def _send_home(r, v, now):
     v['status'] = 1
 
 
-def _snapshot_incident(inc):
+def _snapshot_incident(r, inc):
     if not inc['closed']:
-        return inc
+        return {**inc, 'need': needed_vehicles(inc), 'ai_crew_block': ai_crew_block(r, inc)}
     return {key: value for key, value in inc.items() if key != 'sections'}
 
 
@@ -442,7 +466,7 @@ def snapshot(r, now=None):
         'players': [{'id': p['id'], 'name': p['name'], 'vehicle': p['vehicle'], 'role': p['role']}
                     for p in r['players'].values()],
         'vehicles': list(r['vehicles'].values()),
-        'incidents': [_snapshot_incident(i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
+        'incidents': [_snapshot_incident(r, i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
         'radio': r['radio'][-100:],
         'rev': r['rev'],
         'dispatcher': r['dispatcher'],
@@ -673,10 +697,10 @@ def _dispatch(r, pid, p, data, now, is_developer):
     v = r['vehicles'].get(str(data.get('vehicle', '')))
     if not inc or inc['closed'] or not v:
         raise ValueError('Einsatz oder Fahrzeug nicht verfügbar')
-    if not v['owner'] and not ai_mode(r):
-        raise ValueError('Fahrzeug muss von einem Spieler besetzt sein (oder KI-Modus aktiv)')
     if not _free(v):
         raise ValueError('Fahrzeug ist nicht frei')
+    if not v['owner'] and (reason := ai_crew_block(r, inc)):
+        raise ValueError(f'Unbesetztes Fahrzeug nicht alarmierbar: {reason}')
     alarm(r, inc, v, now)
     emit(r, 'Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
 
