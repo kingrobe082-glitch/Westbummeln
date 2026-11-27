@@ -5,25 +5,33 @@ Typnamen. Eine Maßnahme verlangt Fähigkeiten (z. B. `pumpe`), jedes Fahrzeug b
 Fahrzeugtyp (TLF, DLK, RW, ELW …) braucht deshalb nur einen Eintrag in FAHRZEUGTYPEN, ein neues Stichwort
 nur einen Eintrag in KATALOG.
 
-Bisher ist nur F1 als Katalog-Einsatz ausgebaut. Alle anderen Stichworte laufen über den alten
-Fortschrittsbalken (Allgemein-Ablauf).
+Bisher ist nur F1 als Katalog-Einsatz ausgebaut (Schlüssel = Stichwort, z. B. später „B 1“ nach NRW-Schema;
+Leerzeichen und Groß-/Kleinschreibung zählen beim Erkennen nicht). Alle anderen Stichworte laufen über den alten
+Fortschrittsbalken (Allgemein-Ablauf). Im Code gibt es keine festen Stichwort- oder Maßnahmen-Schlüssel: die Logik
+fragt nach `wirkung` (erkunden, wasser, loeschen) und nach `gegen` (Gegenmaßnahme je Eskalationsregel).
 """
 
-# Fähigkeiten
-ERKUNDEN = 'erkunden'          # Lage erkunden, Rückmeldung geben (jedes Fahrzeug mit Führungskraft)
-PUMPE = 'pumpe'                # Feuerlöschkreiselpumpe: Wasserversorgung aufbauen, Schläuche speisen
-LOESCHWASSER = 'loeschwasser'  # Löschwasserbehälter an Bord (Schnellangriff ohne Hydrant)
-RETTUNGSSATZ = 'rettungssatz'  # hydraulischer Rettungssatz (Schere/Spreizer), z. B. TH2
-EINSATZLEITUNG = 'einsatzleitung'  # Führungsfahrzeug mit Funk/Lagekarte
+# Fähigkeiten (gleiche Namen wie game/flotte.py der Session „Echte Flotte“)
+LOESCHEN = 'loeschen'                  # Löschwassertank + Schläuche: Angriff, Nachlöschen
+PUMPE = 'pumpe'                        # Feuerlöschkreiselpumpe
+WASSERVERSORGUNG = 'wasserversorgung'  # Hydrant → Pumpe aufbauen (Saug-/Sammelstück, B-Schläuche)
+WASSER_TRANSPORT = 'wasser_transport'  # großer Tank / Pendelverkehr (TLF, Tankwagen) – ab PR B/C
+RETTUNGSSATZ = 'rettungssatz'          # hydraulischer Rettungssatz (Schere/Spreizer), z. B. TH2
+HUBRETTUNG = 'hubrettung'              # Drehleiter – ab PR B
+FUEHRUNG = 'fuehrung'                  # Führungsfahrzeug (KdoW, ELW)
 
-# Tankwasser in Spielsekunden Löschzeit je Liter (2000 l → 40 s).
-TANK_SEKUNDEN_JE_LITER = 1 / 50
+# Tankwasser: Verbrauch je löschendem Trupp und Nachspeisen über die Wasserversorgung (Liter je Sekunde).
+# 2000 l / 50 l/s = 40 s Löschzeit ohne Hydrant.
+VERBRAUCH_L_JE_S = 50
+NACHSPEISEN_L_JE_S = 40
+TANK_WARNUNG = 1 / 3  # Warnung, wenn nur noch ⅓ im Tank ist (⅔ verbraucht)
 
-# Fahrzeugtypen. `tank` in Litern. Trupps ergeben sich aus den Sitzplätzen (TRUPPS_JE_SITZE).
+# Fahrzeugtypen. `tank_l` = Tank in Litern (Füllstand steht im Fahrzeug als v['tank']).
+# Trupps ergeben sich aus den Sitzplätzen (TRUPPS_JE_SITZE). Die echte Flotte (game/flotte.py) ersetzt diese Tabelle.
 FAHRZEUGTYPEN = {
-    'HLF 20': {'faehigkeiten': (ERKUNDEN, PUMPE, LOESCHWASSER, RETTUNGSSATZ), 'tank': 1600},
-    'LF 20': {'faehigkeiten': (ERKUNDEN, PUMPE, LOESCHWASSER), 'tank': 2000},
-    'KdoW': {'faehigkeiten': (ERKUNDEN, EINSATZLEITUNG), 'tank': 0},
+    'HLF 20': {'faehigkeiten': (LOESCHEN, PUMPE, WASSERVERSORGUNG, RETTUNGSSATZ), 'tank_l': 2000},
+    'LF 20': {'faehigkeiten': (LOESCHEN, PUMPE, WASSERVERSORGUNG), 'tank_l': 2000},
+    'KdoW': {'faehigkeiten': (FUEHRUNG,), 'tank_l': 0},
 }
 
 # (höchstens so viele Sitze, so viele Trupps). Führung (der GF selbst) kommt immer dazu.
@@ -69,6 +77,8 @@ KATALOG = {
                     'meldung': 'PKW brennt im Motorraum, keine Personen im Fahrzeug.'},
         },
         'ki': ['erkunden', 'angriff', 'wasser', 'nachloeschen'],
+        # Gegenmaßnahme je Regel: die KI nimmt sie zuerst (E1 Wasser aus, E2 Feuer greift über).
+        'gegen': {'E1': 'wasser', 'E2': 'angriff'},
         'richtzeit': 150,  # Sekunden ab Eintreffen bis Abschluss für den Zeitbonus
         'tipps': {
             'wasser_aus': 'Wasserversorgung parallel zum Angriff aufbauen – der Tank hält nur 30–40 s.',
@@ -77,23 +87,24 @@ KATALOG = {
         },
         'massnahmen': {
             'erkunden': {
-                'name': 'Erkunden', 'icon': '🧭', 'dauer': 10, 'platz': 'fuehrung', 'braucht': (ERKUNDEN,),
+                'name': 'Erkunden', 'icon': '🧭', 'dauer': 10, 'platz': 'fuehrung', 'braucht': (),
+                'wirkung': 'erkunden',
                 'info': 'Rundgang um die Einsatzstelle: Was brennt, wohin breitet es sich aus?',
             },
             'wasser': {
                 'name': 'Wasserversorgung aufbauen', 'icon': '💧', 'dauer': 30, 'platz': 'trupp',
-                'braucht': (PUMPE,), 'wirkung': 'wasser',
+                'braucht': (WASSERVERSORGUNG,), 'wirkung': 'wasser',
                 'info': 'Hydrant → Sammelstück → Pumpe. Danach ist Löschwasser unbegrenzt.',
             },
             'angriff': {
                 'name': 'Angriffsleitung legen & löschen', 'icon': '🧯', 'dauer': 15, 'platz': 'trupp',
-                'braucht': (PUMPE, LOESCHWASSER), 'wirkung': 'loeschen', 'max': 2, 'pflicht': True,
+                'braucht': (LOESCHEN,), 'wirkung': 'loeschen', 'max': 2, 'pflicht': True,
                 'weich': ['erkunden', 'wasser'], 'ki_warten': ['erkunden'],
                 'info': 'C-Rohr vornehmen. Ohne Wasserversorgung löscht der Trupp mit dem Tankwasser.',
             },
             'nachloeschen': {
                 'name': 'Nachlöschen & Kontrolle', 'icon': '🔦', 'dauer': 20, 'platz': 'trupp',
-                'braucht': (PUMPE,), 'hart': [BRAND_AUS], 'pflicht': True,
+                'braucht': (LOESCHEN,), 'hart': [BRAND_AUS], 'pflicht': True,
                 'info': 'Glutnester ablöschen, mit der Wärmebildkamera kontrollieren.',
             },
         },
@@ -107,9 +118,11 @@ KATALOG = {
 
 # Für Hinweise „Nur … “: welche Typen haben eine Fähigkeit?
 FAEHIGKEIT_TEXT = {
-    ERKUNDEN: 'Führungskraft',
+    LOESCHEN: 'Löschwassertank',
     PUMPE: 'Pumpe',
-    LOESCHWASSER: 'Löschwassertank',
+    WASSERVERSORGUNG: 'Wasserversorgung',
+    WASSER_TRANSPORT: 'Wassertransport',
     RETTUNGSSATZ: 'Rettungssatz',
-    EINSATZLEITUNG: 'Einsatzleitung',
+    HUBRETTUNG: 'Drehleiter',
+    FUEHRUNG: 'Einsatzleitung',
 }

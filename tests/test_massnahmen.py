@@ -156,11 +156,12 @@ def test_angriff_ohne_wasser_warnt_eskaliert_und_wird_eingefangen(room):
     starten(room, gf, inc, 'angriff', t)
     mn = inc['mn']
     # 1. Warnung nach ⅔ des Tanks (LF 20: 40 s)
-    t = bis_dass(room, t, lambda: 'E1' in mn['gewarnt'], 60)
-    assert any(w['regel'] == 'E1' for w in mn['warnungen'])
-    assert mn['tank'][v['id']] == pytest.approx(40 / 3, abs=1.5)
+    t = bis_dass(room, t, lambda: f'E1:{v["id"]}' in mn['gewarnt'], 60)
+    assert any(w['regel'] == 'E1' and w['fz'] == v['id'] for w in mn['warnungen'])
+    assert v['tank'] == pytest.approx(2000 / 3, abs=60)  # Füllstand gehört zum Fahrzeug (Liter)
     snap = next(i for i in engine.snapshot(room, t)['incidents'] if i['id'] == inc['id'])
-    assert any(w['text'].startswith('Tank nur noch') for w in snap['massnahmen']['warnungen'])
+    assert any('Tank nur noch' in w['text'] and w['bis'] for w in snap['massnahmen']['warnungen'])
+    assert snap['massnahmen']['lage']['tank'][v['id']]['loescht']
     # 2. Wasser aus → 🟡
     t = laufen(room, t + 1, t + 15)
     assert mn['zaehler']['wasser_aus'] == 1 and massnahmen.stufe(inc) == 1
@@ -206,6 +207,53 @@ def test_ki_leitstelle_erfuellt_nachforderung(room):
     kinds = sorted(room['vehicles'][vid]['kind'] for vid in inc['assigned'])
     assert kinds == ['HLF 20', 'KdoW', 'LF 20']
     assert massnahmen.offene_nachforderungen(inc, room['vehicles']) == []
+
+
+# ------------------------------------------------------------ Tank am Fahrzeug
+
+def test_tank_bleibt_leer_bis_zur_wache_und_hydrant_fuellt_nach(room):
+    ls, gf, inc, v, t = f1_vor_ort(room, 'F1 · Mülltonnenbrand')
+    assert v['tank'] == 2000
+    starten(room, gf, inc, 'erkunden', t)
+    t = laufen(room, t + 1, t + 10)
+    starten(room, gf, inc, 'angriff', t)
+    t = bis_dass(room, t, lambda: inc['mn']['aus'], 120)
+    rest = v['tank']
+    assert 0 < rest < 2000  # nur so viel verbraucht, wie gelöscht wurde
+    starten(room, gf, inc, 'nachloeschen', t)
+    t = laufen(room, t + 1, t + 21)
+    assert inc['closed'] and v['phase'] == 'rueckfahrt'
+    assert v['tank'] == rest  # auf der Rückfahrt bleibt der Tank so leer
+    snap = {x['id']: x for x in engine.snapshot(room, t)['vehicles']}
+    assert snap[v['id']]['tank'] == rest and engine.snapshot(room, t)['tank_voll']['LF 20'] == 2000
+    laufen(room, t + 1, v['phase_until'])
+    assert v['phase'] == 'wache' and v['tank'] == 2000  # auf der Wache wieder voll
+
+
+def test_hydrant_fuellt_tank_wieder_auf(room):
+    ls, gf, inc, v, t = f1_vor_ort(room, 'F1 · Gartenhütte')
+    v['tank'] = 300.0  # kommt vorbelastet vom letzten Einsatz
+    starten(room, gf, inc, 'wasser', t)
+    t = laufen(room, t + 1, t + 31)
+    assert inc['mn']['wasser']
+    laufen(room, t + 1, t + 10)
+    assert v['tank'] > 300 + 9 * 30
+
+
+def test_vorbelasteter_tank_ist_schnell_leer(room):
+    ls, gf, inc, v, t = f1_vor_ort(room, 'F1 · Mülltonnenbrand')
+    v['tank'] = 200.0  # 4 s Löschzeit
+    starten(room, gf, inc, 'angriff', t)
+    bis_dass(room, t, lambda: inc['mn']['zaehler']['wasser_aus'], 40)
+    assert inc['mn']['zaehler']['wasser_aus'] == 1 and v['tank'] == 0
+
+
+def test_stichwort_nach_nrw_schema(monkeypatch):
+    monkeypatch.setitem(katalog.KATALOG, 'B 1', katalog.KATALOG['F1'])
+    inc = engine.new_incident('B 1 · Kleinbrand', 'Marktplatz', [.41, .65], 'x', NOW)
+    assert inc['stichwort'] == 'B 1' and inc['mn']['katalog'] == 'B 1'
+    assert massnahmen.stichwort_aus_titel('b1 · Mülltonne') == 'B 1'
+    assert massnahmen.stichwort_aus_titel('TH 1 · Ölspur') == ''
 
 
 # ------------------------------------------------------------ Regeln und Rechte

@@ -56,3 +56,8 @@
   .scene{margin:10px -4px}
   .mn-btn{min-height:52px}
 }
+
+/* Tank-Füllstand des eigenen Fahrzeugs */
+.tankbar{flex:1 0 100%;height:6px;background:#0a0b0d;border:1px solid var(--line);overflow:hidden}
+.tankbar span{display:block;height:100%;background:var(--fms5);transition:width .4s linear}
+.tankbar[data-low=true] span{background:var(--warn)}

@@ -638,14 +638,30 @@ Die Eskalation F1 → F2 ändert Titel und Stichwort, setzt eine Nachforderung n
 erfüllt sie nach 10 s (auch mit KI-Besatzung, Frage 4). Bilanz mit Punkten und Sternen kommt schon in PR A
 (Frage 5: nur im Raum). Schwierigkeit fest auf *Normal* (KI-Fehlerquote 15 %), Einstellung folgt in PR D.
 
+**Stichworte und Schlüssel:** Katalog-Schlüssel werden ohne Leerzeichen/Groß-Klein erkannt (`F1`, später `B 1`
+nach NRW-Schema). Der Code kennt keine festen Stichwort- oder Maßnahmen-Schlüssel, sondern fragt nach `wirkung`
+(`erkunden`, `wasser`, `loeschen`) und nach `gegen` (Gegenmaßnahme je Regel). Umbenennen = nur Daten ändern.
+Fähigkeiten heißen wie in `game/flotte.py` (Session „Echte Flotte“): `loeschen`, `pumpe`, `wasserversorgung`,
+`wasser_transport`, `rettungssatz`, `hubrettung`, `fuehrung` …; Tankgröße `tank_l` je Typ.
+
+**Tank je Fahrzeug (umgesetzt):** Der Füllstand steht im Fahrzeug als `v['tank']` (Liter, JSON). Größe je Typ
+(`tank_l`, HLF 20 und LF 20 = 2000 l, KdoW 0). *Leeren:* Jeder löschende Trupp ohne Wasserversorgung zieht
+50 l/s aus dem Tank **seines** Fahrzeugs (2000 l = 40 s). Die Warnung bei ⅓ Rest und „Wasser aus“ gelten je
+Fahrzeug. *Füllen:* Steht die Wasserversorgung, speist der Hydrant ein (+40 l/s für alle Fahrzeuge vor Ort). Auf
+der Rückfahrt bleibt der Tank so leer, wie er ist (wichtig für Alarm aus Status 1), und erst auf der Wache ist er
+wieder voll. *Anzeige:* Balken mit Liter und Sekunden im GF-Panel, Zeile „Tank“ in der Fahrzeug-Info auf der Karte.
+**Für PR B:** TLF/Tankwagen mit `wasser_transport` können einspeisen oder pendeln (Tank eines anderen Fahrzeugs
+vor Ort auffüllen). Dazu kommt eine Maßnahme „Wasser einspeisen“ mit `braucht: (WASSER_TRANSPORT,)`, die
+dieselbe Nachspeise-Logik wie der Hydrant nutzt, nur aus dem eigenen Tank.
+
 **Neue Fahrzeugtypen brauchen nur Daten** – drei Stellen, keine neue Logik:
 
 | Typ | Fähigkeiten (`katalog.FAHRZEUGTYPEN`) | Sitze → Trupps | Wache (Vorschlag) | Wofür |
 |---|---|---|---|---|
-| **TLF 3000** | `erkunden`, `pumpe`, `loeschwasser` · Tank 3000 l = 60 s | 3 → 1 | WB 1 West, WB 4 Ost (Ortsrand, wenig Hydranten) | Wasser für F1/F2 ohne Hydrant, Flächen-/Waldbrand, Wasser-Pendel |
-| **DLK 23-12** | `erkunden`, neu `hubrettung` | 3 → 1 | WB 2 Altstadt | F3 Y: Rettung aus 2. OG, Riegelstellung/Brandbekämpfung von oben |
-| **RW** | `erkunden`, `rettungssatz`, neu `heben`, `strom` | 3 → 1 | WB 5 Süd (Werkstraße/Gewerbe) | TH2 schwer (LKW, Bus), Fahrzeug anheben, Ausleuchten |
-| **ELW 1** | `erkunden`, `einsatzleitung` | 3 → 1 | WB 2 Altstadt | wie KdoW, ab F3/TH3 Pflicht: „Einsatzleitung übernehmen“, Abschnitte |
+| **TLF 3000** | `loeschen`, `pumpe`, `wasser_transport` · `tank_l` 3000 (= 60 s) | 3 → 1 | WB 1 West, WB 4 Ost (Ortsrand, wenig Hydranten) | Wasser für F1/F2 ohne Hydrant, Flächen-/Waldbrand, Wasser-Pendel |
+| **DLK 23-12** | `hubrettung` | 3 → 1 | WB 2 Altstadt | F3 Y: Rettung aus 2. OG, Riegelstellung/Brandbekämpfung von oben |
+| **RW** | `rettungssatz`, `heben`, `strom` | 3 → 1 | WB 5 Süd (Werkstraße/Gewerbe) | TH2 schwer (LKW, Bus), Fahrzeug anheben, Ausleuchten |
+| **ELW 1** | `fuehrung` | 3 → 1 | WB 2 Altstadt | wie KdoW, ab F3/TH3 Pflicht: „Einsatzleitung übernehmen“, Abschnitte |
 
 1. `game/engine.py`: `FLEET` je Wache um die Typen ergänzen (heute fest `HLF 20`, `KdoW`, `LF 20` für WB 1–6) –
    eine Liste `(wache, typ, sitze)` statt der festen Dreierschleife. Raum-IDs bleiben `WB-<wache>-<typ ohne Leerzeichen>`.

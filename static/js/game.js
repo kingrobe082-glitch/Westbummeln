@@ -299,6 +299,7 @@ function updateVehicleInfo() {
     ? `${incident.title} · ${incident.address}${incident.closed ? ' (abgeschlossen)' : ''}`
     : '–');
   setInfoText('vehicleInfoCrew', owner ? owner.name + (owner.id === me ? ' (du)' : '') : 'KI-Besatzung');
+  setInfoText('vehicleInfoTank', typeof tankText === 'function' ? tankText(vehicle) : '–');
   $('vehicleInfoIncidentBtn').classList.toggle('hidden', !incident || incident.closed);
   $('vehicleInfoListBtn').classList.toggle('hidden', $('vehiclesPanel').classList.contains('hidden'));
 }

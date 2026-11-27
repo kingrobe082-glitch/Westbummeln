@@ -100,7 +100,8 @@ def new_room(code, seed=None):
         'code': code,
         'players': {},
         'vehicles': {
-            v['id']: {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0}
+            v['id']: {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0,
+                      'tank': float(massnahmen.tank_voll(v))}
             for v in FLEET
         },
         'incidents': [],
@@ -445,7 +446,7 @@ def update(r, now=None):
             emit(r, v['call'], 'Status 4 – Einsatzstelle erreicht.')
         else:
             _stop(v, 'wache', v['base'], now)
-            v.update(status=2, incident=None)
+            v.update(status=2, incident=None, tank=float(massnahmen.tank_voll(v)))  # auf der Wache wieder voll
             emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
         changed = True
     if ai_group_leaders(r, now):
@@ -595,6 +596,7 @@ def snapshot(r, now=None):
         'channels': r['channels'],
         'roles': r['roles'],
         'weather': r['weather'],
+        'tank_voll': {kind: massnahmen.tank_voll({'kind': kind}) for kind in {v['kind'] for v in FLEET}},
         'weather_mode': r['weather_mode'],
         'travel_time': travel_time(r),
         'work_factor': weather_work_factor(r),

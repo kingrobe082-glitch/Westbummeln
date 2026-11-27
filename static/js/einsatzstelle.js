@@ -13,12 +13,25 @@ function sceneBrand(mn) {
   return `🔥 Brand ${wert} ${sceneTrend[lage.trend] || ''}`;
 }
 
+// Tank gehört zum Fahrzeug (v.tank in Litern, Größe je Typ in state.tank_voll); er leert sich beim Löschen
+// ohne Wasserversorgung, der Hydrant füllt nach, auf der Wache ist er wieder voll.
+function tankText(v) {
+  const voll = state?.tank_voll?.[v.kind];
+  if (!voll || typeof v.tank !== 'number') return 'kein Löschwassertank';
+  return `${Math.round(v.tank)} / ${voll} l (${Math.round(v.tank / voll * 100)} %)`;
+}
+
 function sceneWasser(mn, vehicleId) {
-  if (mn.lage.wasser) return '💧 Wasserversorgung steht';
-  const tank = vehicleId != null ? mn.lage.tank[vehicleId] : undefined;
-  if (tank !== undefined) return `💧 Tank ${tank} s`;
-  const tanks = Object.values(mn.lage.tank);
-  return tanks.length ? `💧 Tank ${Math.min(...tanks)} s` : '💧 keine Wasserversorgung';
+  const own = vehicleId != null ? mn.lage.tank[vehicleId] : undefined;
+  if (mn.lage.wasser) return '💧 Wasserversorgung steht' + (own && own.l < own.voll ? ` · Tank füllt auf ${own.l} l` : '');
+  if (own) return `💧 Tank ${own.l} l · ${own.s} s`;
+  const loeschend = Object.values(mn.lage.tank).filter(t => t.loescht);
+  return loeschend.length ? `💧 Tank ${Math.min(...loeschend.map(t => t.s))} s` : '💧 keine Wasserversorgung';
+}
+
+function sceneTankBar(mn, vehicleId) {
+  const own = mn.lage.tank[vehicleId];
+  return own ? Math.round(own.l / own.voll * 100) : null;
 }
 
 function sceneAmpel(mn) {
@@ -159,7 +172,8 @@ function renderScene() {
   const markup = `
     <div class="scene-head"><b>🧯 Meine Einsatzstelle</b>
       <span>${esc(incident.title)} – ${esc(incident.address)}${sceneStichwort(mn)}</span></div>
-    <div class="scene-lage">${sceneAmpel(mn)}<span data-scene="brand"></span><span data-scene="wasser"></span></div>
+    <div class="scene-lage">${sceneAmpel(mn)}<span data-scene="brand"></span><span data-scene="wasser"></span>
+      <div class="tankbar" data-scene="tankbar" role="img"><span></span></div></div>
     <div class="small">Mein ${esc(vehicle.kind)}: ${crew}${mn.variante ? ' · Lage: ' + esc(mn.variante) : ''}</div>
     ${sceneWarnings(mn)}${sceneNachforderung(mn)}
     ${mn.laufend.length ? `<h3>⏳ Läuft</h3>${mn.laufend.map(l => sceneLaufend(l, vehicle)).join('')}` : ''}
@@ -184,6 +198,14 @@ function renderScene() {
   };
   setText('brand', sceneBrand(mn));
   setText('wasser', sceneWasser(mn, vehicle.id));
+  const bar = panel.querySelector('[data-scene="tankbar"]');
+  const fill = sceneTankBar(mn, vehicle.id);
+  if (bar) {
+    bar.classList.toggle('hidden', fill === null);
+    bar.dataset.low = String(fill !== null && fill <= 33);
+    bar.firstElementChild.style.width = `${fill ?? 0}%`;
+    bar.setAttribute('aria-label', fill === null ? '' : `Tank ${fill} Prozent`);
+  }
   tickScene();
 }
 

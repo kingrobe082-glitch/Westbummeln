@@ -10,6 +10,7 @@ Zeitpunkte heißen notruf/alarm/eintreffen/feuer_aus/start/ende/nachgefordert/at
 persistence.TIME_KEYS.
 """
 import random
+import re
 
 from game.katalog import (
     BEDINGUNGEN,
@@ -18,10 +19,12 @@ from game.katalog import (
     FAHRZEUGTYPEN,
     KATALOG,
     LOESCHRATE,
+    NACHSPEISEN_L_JE_S,
     OHNE_ERKUNDEN_AUFBAU,
     STUFEN,
-    TANK_SEKUNDEN_JE_LITER,
+    TANK_WARNUNG,
     TRUPPS_JE_SITZE,
+    VERBRAUCH_L_JE_S,
     WASSER_AUS_WACHSTUM,
 )
 
@@ -32,10 +35,20 @@ SCHRITT = 1.0  # Sekunden je Rechenschritt in tick()
 
 # ------------------------------------------------------------------ Anlegen
 
+def _norm(text):
+    return re.sub(r'\s+', '', str(text)).upper()
+
+
 def stichwort_aus_titel(title):
-    """'F1 · Kleinbrand' → 'F1'. Ohne „·“ zählt das erste Wort."""
+    """Katalog-Schlüssel zum Titel oder ''. 'F1 · Kleinbrand' → 'F1', 'B 1 · Kleinbrand' → 'B 1' (wenn im Katalog).
+
+    Verglichen wird ohne Leerzeichen und Groß-/Kleinschreibung: der Teil vor „·“, ohne „·“ das erste Wort."""
     head = str(title).split('·', 1)[0].strip()
-    return head.split()[0].upper() if head else ''
+    katalog = {_norm(key): key for key in KATALOG}
+    for kandidat in (head, head.split()[0] if head else ''):
+        if _norm(kandidat) in katalog:
+            return katalog[_norm(kandidat)]
+    return ''
 
 
 def init_einsatz(inc, now, seed=None):
@@ -44,7 +57,7 @@ def init_einsatz(inc, now, seed=None):
     seed: Grundlage für Variante und KI-Zufall (KI-Leitstelle: aus dem Raum-Seed, damit ein Raum mit gleichem
     Seed gleich verläuft); sonst die Einsatz-ID."""
     key = stichwort_aus_titel(inc['title'])
-    eintrag = KATALOG.get(key)
+    eintrag = KATALOG.get(key) if key else None
     if not eintrag:
         return False
     seed = str(inc['id'] if seed is None else seed)
@@ -54,7 +67,7 @@ def init_einsatz(inc, now, seed=None):
     inc['mn'] = {
         'katalog': key, 'stichwort_start': key, 'variante': variante, 'seed': seed,
         'brand': float(lage['brand']), 'wachstum': lage['wachstum'], 'aus': False, 'wasser': False,
-        'tank': {}, 'm': [], 'aktiv': {}, 'stufe_max': 0, 'warnungen': [], 'gewarnt': [],
+        'm': [], 'aktiv': {}, 'stufe_max': 0, 'warnungen': [], 'gewarnt': [],
         'eskaliert': False, 'nachforderungen': [], 'rate': 0.0,
         'zeiten': {'notruf': now}, 'zaehler': {'wasser_aus': 0}, 'ki_schritt': 0, 'ki_fz': [],
     }
@@ -92,12 +105,28 @@ def trupps(v):
 
 
 def tank_voll(v):
-    return FAHRZEUGTYPEN.get(v['kind'], {}).get('tank', 0) * TANK_SEKUNDEN_JE_LITER
+    """Tankinhalt in Litern laut Fahrzeugtyp (0 = kein Tank)."""
+    return FAHRZEUGTYPEN.get(v['kind'], {}).get('tank_l', 0)
+
+
+def tank(v):
+    """Füllstand in Litern. Er gehört zum Fahrzeug (v['tank']), bleibt über Einsätze erhalten und wird erst auf
+    der Wache wieder voll (engine.update). Fahrzeuge aus älteren Räumen ohne Feld gelten als voll."""
+    if 'tank' not in v:
+        v['tank'] = float(tank_voll(v))
+    return v['tank']
+
+
+def tank_sekunden(v):
+    """So lange löscht ein Trupp noch mit dem Tankwasser dieses Fahrzeugs."""
+    return tank(v) / VERBRAUCH_L_JE_S
 
 
 def vor_ort(inc, vehicles):
+    """Fahrzeuge, die an diesem Einsatz arbeiten (ohne bereits entlassene, siehe engine.released)."""
     return [vehicles[vid] for vid in inc['assigned']
-            if vid in vehicles and vehicles[vid]['phase'] == 'vorort' and vehicles[vid]['incident'] == inc['id']]
+            if vid in vehicles and vehicles[vid]['phase'] == 'vorort' and vehicles[vid]['incident'] == inc['id']
+            and not vehicles[vid].get('released_at')]
 
 
 def _aktiv(mn):
@@ -110,6 +139,14 @@ def _fertig(mn, key):
 
 def _laeuft(mn, key):
     return any(i['key'] == key and i['status'] in LAUFEND for i in mn['m'])
+
+
+def _wirkung(mn, i):
+    return _eintrag(mn)['massnahmen'].get(i['key'], {}).get('wirkung')
+
+
+def _erkundet(mn):
+    return any(i['status'] == 'fertig' and _wirkung(mn, i) == 'erkunden' for i in mn['m'])
 
 
 def _erfuellt(mn, bedingung):
@@ -180,13 +217,12 @@ def starten(inc, v, key, now, arbeit=1, ki=False):
     # Dauer steht ab dem Start fest (Wetter wie bei den Fahrten).
     dauer = m['dauer'] / (arbeit or 1)
     fehlt = [b for b in m.get('weich', ()) if not _erfuellt(mn, b)]
-    if m.get('wirkung') == 'loeschen' and 'erkunden' in fehlt:
+    if m.get('wirkung') == 'loeschen' and any(eintrag['massnahmen'].get(b, {}).get('wirkung') == 'erkunden'
+                                              for b in fehlt):
         dauer += OHNE_ERKUNDEN_AUFBAU
     instanz = {'key': key, 'fz': v['id'], 'platz': m['platz'], 'trupp': platz, 'status': 'laeuft',
                'start': now, 'ende': now + dauer, 'ki': ki}
     mn['m'].append(instanz)
-    if m.get('wirkung') == 'loeschen' and v['id'] not in mn['tank']:
-        mn['tank'][v['id']] = tank_voll(v)
     inc['working'] = True
     text = f'{_platz_name(instanz)}: {m["name"]}.'
     if fehlt:
@@ -238,18 +274,24 @@ def _call(vehicles, vid):
 
 def _schritt(inc, vehicles, t, h, wetter, meldungen):
     mn = inc['mn']
-    eintrag = _eintrag(mn)
     vorher = dict(mn['aktiv'])
     # a) fertige Maßnahmen
     for i in sorted((i for i in mn['m'] if i['status'] == 'laeuft' and i['ende'] <= t), key=lambda i: i['ende']):
         _fertigstellen(inc, vehicles, i, t, meldungen)
-    # b) Brand: Wachstum gegen Löschen
+    # b) Tank: Ohne Wasserversorgung zieht jeder löschende Trupp aus dem Tank seines Fahrzeugs, mit
+    #    Wasserversorgung speist der Hydrant ein und die Tanks der Fahrzeuge vor Ort füllen sich wieder.
+    if mn['wasser']:
+        for v in vor_ort(inc, vehicles):
+            if tank_voll(v):
+                v['tank'] = min(float(tank_voll(v)), tank(v) + NACHSPEISEN_L_JE_S * h)
+    elif not mn['aus']:
+        for i in mn['m']:
+            if i['status'] == 'loescht' and i['fz'] in vehicles:
+                v = vehicles[i['fz']]
+                v['tank'] = max(0.0, tank(v) - VERBRAUCH_L_JE_S * h)
+    # c) Brand: Wachstum gegen Löschen
     if not mn['aus']:
         loeschend = [i for i in mn['m'] if i['status'] == 'loescht']
-        for i in loeschend:
-            if mn['wasser']:
-                continue
-            mn['tank'][i['fz']] = max(0.0, mn['tank'].get(i['fz'], 0) - h)
         wachstum = mn['wachstum'] * BRAND_WETTER.get(wetter, 1)
         if 'E1' in mn['aktiv']:
             wachstum *= WASSER_AUS_WACHSTUM
@@ -257,7 +299,7 @@ def _schritt(inc, vehicles, t, h, wetter, meldungen):
         mn['rate'] = rate
         mn['brand'] = min(100.0, max(0.0, mn['brand'] + rate * h))
         for i in loeschend:
-            if not mn['wasser'] and mn['tank'][i['fz']] <= 0:
+            if not mn['wasser'] and (i['fz'] not in vehicles or tank(vehicles[i['fz']]) <= 0):
                 i['status'] = 'wartet'
                 if 'E1' not in mn['aktiv']:
                     mn['zaehler']['wasser_aus'] += 1
@@ -270,11 +312,10 @@ def _schritt(inc, vehicles, t, h, wetter, meldungen):
             mn['rate'] = 0.0
             mn['zeiten']['feuer_aus'] = t
             for i in mn['m']:
-                if i['key'] in eintrag['massnahmen'] and eintrag['massnahmen'][i['key']].get('wirkung') == 'loeschen' \
-                        and i['status'] in LAUFEND:
+                if _wirkung(mn, i) == 'loeschen' and i['status'] in LAUFEND:
                     i.update(status='fertig', ende=t)
             meldungen.append(('Einsatzleitung', '🔥 Feuer aus. Nachlöschen und Kontrolle.'))
-    # c) Regeln
+    # d) Regeln
     _regel_e1(mn, vehicles, t, meldungen)
     _regel_e2(inc, vehicles, t, meldungen)
     if vorher and not mn['aktiv']:
@@ -288,7 +329,7 @@ def _fertigstellen(inc, vehicles, i, t, meldungen):
     m = eintrag['massnahmen'][i['key']]
     call = _call(vehicles, i['fz'])
     if m.get('wirkung') == 'loeschen' and not mn['aus']:
-        hat_wasser = mn['wasser'] or mn['tank'].get(i['fz'], 0) > 0
+        hat_wasser = mn['wasser'] or (i['fz'] in vehicles and tank(vehicles[i['fz']]) > 0)
         i['status'] = 'loescht' if hat_wasser else 'wartet'
         if hat_wasser:
             quelle = 'Wasser vom Hydranten' if mn['wasser'] else 'Tankwasser'
@@ -300,7 +341,7 @@ def _fertigstellen(inc, vehicles, i, t, meldungen):
                 mn['aktiv']['E1'] = 1
         return
     i['status'] = 'fertig'
-    if i['key'] == 'erkunden':
+    if m.get('wirkung') == 'erkunden':
         variante = eintrag['varianten'][mn['variante']]
         meldungen.append((call, f'Erkundung: {variante["meldung"]} 🔥 {round(mn["brand"])}'))
     elif m.get('wirkung') == 'wasser':
@@ -326,18 +367,22 @@ def _warnung_weg(mn, regel):
 
 
 def _regel_e1(mn, vehicles, t, meldungen):
-    """E1 Angriff ohne Wasserversorgung: Warnung nach ⅔ des Tanks, dann „Wasser aus“."""
+    """E1 Angriff ohne Wasserversorgung: Warnung je Fahrzeug nach ⅔ des Tanks, dann „Wasser aus“."""
     if mn['wasser']:
         _warnung_weg(mn, 'E1')
         mn['aktiv'].pop('E1', None)
+        mn['gewarnt'] = [g for g in mn['gewarnt'] if not g.startswith('E1:')]
         return
     for i in mn['m']:
-        if i['status'] != 'loescht':
+        if i['status'] != 'loescht' or i['fz'] not in vehicles:
             continue
-        voll = tank_voll(vehicles[i['fz']]) if i['fz'] in vehicles else 0
-        if voll and mn['tank'].get(i['fz'], 0) <= voll / 3 and 'E1' not in mn['aktiv']:
-            if _warnen(mn, 'E1', 'Tank nur noch ⅓ – Wasserversorgung?', t):
-                meldungen.append((_call(vehicles, i['fz']), '⚠️ Angriffstrupp: Tank nur noch ⅓ – Wasserversorgung?'))
+        v = vehicles[i['fz']]
+        if tank_voll(v) and tank(v) <= tank_voll(v) * TANK_WARNUNG and 'E1' not in mn['aktiv']:
+            if f'E1:{v["id"]}' not in mn['gewarnt']:
+                mn['gewarnt'].append(f'E1:{v["id"]}')
+                mn['warnungen'].append({'regel': 'E1', 'fz': v['id'], 'at': t,
+                                        'text': f'{v["call"]}: Tank nur noch ⅓ – Wasserversorgung?'})
+                meldungen.append((v['call'], '⚠️ Angriffstrupp: Tank nur noch ⅓ – Wasserversorgung?'))
     if not any(i['status'] == 'loescht' for i in mn['m']):
         _warnung_weg(mn, 'E1')
     if 'E1' in mn['aktiv'] and not any(i['status'] == 'wartet' for i in mn['m']):
@@ -436,12 +481,12 @@ def _kandidaten(inc):
     """Musterreihenfolge, Gegenmaßnahmen zu Warnungen und Eskalationen zuerst (Konzept 5.3)."""
     mn = inc['mn']
     zuerst = []
+    eintrag = _eintrag(mn)
     regeln = {w['regel'] for w in mn['warnungen']} | set(mn['aktiv'])
-    if 'E1' in regeln:
-        zuerst.append('wasser')
-    if 'E2' in regeln:
-        zuerst.append('angriff')
-    return list(dict.fromkeys(zuerst + _eintrag(mn)['ki']))
+    for regel, key in eintrag.get('gegen', {}).items():
+        if regel in regeln:
+            zuerst.append(key)
+    return list(dict.fromkeys(zuerst + eintrag['ki']))
 
 
 def _ki_weich_ok(mn, m):
@@ -521,7 +566,7 @@ def bilanz(inc, now, abgebrochen=False):
         b['tipp'] = tipps.get('wasser_aus')
     elif mn['eskaliert']:
         b['tipp'] = tipps.get('eskalation')
-    elif not _fertig(mn, 'erkunden'):
+    elif not _erkundet(mn):
         b['tipp'] = tipps.get('ohne_erkunden')
     return b
 
@@ -553,7 +598,7 @@ def snapshot(inc, vehicles, now):
     """Was das Frontend über einen offenen Katalog-Einsatz sieht. Die Variante erst nach dem Erkunden."""
     mn = inc['mn']
     eintrag = _eintrag(mn)
-    erkundet = _fertig(mn, 'erkunden')
+    erkundet = _erkundet(mn)
     s = stufe(inc)
     da = vor_ort(inc, vehicles)
     liste = []
@@ -576,9 +621,8 @@ def snapshot(inc, vehicles, now):
     warnungen = []
     for w in mn['warnungen']:
         bis = None
-        if w['regel'] == 'E1':
-            tanks = [mn['tank'][i['fz']] for i in mn['m'] if i['status'] == 'loescht' and i['fz'] in mn['tank']]
-            bis = now + min(tanks) if tanks else None
+        if w['regel'] == 'E1' and w.get('fz') in vehicles:
+            bis = now + tank_sekunden(vehicles[w['fz']])
         elif w['regel'] == 'E2' and mn['rate'] > 0:
             bis = now + (eintrag['eskalation']['schwelle'] - mn['brand']) / mn['rate']
         warnungen.append({'text': w['text'], 'bis': bis})
@@ -591,12 +635,15 @@ def snapshot(inc, vehicles, now):
         'lage': {
             'brand': round(mn['brand']) if erkundet else None, 'brand_grob': _brand_grob(mn['brand']),
             'trend': trend, 'aus': mn['aus'], 'wasser': mn['wasser'],
-            'tank': {vid: round(sec) for vid, sec in mn['tank'].items()},
+            # Füllstand je Fahrzeug vor Ort: Liter, Tankgröße, Sekunden Löschzeit; löscht = zieht gerade daraus.
+            'tank': {v['id']: {'l': round(tank(v)), 'voll': tank_voll(v), 's': round(tank_sekunden(v)),
+                               'loescht': any(i['fz'] == v['id'] and i['status'] == 'loescht' for i in mn['m'])}
+                     for v in da if tank_voll(v)},
         },
         'massnahmen': liste,
         'laufend': laufend,
         'fahrzeuge': {v['id']: {'call': v['call'], 'kind': v['kind'], 'faehigkeiten': list(faehigkeiten(v)),
-                                'trupps': trupps(v), 'tank_voll': round(tank_voll(v))} for v in da},
+                                'trupps': trupps(v)} for v in da},
         'warnungen': warnungen,
         'nachforderungen': offene_nachforderungen(inc, vehicles),
         'nachgefordert': bool(mn['nachforderungen']),
