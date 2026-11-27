@@ -339,13 +339,17 @@ def aao_vorschlag(r, inc, stichwort, address, alle_bisherigen=False):
 def alarm_batch(r, inc, ids, now, author):
     """Mehrere Fahrzeuge auf einmal alarmieren (AAO). Eine Funkmeldung, gruppiert nach Einheit.
 
-    Nicht freie oder unbekannte Fahrzeuge werden übersprungen. Rückgabe: die alarmierten Fahrzeuge."""
-    done = []
-    for vid in dict.fromkeys(str(i) for i in ids):
-        v = r['vehicles'].get(vid)
-        if v and _free(v):
+    Nicht freie oder unbekannte Fahrzeuge werden übersprungen. Rückgabe: die alarmierten Fahrzeuge.
+    Anhänger und Abrollbehälter (game/flotte.py: kategorie != 'kfz') zuerst: Ihr Alarm koppelt ein Zugfahrzeug,
+    das danach nicht mehr frei ist und deshalb nicht doppelt ausrückt."""
+    before = set(inc['assigned'])
+    wanted = [r['vehicles'][vid] for vid in dict.fromkeys(str(i) for i in ids) if vid in r['vehicles']]
+    wanted.sort(key=lambda v: v.get('kategorie', 'kfz') == 'kfz')
+    for v in wanted:
+        if _free(v):
             alarm(r, inc, v, now)
-            done.append(v)
+    # Auch mitgekoppelte Zugfahrzeuge gehören in die Funkmeldung.
+    done = [r['vehicles'][vid] for vid in inc['assigned'] if vid not in before and vid in r['vehicles']]
     if done:
         groups = {}
         for v in done:

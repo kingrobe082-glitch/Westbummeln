@@ -348,3 +348,25 @@ def test_ki_stichworte_passen_zum_ort():
     veg = {ort for s, ort in sample if s.startswith('VEG')}
     assert veg and all(set(aao.ORTE[o]) & {'feld', 'wald'} for o in veg)
     assert not {s for s, _ in sample} & {'B Schiene', 'TH Bahn'}  # keine Bahnstrecke auf der Karte
+
+
+def test_abrollbehaelter_vor_zugfahrzeug_alarmieren(monkeypatch):
+    # Mit game/flotte.py koppelt der Alarm eines AB/Anhängers selbst ein Zugfahrzeug; das soll zuerst passieren,
+    # damit das gekoppelte WLF nicht zusätzlich einzeln ausrückt. Gekoppelte Fahrzeuge stehen in der Funkmeldung.
+    r, ls = aao_raum()
+    wlf, ab = r['vehicles']['LZ4-wlf-1'], r['vehicles']['LZ4-abschiene-1']
+    ab['kategorie'] = 'ab'
+    order = []
+
+    def fake_alarm(r_, inc, v, now):
+        order.append(v['id'])
+        inc['assigned'].append(v['id'])
+        v.update(phase='anfahrt', incident=inc['id'])
+        if v is ab:  # Kopplung wie in der Flotte-Engine
+            inc['assigned'].append(wlf['id'])
+            wlf.update(phase='anfahrt', incident=inc['id'])
+
+    monkeypatch.setattr(engine, 'alarm', fake_alarm)
+    act(r, ls, 1, 'incident', title='B Schiene', address='Flurstraße', vehicles=[wlf['id'], ab['id']])
+    assert order == [ab['id']]
+    assert r['radio'][-1]['message'].endswith('LZ 4: AB Schiene, WLF.')
