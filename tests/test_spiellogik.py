@@ -201,7 +201,7 @@ def test_closed_incidents_are_limited_in_memory(room):
     close_many(room, ls, engine.KEEP_CLOSED + 10)
     closed = [i for i in room['incidents'] if i['closed']]
     assert len(closed) == engine.KEEP_CLOSED
-    assert closed[-1]['title'] == f'F1 · Nr. {engine.KEEP_CLOSED + 9}'
+    assert closed[-1]['title'] == f'B 1 · Nr. {engine.KEEP_CLOSED + 9}'  # F1 heißt nach der AAO B 1
     assert old in room['incidents']
 
 
@@ -363,7 +363,8 @@ def test_unbesetzt_bei_kleinem_einsatz_im_mehrspielerbetrieb_gesperrt(room):
 
 
 def test_groesserer_einsatz_bekommt_unbesetzte_fahrzeuge_mit_ki_besatzung(room):
-    ls, gf, inc = leitstelle_mit_gf(room)  # F2 · Wohnungsbrand: Bedarf 2
+    ls, gf, inc = leitstelle_mit_gf(room)
+    inc['aao_soll'] = 2  # Bedarf 2 (laut AAO hätte B 2 mehr; hier geht es nur um die Sperre)
     snap = next(i for i in engine.snapshot(room, NOW)['incidents'] if i['id'] == inc['id'])
     assert snap['need'] == 2 and snap['ai_crew_block'] == 'erst freie Spielerfahrzeuge alarmieren'
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
@@ -382,6 +383,7 @@ def test_groesserer_einsatz_bekommt_unbesetzte_fahrzeuge_mit_ki_besatzung(room):
 
 def test_zurueckfahrendes_fahrzeug_zaehlt_nicht_zum_bedarf(room):
     ls, gf, inc = leitstelle_mit_gf(room)
+    inc['aao_soll'] = 2
     carla = join(room, 3, 'Carla')
     act(room, carla, 3, 'claim', vehicle='WB-5-HLF20')
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')

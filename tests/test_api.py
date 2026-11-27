@@ -135,6 +135,8 @@ def test_game_round_over_http(player, game_client):
     state = player.create()
     assert state['players'][0]['name'] == 'Florian1'
     rooms.rooms[player.room]['weather_mode'] = 'manual'
+    # Allein im Raum würde die KI-Leitstelle sofort nach AAO alarmieren (evtl. auch WB-3-HLF20).
+    rooms.rooms[player.room]['ai_last'] = 10 ** 12
 
     second = game_client()
     second.account('register', name='Zweite', email='zwei@example.com', password='Funkgeraet-42')

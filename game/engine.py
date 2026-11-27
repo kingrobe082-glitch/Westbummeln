@@ -13,7 +13,7 @@ import secrets
 import time
 from collections import deque
 
-from game import strassen
+from game import aao, strassen
 from game.parsing import to_int
 
 # Koordinaten beziehen sich auf die vollständige Originalkarte inklusive Legende.
@@ -71,14 +71,24 @@ AI_MAX_WAITING = 2  # kein neuer Einsatz, solange so viele noch ganz ohne Fahrze
 AI_SETTINGS = ('AI_INCIDENT_MIN_GAP', 'AI_INCIDENT_MAX_GAP', 'AI_MAX_OPEN_PER_PLAYER', 'AI_MAX_OPEN_EXTRA',
                'AI_MAX_OPEN', 'AI_MAX_WAITING')
 AI_REINFORCE_BELOW = 50  # weitere Fahrzeuge alarmiert die KI nur, solange der Einsatz unter 50 % ist
-# Stichworte der KI-Leitstelle: (Stichwort, Häufigkeit). Die Fahrzeugzahl ergibt sich aus der Stufe im Stichwort
-# (siehe needed_vehicles: F2 = 2, TH1 = 1, BMA = 1).
+# Stichworte der KI-Leitstelle nach AAO (game/aao.py): (Titel, Häufigkeit). Viel B 1, TH 1 und BMA, selten
+# B 3, ABC und MANV. Stichworte mit Ortsbedingung (VEG nur an Feld/Wald, Schiene nur an einer Bahnstrecke) lost
+# die KI nur an passenden Orten aus; ohne Bahnstrecke auf der Karte also nie.
 AI_INCIDENT_TYPES = [
-    ('F1 · Kleinbrand', 3), ('F1 · Mülltonnenbrand', 2), ('F1 · PKW-Brand', 2),
-    ('F2 · Wohnungsbrand', 2), ('F2 · Kellerbrand', 1), ('F3 · Dachstuhlbrand', 1),
-    ('TH1 · Ölspur', 2), ('TH1 · Baum auf Straße', 2), ('TH1 · Türöffnung', 2),
-    ('TH1 · Wasser im Keller', 1), ('TH2 · Verkehrsunfall, eingeklemmte Person', 1),
-    ('BMA · Brandmeldeanlage', 3), ('ABC1 · Gasgeruch', 1),
+    ('B 1 · Kleinbrand', 3), ('B 1 · Mülltonnenbrand', 3), ('B 1 · PKW-Brand', 2), ('B 1 · Containerbrand', 1),
+    ('BMA · Brandmeldeanlage ausgelöst', 6),
+    ('TH 1 · Türöffnung', 3), ('TH 1 · Ölspur', 2), ('TH 1 · Baum auf Straße', 2),
+    ('B 2 · Wohnungsbrand', 2), ('B 2 · Kellerbrand', 1), ('B 2 · Küchenbrand', 1),
+    ('B 2 Y · Wohnungsbrand, Person vermisst', .8), ('B 3 · Gewerbebrand', .3), ('B 3 · Brand mehrerer Gebäude', .2),
+    ('TH 2 · Verkehrsunfall, eingeklemmte Person', 1.5), ('TH 2 · Gebäudeschaden', .5),
+    ('TH Y · Verkehrsunfall, mehrere Personen eingeklemmt', .4), ('TH 3 · Gebäudeeinsturz', .1),
+    ('TH Öl · Ölschaden', 1), ('TH Wasser · Wasser im Keller', 1.5), ('TH Tier · Katze auf Baum', 1),
+    ('TH Drohne · Personensuche', .3),
+    ('VEG 1 · Böschungsbrand', 1.5), ('VEG 1 · Flächenbrand', 1), ('VEG 2 · Waldbrand', .4),
+    ('VEG 3 · Großer Waldbrand', .1),
+    ('B Container · LKW-Brand', .4), ('ABC 1 · Gasgeruch', 1), ('ABC 2 · Gefahrgutunfall', .15),
+    ('ABC 3 · Gefahrgutfreisetzung', .05), ('MANV 1 · Busunfall', .15), ('MANV 2 · Massenkarambolage', .05),
+    ('B Schiene · Brand Güterwagen', .2), ('TH Bahn · Person unter Zug', .2),
 ]
 VOICE_SIGNALS = ('offer', 'answer', 'candidate', 'bye', 'channel')
 DISPATCHER_ONLY = 'Nur die besetzte Leitstelle darf diese Aktion ausführen'
@@ -138,8 +148,10 @@ def default_sections():
 
 
 def new_incident(title, address, pos, creator, now):
+    title = aao.migriere_titel(title)
     return {
-        'id': secrets.token_hex(4), 'title': title, 'address': address, 'pos': pos, 'creator': creator,
+        'id': secrets.token_hex(4), 'title': title, 'stichwort': aao.stichwort_aus_titel(title), 'address': address,
+        'pos': pos, 'creator': creator,
         'created': time.strftime('%H:%M:%S'), 'closed': False, 'assigned': [], 'working': False,
         'progress': 0, 'updated': now, 'sections': default_sections(),
     }
@@ -207,7 +219,10 @@ def _manual(v):
 
 
 def needed_vehicles(inc):
-    """Fahrzeugbedarf laut Stichwort: die Stufe (F2 = 2, B3 = 3, TH1 = 1); ohne Stufe (BMA …) 1."""
+    """Fahrzeugbedarf: nach AAO-Alarm die Pflichtfahrzeuge laut AAO (aao_soll), sonst die Stufe im Stichwort
+    (B 2 = 2, B 3 = 3, TH 1 = 1; ohne Stufe wie BMA 1). Die Stufe gilt für die KI-Leitstelle mit Spielerfahrzeugen."""
+    if inc.get('aao_soll'):
+        return inc['aao_soll']
     match = re.match(r'\s*[^\W\d_]+\s*(\d)', inc['title'])
     return max(1, int(match.group(1))) if match else 1
 
@@ -302,6 +317,54 @@ def ai_dispatch(r, inc, v, now):
     return True
 
 
+def _aktiv(r, inc):
+    """Fahrzeuge, die gerade für den Einsatz unterwegs oder vor Ort sind."""
+    return [vid for vid in inc['assigned'] if vid in r['vehicles'] and r['vehicles'][vid]['incident'] == inc['id']
+            and r['vehicles'][vid]['phase'] in ('anfahrt', 'vorort')]
+
+
+def aao_vorschlag(r, inc, stichwort, address, alle_bisherigen=False):
+    """AAO-Vorschlag für einen neuen (inc=None) oder laufenden Einsatz; None ohne bekanntes Stichwort.
+
+    Bei einem laufenden Einsatz zählen die Fahrzeuge am Einsatz mit; vorgeschlagen wird nur die Differenz.
+    alle_bisherigen: auch schon heimgeschickte Fahrzeuge zählen (die KI alarmiert nicht ständig nach)."""
+    if stichwort not in aao.STICHWORTE:
+        return None
+    bereits = (inc['assigned'] if alle_bisherigen else _aktiv(r, inc)) if inc else ()
+    pos = inc['pos'] if inc else None
+    return aao.vorschlag(stichwort, r['vehicles'].values(), ort=address, pos=pos, frei=_free, bereits=bereits,
+                         bevorzugt=lambda v: bool(v['owner']))
+
+
+def alarm_batch(r, inc, ids, now, author):
+    """Mehrere Fahrzeuge auf einmal alarmieren (AAO). Eine Funkmeldung, gruppiert nach Einheit.
+
+    Nicht freie oder unbekannte Fahrzeuge werden übersprungen. Rückgabe: die alarmierten Fahrzeuge.
+    Anhänger und Abrollbehälter (game/flotte.py: kategorie != 'kfz') zuerst: Ihr Alarm koppelt ein Zugfahrzeug,
+    das danach nicht mehr frei ist und deshalb nicht doppelt ausrückt."""
+    before = set(inc['assigned'])
+    wanted = [r['vehicles'][vid] for vid in dict.fromkeys(str(i) for i in ids) if vid in r['vehicles']]
+    wanted.sort(key=lambda v: v.get('kategorie', 'kfz') == 'kfz')
+    for v in wanted:
+        if _free(v):
+            alarm(r, inc, v, now)
+    # Auch mitgekoppelte Zugfahrzeuge gehören in die Funkmeldung.
+    done = [r['vehicles'][vid] for vid in inc['assigned'] if vid not in before and vid in r['vehicles']]
+    if done:
+        groups = {}
+        for v in done:
+            groups.setdefault(aao.kurz(aao.einheit_von(v)), []).append(aao.typ_von(v))
+        units = '; '.join(f'{unit}: {", ".join(kinds)}' for unit, kinds in groups.items())
+        emit(r, author, f'Alarm {inc["title"]}, {inc["address"]} – {units}.')
+    return done
+
+
+def _emit_meldungen(r, inc, v, author):
+    """Virtuelle Kräfte (Rettungsdienst, Polizei …) gibt es nicht als Fahrzeuge, nur als Funkmeldung."""
+    if v and v['meldungen']:
+        emit(r, author, f'{inc["title"]}: über die Leitstelle verständigt – {", ".join(v["meldungen"])}.')
+
+
 def _crews(r):
     """Fahrzeuge, die ein Spieler als GF besetzt hat (ohne Status 6 – außer Dienst)."""
     vehicles = [r['vehicles'][p['vehicle']] for p in r['players'].values() if p['vehicle'] in r['vehicles']]
@@ -319,6 +382,21 @@ def _ai_vehicle(r, inc):
         return None
     return next((v for v in r['vehicles'].values()
                  if not v['owner'] and _free(v) and v['kind'] != 'KdoW'), None)
+
+
+def _ai_alarm_aao(r, inc, now):
+    """KI alarmiert die noch fehlenden Pflichtfahrzeuge laut AAO."""
+    v = aao_vorschlag(r, inc, inc.get('stichwort'), inc['address'], alle_bisherigen=True)
+    if not v:
+        return False
+    ids = [x['id'] for x in v['fahrzeuge'] if x['status'] != 'alarmiert' and not x['optional']]
+    if not ids:
+        return False
+    first = not inc['assigned']
+    alarm_batch(r, inc, ids, now, 'KI-Leitstelle')
+    if first:
+        _emit_meldungen(r, inc, v, 'KI-Leitstelle')
+    return True
 
 
 def ai_open_limit(r):
@@ -349,7 +427,9 @@ def _ai_new_incident(r, now):
     if not locations:
         return False
     name, x, y = rng.choice(locations)
-    title, _ = rng.choices(AI_INCIDENT_TYPES, weights=[t[1] for t in AI_INCIDENT_TYPES])[0]
+    types = [t for t in AI_INCIDENT_TYPES if aao.passt_zum_ort(aao.stichwort_aus_titel(t[0]), name)]
+    title, _ = rng.choices(types, weights=[t[1] for t in types])[0]
+    title = aao.migriere_titel(title)
     r['incidents'].append(new_incident(title, name, [x, y], 'KI-Leitstelle', now))
     r['ai_last'] = now
     r['ai_seq'] += 1
@@ -368,8 +448,15 @@ def run_ai(r, now):
     if (now - r['ai_last'] >= ai_incident_gap(r) and len(open_incidents) < ai_open_limit(r)
             and waiting < AI_MAX_WAITING):
         changed = _ai_new_incident(r, now)
-    # Erst bekommt jeder offene Einsatz ein Fahrzeug, dann werden Einsätze bis zur Fahrzeugzahl aufgefüllt.
     open_incidents = [i for i in r['incidents'] if not i['closed']]
+    if not _crews(r) and ai_mode(r):
+        # Allein ohne eigenes Fahrzeug: volle Alarmierung nach AAO mit KI-Besatzungen.
+        for inc in open_incidents:
+            if inc['progress'] < AI_REINFORCE_BELOW and _ai_alarm_aao(r, inc, now):
+                changed = True
+        return changed
+    # Mit Spielerfahrzeugen: erst bekommt jeder offene Einsatz ein Fahrzeug, dann werden Einsätze bis zur
+    # Stufe im Stichwort aufgefüllt (B 2 = 2). Unbesetzte Fahrzeuge alarmiert die KI dann nicht.
     for inc in open_incidents:
         if not inc['assigned']:
             v = _ai_vehicle(r, inc)
@@ -609,6 +696,8 @@ def handle(r, data, account_id, account_name, is_developer, now):
         return {'state': snapshot(r, now)}
     if action == 'voice_signal':
         return _voice_signal(r, pid, data)
+    if action == 'aao':
+        return _aao(r, pid, data)
     if action == 'voice_poll':
         since = max(0, to_int(data.get('since', 0), 'Nachrichtennummer'))
         messages = [m for m in r['voice_messages'] if m['to'] == pid and m['seq'] > since]
@@ -821,8 +910,64 @@ def _incident(r, pid, p, data, now, is_developer):
     pos = locate(address)
     if not safe_location(pos):
         raise ValueError('An dieser Stelle liegt eine Feuerwache oder ein Gerätehaus – anderen Einsatzort wählen')
-    r['incidents'].append(new_incident(title, address, pos, p['name'], now))
-    emit(r, 'Leitstelle', f'Neuer Einsatz: {title} – {address}.')
+    inc = new_incident(title, address, pos, p['name'], now)
+    r['incidents'].append(inc)
+    emit(r, 'Leitstelle', f'Neuer Einsatz: {inc["title"]} – {address}.')
+    _alarm_aao_auswahl(r, inc, data.get('vehicles'), now)
+
+
+def _alarm_aao_auswahl(r, inc, ids, now):
+    """Von der Leitstelle übernommene AAO-Auswahl alarmieren; Bedarf und virtuelle Kräfte laut AAO.
+
+    Die Leitstelle wählt bewusst aus: Unbesetzte Fahrzeuge (KI-Besatzung) sind hier ohne die Sperre aus
+    ai_crew_block erlaubt. Danach gilt die Zahl der AAO-Pflichtfahrzeuge als Bedarf."""
+    v = aao_vorschlag(r, inc, inc.get('stichwort'), inc['address'])
+    if v:
+        inc['aao_soll'] = len(_aktiv(r, inc)) + sum(
+            1 for x in v['fahrzeuge'] + v['fehlt'] if not x['optional'] and x.get('status') != 'alarmiert')
+    if ids is None:
+        return
+    if not isinstance(ids, list) or len(ids) > len(r['vehicles']):
+        raise ValueError('Fahrzeugauswahl ungültig')
+    alarm_batch(r, inc, ids, now, 'Leitstelle')
+    _emit_meldungen(r, inc, v, 'Leitstelle')
+
+
+def _aao(r, pid, data):
+    """Nur lesen: AAO-Vorschlag für Stichwort und Ort bzw. für das neue Stichwort eines laufenden Einsatzes."""
+    _require_dispatcher(r, pid)
+    stichwort = aao.normalisiere(data.get('stichwort'))
+    if not stichwort:
+        raise ValueError('Bitte ein Stichwort aus der AAO wählen')
+    inc = None
+    address = str(data.get('address', '')).strip()[:120]
+    if data.get('incident'):
+        inc = _open_incident(r, data)
+        address = inc['address']
+    elif not address:
+        raise ValueError('Bitte zuerst den Einsatzort wählen')
+    else:
+        locate(address)
+    return {'vorschlag': aao_vorschlag(r, inc, stichwort, address)}
+
+
+def _stufe(r, pid, p, data, now, is_developer):
+    """Stichwort eines laufenden Einsatzes ändern (Hoch-/Herabstufung) und die Differenz nachalarmieren."""
+    _require_dispatcher(r, pid)
+    inc = _open_incident(r, data)
+    neu = aao.normalisiere(data.get('stichwort'))
+    if not neu:
+        raise ValueError('Bitte ein Stichwort aus der AAO wählen')
+    alt = inc.get('stichwort') or aao.stichwort_aus_titel(inc['title'])
+    if neu != alt:
+        rest = inc['title'].split('·', 1)[1].strip() if '·' in inc['title'] else ''
+        if not rest or rest == aao.STICHWORTE.get(alt, {}).get('name'):
+            rest = aao.STICHWORTE[neu]['name']  # Standard-Meldebild mitwechseln (Kleinbrand → Mittelbrand)
+        inc['title'] = f'{neu} · {rest}'[:90]
+        inc['stichwort'] = neu
+        richtung = 'hochgestuft' if aao.stufe(neu) >= aao.stufe(alt) else 'herabgestuft'
+        emit(r, 'Leitstelle', f'Einsatz {inc["address"]}: {richtung} {alt or "?"} → {neu}.')
+    _alarm_aao_auswahl(r, inc, data.get('vehicles', []), now)
 
 
 def _dispatch(r, pid, p, data, now, is_developer):
@@ -930,6 +1075,7 @@ ACTIONS = {
     'speak': _speak,
     'incident': _incident,
     'dispatch': _dispatch,
+    'stufe': _stufe,
     'section_add': _section_add,
     'section_assign': _section_assign,
     'section_leader': _section_leader,

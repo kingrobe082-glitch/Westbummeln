@@ -50,7 +50,10 @@ def test_account_server_error_is_logged_without_personal_data(game_client, monke
 
 def test_status_must_be_a_number(player):
     player.create()
-    assert player.api('claim', vehicle='WB-3-HLF20').status_code == 200
+    # Allein im Raum alarmiert die KI-Leitstelle sofort nach AAO; ein Fahrzeug auf der Wache nehmen.
+    state = player.api('state').json()['state']
+    free = next(v['id'] for v in state['vehicles'] if v['phase'] == 'wache')
+    assert player.api('claim', vehicle=free).status_code == 200
     response = player.api('status', status='abc')
     assert response.status_code == 400
     assert response.json() == {'error': 'Status: bitte eine ganze Zahl angeben.'}
