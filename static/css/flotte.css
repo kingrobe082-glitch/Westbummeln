@@ -1,0 +1,45 @@
+/* Echte Flotte (static/js/flotte.js): Standort-Schilder auf der Karte und gruppierte Fahrzeugliste. */
+
+/* Eigene Schilder über den gedruckten Kartenlabels (die Karte ist anders beschriftet als die Wachübersicht).
+   Sie liegen unter Einsatz- und Fahrzeugpunkten und fangen keine Klicks ab. */
+#stationBadges{position:absolute;inset:0;z-index:3;pointer-events:none;font-size:clamp(6px,1.05cqi,11px)}
+.station-badge{
+  position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;
+  min-width:7.5em;padding:.25em .6em .3em;border-radius:2px;
+  background:#0e1013f0;border:1px solid #ffffff3d;border-top:3px solid var(--alarm,#d22b25);
+  box-shadow:0 1px 4px #000a;color:#fff;line-height:1.15;text-align:center;white-space:nowrap;
+}
+.station-badge b{font-weight:700;letter-spacing:.02em}
+.station-badge span{color:#c8d0d8;font-size:.85em}
+.station-badge .badge-extra{color:#f0c24b}
+.station-badge.free{border-top-color:#6d7379;opacity:.92}
+.station-badge.free b{color:#c8d0d8}
+/* Ersetzt den Abschnitt „Löschzüge (Standorte)“ der gedruckten Legende links unten */
+.station-legend{
+  position:absolute;left:.6%;top:63.4%;width:17.6%;height:14.8%;box-sizing:border-box;overflow:hidden;
+  padding:.3em .5em;border-radius:2px;background:#101317;border:1px solid #ffffff2e;color:#fff;
+  font-size:.78em;line-height:1.3;
+}
+.station-legend>b{display:block;margin:-.3em -.5em .25em;padding:.2em .5em;background:#8c1512;font-weight:700}
+.station-legend ul{margin:0;padding:0;list-style:none}
+.station-legend li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.station-legend li b{display:inline-block;min-width:2.7em;color:#f0c24b}
+@container (max-width:420px){
+  .station-badge span{display:none}
+  .station-badge{min-width:0;padding:.15em .35em}
+}
+
+/* Fahrzeugliste nach Einheit */
+.vehicle-group{border-bottom:1px solid var(--line)}
+.vehicle-group:last-child{border-bottom:0}
+.group-head{
+  display:grid;grid-template-columns:auto auto 1fr auto;align-items:baseline;gap:8px;width:100%;
+  min-height:40px;border:0;border-radius:0;background:transparent;text-align:left;padding:8px 4px;cursor:pointer;
+}
+.group-head:hover{background:var(--hover)}
+.group-head .arrow{transition:transform .15s;color:var(--muted)}
+.group-head[aria-expanded=true] .arrow{transform:rotate(90deg)}
+.group-head .small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group-count{font-family:var(--mono)}
+.group-body{padding:0 0 4px 18px}
+@media(prefers-reduced-motion:reduce){.group-head .arrow{transition:none}}

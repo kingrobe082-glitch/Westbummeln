@@ -37,10 +37,10 @@ def busy_room():
     carl = next(pid for pid, p in r['players'].items() if p['account'] == 3)
     act(r, 1, anna, 'kick', T, target=carl, ban=True)
     act(r, 1, anna, 'take_ls', T)
-    act(r, 2, ben, 'claim', T, 'Ben', vehicle='WB-1-HLF20')
+    act(r, 2, ben, 'claim', T, 'Ben', vehicle='LZ5-LF20Wald-1')
     act(r, 1, anna, 'incident', T, title='F2 · Wohnungsbrand', address='Marktplatz')
     inc = r['incidents'][0]['id']
-    act(r, 1, anna, 'dispatch', T + 1, incident=inc, vehicle='WB-1-HLF20')
+    act(r, 1, anna, 'dispatch', T + 1, incident=inc, vehicle='LZ5-LF20Wald-1')
     act(r, 2, ben, 'status', T + 1, 'Ben', status=3)
     act(r, 1, anna, 'section_add', T + 2, incident=inc, section='Abschnitt Nord')
     act(r, 2, ben, 'radio', T + 3, 'Ben', message='Verstanden, fahren an.')
@@ -85,7 +85,7 @@ def test_roundtrip_restores_the_same_room(state_file):
     assert without_times(plain(after)) == {**without_times(before), 'rev': before['rev'] + 1,
                                            'voice_messages': []}
     assert after['banned'] == {3: 'Carl'}  # Konto-ID bleibt eine Zahl
-    assert after['players'][ben]['vehicle'] == 'WB-1-HLF20'
+    assert after['players'][ben]['vehicle'] == 'LZ5-LF20Wald-1'
     assert after['dispatcher'] == anna
     assert 'Abschnitt Nord' in after['incidents'][0]['sections']
     assert after['radio'][-1]['message'] == 'Verstanden, fahren an.'
@@ -106,14 +106,14 @@ def test_game_continues_after_restart_with_same_player_ids():
 def test_downtime_does_not_count():
     r, anna, ben = busy_room()
     code = r['code']
-    v = r['vehicles']['WB-1-HLF20']
+    v = r['vehicles']['LZ5-LF20Wald-1']
     inc = r['incidents'][0]
     old = {k: v[k] for k in ('phase_at', 'phase_until')}
     old_updated, old_ai, old_weather = inc['updated'], r['ai_last'], r['weather_at']
     saved = T + 3
     restart(saved + DOWN)
     r = rooms.rooms[code]
-    v = r['vehicles']['WB-1-HLF20']
+    v = r['vehicles']['LZ5-LF20Wald-1']
     assert v['phase_at'] == old['phase_at'] + DOWN
     assert v['phase_until'] == old['phase_until'] + DOWN
     assert r['incidents'][0]['updated'] == old_updated + DOWN
@@ -147,7 +147,7 @@ def test_players_get_a_grace_period():
     assert set(r['players']) == {anna, ben}
     engine.clean_offline(r, now + persistence.GRACE + 1)
     assert r['players'] == {}
-    assert r['vehicles']['WB-1-HLF20']['owner'] is None
+    assert r['vehicles']['LZ5-LF20Wald-1']['owner'] is None
 
 
 def test_ai_room_keeps_its_rhythm():
@@ -264,8 +264,8 @@ def ki_room(seed):
     r['ai_last'] = T  # erster KI-Einsatz erst, wenn beide GF ihr Fahrzeug haben
     anna = result['id']
     ben = act(r, 2, None, 'join', T, 'Ben')['id']
-    act(r, 1, anna, 'claim', T, vehicle='WB-1-HLF20')
-    act(r, 2, ben, 'claim', T, 'Ben', vehicle='WB-4-LF20')
+    act(r, 1, anna, 'claim', T, vehicle='LZ5-LF20Wald-1')
+    act(r, 2, ben, 'claim', T, 'Ben', vehicle='LZ6-RW-1')
     for t in range(1, 120):
         for p in r['players'].values():
             p['last'] = T + t

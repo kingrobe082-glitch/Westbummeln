@@ -23,14 +23,14 @@ def act(r, pid, account, action, now=NOW, **data):
 
 @pytest.fixture
 def lage(room):
-    """Anna in der Leitstelle, Ben auf WB-2-LF20, ein Einsatz, das Fahrzeug ist alarmiert."""
+    """Anna in der Leitstelle, Ben auf LZ2-MLF-2, ein Einsatz, das Fahrzeug ist alarmiert."""
     ls, gf = join(room, 1, 'Anna'), join(room, 2, 'Ben')
     act(room, ls, 1, 'take_ls')
-    act(room, gf, 2, 'claim', vehicle='WB-2-LF20')
+    act(room, gf, 2, 'claim', vehicle='LZ2-MLF-2')
     act(room, ls, 1, 'incident', title='F2 · Wohnungsbrand', address='Hauptstraße 5')
     inc = room['incidents'][-1]
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    return ls, gf, inc, room['vehicles']['WB-2-LF20']
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
+    return ls, gf, inc, room['vehicles']['LZ2-MLF-2']
 
 
 def test_alarmiertes_spielerfahrzeug_wartet_auf_status_3(room, lage):
@@ -72,7 +72,7 @@ def test_unpassende_status_beim_alarm_abgelehnt(room, lage, status, fehler):
 
 def test_status_3_ohne_alarm_abgelehnt(room):
     gf = join(room, 2, 'Ben')
-    act(room, gf, 2, 'claim', vehicle='WB-2-LF20')
+    act(room, gf, 2, 'claim', vehicle='LZ2-MLF-2')
     with pytest.raises(ValueError, match='Status 3 nur nach einer Alarmierung'):
         act(room, gf, 2, 'status', status=3)
 
@@ -106,18 +106,18 @@ def test_sprechwunsch_und_sprechaufforderung(room, lage):
     assert v['speak'] == NOW + 5 and v['status'] == 2  # Status 5 ändert den Fahrzeugstatus nicht
     assert room['radio'][-1]['message'] == 'Status 5 – Sprechwunsch (Ben).'
     with pytest.raises(ValueError, match='Leitstelle'):
-        act(room, gf, 2, 'speak', vehicle='WB-2-LF20')
-    act(room, ls, 1, 'speak', now=NOW + 8, vehicle='WB-2-LF20')
+        act(room, gf, 2, 'speak', vehicle='LZ2-MLF-2')
+    act(room, ls, 1, 'speak', now=NOW + 8, vehicle='LZ2-MLF-2')
     assert 'speak' not in v and v['speak_ok'] == NOW + 8
-    assert room['radio'][-1]['message'] == 'Florian WB 2 LF 20: Sprechaufforderung (J) – bitte sprechen.'
+    assert room['radio'][-1]['message'] == 'Florian Westbummeln 2 MLF-2: Sprechaufforderung (J) – bitte sprechen.'
     with pytest.raises(ValueError, match='Kein Sprechwunsch'):
-        act(room, ls, 1, 'speak', vehicle='WB-2-LF20')
+        act(room, ls, 1, 'speak', vehicle='LZ2-MLF-2')
 
 
 def test_ki_leitstelle_beantwortet_sprechwunsch(room):
     gf = join(room, 2, 'Ben')
-    act(room, gf, 2, 'claim', vehicle='WB-2-LF20')
-    v = room['vehicles']['WB-2-LF20']
+    act(room, gf, 2, 'claim', vehicle='LZ2-MLF-2')
+    v = room['vehicles']['LZ2-MLF-2']
     act(room, gf, 2, 'status', status=5)
     engine.update(room, NOW + engine.AI_SPEAK_DELAY - 1)
     assert v.get('speak')

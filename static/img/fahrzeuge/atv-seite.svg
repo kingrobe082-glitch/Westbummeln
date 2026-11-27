@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 100" width="150" height="100">
+<!-- ATV (Quad) für Vegetationsbrände in Seitenansicht.
+     Eigene Zeichnung für Westbummeln. Front nach links; auf der Karte nur gespiegelt, nicht gedreht. -->
+<defs>
+  <linearGradient id="lack" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#f03a30"/><stop offset="1" stop-color="#b81815"/>
+  </linearGradient>
+  <linearGradient id="glas" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3b4652"/><stop offset="1" stop-color="#1b2229"/>
+  </linearGradient>
+  <linearGradient id="rollo" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9dde1"/><stop offset="1" stop-color="#9aa1a8"/>
+  </linearGradient>
+  <linearGradient id="chrom" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#eef1f4"/><stop offset="1" stop-color="#9aa1a8"/>
+  </linearGradient>
+</defs>
+<rect x="64" y="8" width="4" height="22" fill="#3f444a"/><rect x="58" y="4" width="16" height="7" rx="3" fill="#1f3fbf" stroke="#0d1a55" stroke-width="1.5"/>
+<path d="M14 58 Q16 40 34 38 L60 36 L76 28 L100 28 Q108 28 112 36 L136 40 Q144 42 144 52 L144 58 Z" fill="url(#lack)" stroke="#5a0a08" stroke-width="2"/>
+<rect x="66" y="22" width="34" height="9" rx="4" fill="#2b2f33"/>
+<path d="M44 38 L40 20 L30 18" fill="none" stroke="#2b2f33" stroke-width="4" stroke-linecap="round"/>
+<rect x="18" y="50" width="122" height="5" fill="#f4e400"/>
+<g fill="#1a1a1a"><circle cx="36" cy="74" r="20"/><circle cx="118" cy="74" r="20"/></g>
+<g fill="#b9bec4" stroke="#6d7379" stroke-width="1.5"><circle cx="36" cy="74" r="9"/><circle cx="118" cy="74" r="9"/></g>
+<g fill="#6d7379"><circle cx="36" cy="74" r="2.5"/><circle cx="118" cy="74" r="2.5"/></g>
+</svg>

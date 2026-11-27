@@ -13,23 +13,36 @@ import secrets
 import time
 from collections import deque
 
-from game import strassen
+from game import flotte, strassen
 from game.parsing import to_int
 
+# Die Flotte steht in game/flotte.py (Einheiten, Typen, Fahrzeuge der FF Westbummeln).
 # Koordinaten beziehen sich auf die vollständige Originalkarte inklusive Legende.
-BASE = {1: (.235, .55), 2: (.466, .51), 3: (.565, .215), 4: (.827, .46), 5: (.548, .80), 6: (.276, .15)}
-FLEET = [
-    {
-        'id': f'WB-{unit}-{kind.replace(" ", "")}',
-        'call': f'Florian WB {unit} {kind}',
-        'unit': unit,
-        'kind': kind,
-        'seats': 3 if kind == 'KdoW' else 9,
-        'base': BASE[unit],
-    }
-    for unit in range(1, 7)
-    for kind in ('HLF 20', 'KdoW', 'LF 20')
-]
+BASE = {kennung: tuple(e['pos']) for kennung, e in flotte.EINHEITEN.items()}
+# Felder eines Fahrzeugs, die sich im Spiel nicht ändern (außer Rufname/Sitze über die Raumeinstellungen).
+# Sie gehen nur an das Frontend, wenn es sie noch nicht hat (siehe snapshot, fleet_rev).
+STATIC_KEYS = ('call', 'unit', 'kind', 'kategorie', 'grafik', 'seats', 'base')
+
+
+def _fleet_entry(f):
+    typ = flotte.TYPEN[f['typ']]
+    return {'id': f['id'], 'call': f['rufname'], 'unit': f['einheit'], 'kind': f['typ'],
+            'kategorie': typ['kategorie'], 'grafik': typ['grafik'], 'seats': typ['sitze'],
+            'base': BASE[f['einheit']]}
+
+
+FLEET = [_fleet_entry(f) for f in flotte.FAHRZEUGE]
+# Fahrzeug-IDs vor der echten Flotte (6 Wachen × HLF 20, KdoW, LF 20, „WB-1-HLF20“) → neue IDs.
+# Die alten Wachen 1–5 lagen dort, wo heute LZ 5, LZ 2, LZ 4, LZ 6 und LZ 3 stehen (gleiche Position);
+# die alte Wache 6 (Nordwest) hat keine Einheit mehr, ihre Fahrzeuge gehen an LZ 1 Mitte.
+ALT_IDS = {
+    'WB-1-HLF20': 'LZ5-LF20Wald-1', 'WB-1-LF20': 'LZ5-TLF3000-1', 'WB-1-KdoW': 'LZ5-KdoWWald-1',
+    'WB-2-HLF20': 'LZ2-MLF-1', 'WB-2-LF20': 'LZ2-MLF-2', 'WB-2-KdoW': 'LZ2-MTW-1',
+    'WB-3-HLF20': 'LZ4-HLF10-1', 'WB-3-LF20': 'LZ4-HLF10-2', 'WB-3-KdoW': 'LZ4-RW-1',
+    'WB-4-HLF20': 'LZ6-HLF20-1', 'WB-4-LF20': 'LZ6-RW-1', 'WB-4-KdoW': 'LZ6-KdoWLage-1',
+    'WB-5-HLF20': 'LZ3-HLF20-1', 'WB-5-LF20': 'LZ3-DLK2312-1', 'WB-5-KdoW': 'LZ3-ELW1-1',
+    'WB-6-HLF20': 'LZ1-HLF20-1', 'WB-6-LF20': 'LZ1-LF20-1', 'WB-6-KdoW': 'LZ1-MTW-1',
+}
 # Straßenpositionen wurden anhand der vom Spieler gelieferten Karte bestimmt.
 PLACES = [
     ('Hauptstraße', .39, .53), ('Marktplatz', .41, .65), ('Schulstraße', .59, .38),
@@ -45,8 +58,8 @@ PLACES = [
     ('Bürgerstraße', .63, .92), ('Forstweg', .38, .09), ('Feldweg', .74, .10),
     ('Am Rathauspark', .32, .70), ('Erlenstraße', .92, .60),
 ]
-# Feuerwachen und Gerätehäuser dürfen keine Einsatzorte sein.
-STATIONS = [*BASE.values(), (.38, .16), (.90, .37), (.88, .23), (.27, .84), (.92, .84)]
+# Feuerwachen und Gerätehäuser dürfen keine Einsatzorte sein (auch die gedruckte Wache ohne Einheit).
+STATIONS = list(dict.fromkeys([*BASE.values(), *(tuple(w['pos']) for w in flotte.FREIE_WACHEN)]))
 OFFLINE_TIMEOUT = 30
 UNATTENDED_DELAY = 20  # Sekunden, bis die KI ein unbesetztes Fahrzeug vor Ort übernimmt
 SNAPSHOT_CLOSED = 20  # so viele abgeschlossene Einsätze sieht das Frontend
@@ -93,15 +106,18 @@ def _radio_noop(room_code, entry):
 radio_hook = _radio_noop
 
 
+def _fresh_vehicle(entry):
+    return {**entry, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0,
+            'towing': None, 'towed_by': None}
+
+
 def new_room(code, seed=None):
     """Neuer Raum. seed macht den Zufall der KI-Leitstelle reproduzierbar (Tests, Simulation)."""
     return {
         'code': code,
         'players': {},
-        'vehicles': {
-            v['id']: {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0}
-            for v in FLEET
-        },
+        'vehicles': {v['id']: _fresh_vehicle(v) for v in FLEET},
+        'fleet_rev': 1,  # zählt hoch, wenn sich Rufname oder Sitze eines Fahrzeugs ändern
         'incidents': [],
         'radio': [],
         'rev': 0,
@@ -121,6 +137,69 @@ def new_room(code, seed=None):
         'weather_at': 0,
         'weather_history': [],
     }
+
+
+def sync_fleet(r):
+    """Fahrzeuge eines gespeicherten Raums auf die aktuelle Flotte (FLEET) umstellen.
+
+    Alte IDs (ALT_IDS) werden umbenannt und behalten Besatzung, Status und laufende Fahrt; fehlende
+    Fahrzeuge kommen frisch auf ihre Wache; unbekannte fallen weg, auch aus Einsätzen und von Spielern.
+    Liefert (umbenannt, entfernt, neu) als Listen von IDs."""
+    vehicles = r.get('vehicles') or {}
+    renamed = {}
+    for old, new in ALT_IDS.items():
+        if old in vehicles and new not in vehicles:
+            vehicles[new] = {**vehicles.pop(old), 'id': new}
+            renamed[old] = new
+    known = {f['id']: f for f in FLEET}
+    removed = [vid for vid in vehicles if vid not in known]
+    added = [vid for vid in known if vid not in vehicles]
+    changed = bool(renamed or removed or added)
+    for vid, entry in known.items():
+        v = vehicles.get(vid)
+        if v is None:
+            vehicles[vid] = _fresh_vehicle(entry)
+            continue
+        # Rufname und Sitze aus den Raumeinstellungen bleiben, außer das Fahrzeug wurde umbenannt.
+        keep = () if vid in renamed.values() else ('call', 'seats')
+        fresh = {k: entry[k] for k in STATIC_KEYS if k not in keep or k not in v}
+        if any(plain(v.get(k)) != plain(value) for k, value in fresh.items()):
+            v.update(fresh)
+            changed = True
+        v.setdefault('towing', None)
+        v.setdefault('towed_by', None)
+    r['vehicles'] = {vid: vehicles[vid] for vid in known}
+    ok = r['vehicles']
+
+    def ref(vid):
+        vid = renamed.get(vid, vid)
+        return vid if vid in ok else None
+
+    for p in r.get('players', {}).values():
+        if p.get('vehicle'):
+            p['vehicle'] = ref(p['vehicle'])
+            if not p['vehicle'] and p.get('role') == 'gf':
+                p['role'] = 'none'
+    owners = {p['vehicle']: pid for pid, p in r.get('players', {}).items() if p.get('vehicle')}
+    for vid, v in ok.items():
+        if v.get('owner') and owners.get(vid) != v['owner']:
+            v['owner'] = None
+        if v.get('towing') not in ok or ok[v['towing']].get('towed_by') != vid:
+            v['towing'] = None
+        if v.get('towed_by') not in ok or ok[v['towed_by']].get('towing') != vid:
+            v['towed_by'] = None
+    for inc in r.get('incidents', []):
+        inc['assigned'] = list(dict.fromkeys(filter(None, map(ref, inc.get('assigned', [])))))
+        for section in inc.get('sections', {}).values():
+            section['vehicles'] = list(dict.fromkeys(filter(None, map(ref, section.get('vehicles', [])))))
+    if changed:
+        r['fleet_rev'] = r.get('fleet_rev', 0) + 1
+    return list(renamed), removed, added
+
+
+def plain(value):
+    """Tupel als Listen, wie nach dem Speichern als JSON (zum Vergleichen)."""
+    return list(value) if isinstance(value, tuple) else value
 
 
 def emit(r, author, message, kind='auto', call=None):
@@ -206,6 +285,72 @@ def _manual(v):
     return bool(v['owner'])
 
 
+def is_kfz(v):
+    """Kraftfahrzeug (fährt selbst, ein GF kann es übernehmen) – kein Anhänger oder Abrollbehälter."""
+    return v.get('kategorie', flotte.KFZ) == flotte.KFZ
+
+
+def _faehigkeiten(v):
+    return flotte.TYPEN.get(v.get('kind'), {}).get('faehigkeiten', [])
+
+
+def _kfz_count(r, ids):
+    return sum(1 for vid in ids if vid in r['vehicles'] and is_kfz(r['vehicles'][vid]))
+
+
+# ------------------------------------------------------------------ Gespanne
+
+def zug_candidates(r, v):
+    """Fahrzeuge im Raum, die Anhänger/Abrollbehälter v ziehen dürfen (Vorzugsreihenfolge aus game/flotte.py)."""
+    if is_kfz(v) or v['id'] not in flotte.FAHRZEUG:
+        return []
+    return [r['vehicles'][z['id']] for z in flotte.zugfahrzeuge_fuer(v['id']) if z['id'] in r['vehicles']]
+
+
+def free_zug(r, v):
+    """Freies Zugfahrzeug für v: zuerst eines mit Spieler-GF, sonst das erste freie; None, wenn keins frei ist."""
+    free = [z for z in zug_candidates(r, v) if _free(z) and not z.get('towing')]
+    return next((z for z in free if z['owner']), None) or next(iter(free), None)
+
+
+def _zug_types(v):
+    return ' oder '.join(flotte.TYPEN.get(v.get('kind'), {}).get('zug', [])) or 'Zugfahrzeug'
+
+
+def _route_via(start, via, target):
+    """Straßenweg start → via → target (Zugfahrzeug holt den Anhänger an dessen Standort ab)."""
+    if tuple(start) == tuple(via):
+        return strassen.route(start, target)
+    first, second = strassen.route(start, via), strassen.route(via, target)
+    return first + second[1:]
+
+
+def _follow(towed, zug):
+    """Der Anhänger fährt dieselbe Fahrt wie sein Zugfahrzeug (eine Route, gleiche Ankunft)."""
+    for key in ('phase', 'phase_at', 'phase_until', 'phase_from', 'phase_to', 'phase_route'):
+        if key in zug:
+            towed[key] = zug[key]
+        else:
+            towed.pop(key, None)
+
+
+def _coupled(r, v):
+    """Anhänger, der gerade an seinem Zugfahrzeug hängt (fährt mit dem Zugfahrzeug, nicht allein)."""
+    zug = r['vehicles'].get(v.get('towed_by') or '')
+    return bool(zug and zug.get('towing') == v['id'])
+
+
+def _decouple(r, zug, now):
+    """Gespann auf der Wache lösen. Ein Anhänger, der noch unterwegs ist, steht danach auf seiner Wache."""
+    towed = r['vehicles'].get(zug.get('towing') or '')
+    zug['towing'] = None
+    if towed and towed.get('towed_by') == zug['id']:
+        towed['towed_by'] = None
+        if towed['phase'] != 'wache':
+            _stop(towed, 'wache', towed['base'], now)
+        towed.update(status=2, incident=None)
+
+
 def needed_vehicles(inc):
     """Fahrzeugbedarf laut Stichwort: die Stufe (F2 = 2, B3 = 3, TH1 = 1); ohne Stufe (BMA …) 1."""
     match = re.match(r'\s*[^\W\d_]+\s*(\d)', inc['title'])
@@ -220,7 +365,7 @@ def ai_crew_block(r, inc):
     if ai_mode(r):
         return ''
     need = needed_vehicles(inc)
-    active = sum(1 for vid in inc['assigned'] if vid in r['vehicles']
+    active = sum(1 for vid in inc['assigned'] if vid in r['vehicles'] and is_kfz(r['vehicles'][vid])
                  and r['vehicles'][vid]['incident'] == inc['id']
                  and r['vehicles'][vid]['phase'] in ('anfahrt', 'vorort'))
     if active >= need:
@@ -230,27 +375,51 @@ def ai_crew_block(r, inc):
     return ''
 
 
-def alarm(r, inc, v, now):
-    """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI)."""
+def _assign(inc, v):
     if v['id'] not in inc['assigned']:
         inc['assigned'].append(v['id'])
     sections = inc.setdefault('sections', default_sections())
     if not any(v['id'] in section['vehicles'] for section in sections.values()):
         sections['Hauptabschnitt']['vehicles'].append(v['id'])
-    v['incident'] = inc['id']
-    if _manual(v):
-        # Spielerfahrzeug: bleibt alarmiert auf der Wache, bis der GF Status 3 gibt (_status).
-        v['alarmed_at'] = now
+
+
+def alarm(r, inc, v, now, zug=None):
+    """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI).
+
+    Anhänger und Abrollbehälter brauchen ein freies Zugfahrzeug zug (siehe free_zug): Es wird
+    mitalarmiert, holt den Anhänger an dessen Standort ab, und beide fahren als ein Gespann.
+    Ein Spielerfahrzeug bleibt alarmiert auf der Wache, bis der GF Status 3 gibt (_status)."""
+    if is_kfz(v):
+        zug, towed = v, None
+    else:
+        if zug is None:
+            raise ValueError(f'{v["call"]} braucht ein freies Zugfahrzeug ({_zug_types(v)})')
+        towed = v
+    _assign(inc, zug)
+    zug['incident'] = inc['id']
+    if towed:
+        _assign(inc, towed)
+        zug['towing'] = towed['id']
+        towed.update(incident=inc['id'], towed_by=zug['id'])
+    if _manual(zug):
+        zug['alarmed_at'] = now
         return
-    _depart(r, v, inc, now)
+    _depart(r, zug, inc, now)
 
 
 def _depart(r, v, inc, now):
-    """Ausrücken zur Einsatzstelle mit Status 3."""
-    route = strassen.route(v['base'], inc['pos'])
+    """Ausrücken zur Einsatzstelle mit Status 3; ein angekoppelter Anhänger fährt mit."""
+    towed = r['vehicles'].get(v.get('towing') or '')
+    if towed:
+        route = _route_via(v['base'], towed['base'], inc['pos'])
+    else:
+        route = strassen.route(v['base'], inc['pos'])
     _start_trip(v, 'anfahrt', route, trip_duration(r, route), now)
     v['status'] = 3
     v.pop('alarmed_at', None)
+    if towed:
+        _follow(towed, v)
+        towed['status'] = 3
 
 
 def trip_duration(r, route):
@@ -297,9 +466,19 @@ def _distance(a, b):
 def ai_dispatch(r, inc, v, now):
     if not _free(v):
         return False
-    alarm(r, inc, v, now)
-    emit(r, 'KI-Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
+    zug = None
+    if not is_kfz(v):
+        zug = free_zug(r, v)
+        if not zug:
+            return False
+    alarm(r, inc, v, now, zug)
+    emit(r, 'KI-Leitstelle', f'Alarm {alarm_name(v, zug)}: {inc["title"]}, {inc["address"]}.')
     return True
+
+
+def alarm_name(v, zug=None):
+    """Rufname für die Alarmmeldung; bei einem Gespann das Zugfahrzeug vorneweg."""
+    return f'{zug["call"]} mit {v["call"]}' if zug else v['call']
 
 
 def _crews(r):
@@ -311,14 +490,15 @@ def _crews(r):
 def _ai_vehicle(r, inc):
     """Fahrzeug für die KI-Leitstelle: das nächste freie Spielerfahrzeug.
 
-    Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn das erlaubt ist."""
+    Sitzt kein Spieler auf einem Fahrzeug, das nächste unbesetzte Löschfahrzeug, wenn das erlaubt ist."""
     crews = _crews(r)
     if crews:
         return min((v for v in crews if _free(v)), key=lambda v: _distance(v['base'], inc['pos']), default=None)
     if not ai_mode(r):
         return None
-    return next((v for v in r['vehicles'].values()
-                 if not v['owner'] and _free(v) and v['kind'] != 'KdoW'), None)
+    return min((v for v in r['vehicles'].values()
+                if not v['owner'] and _free(v) and is_kfz(v) and 'loeschen' in _faehigkeiten(v)),
+               key=lambda v: _distance(v['base'], inc['pos']), default=None)
 
 
 def ai_open_limit(r):
@@ -376,7 +556,7 @@ def run_ai(r, now):
             if v and ai_dispatch(r, inc, v, now):
                 changed = True
     for inc in open_incidents:
-        while len(inc['assigned']) < needed_vehicles(inc) and inc['progress'] < AI_REINFORCE_BELOW:
+        while _kfz_count(r, inc['assigned']) < needed_vehicles(inc) and inc['progress'] < AI_REINFORCE_BELOW:
             v = _ai_vehicle(r, inc)
             if not v or not ai_dispatch(r, inc, v, now):
                 break
@@ -396,7 +576,7 @@ def ai_group_leaders(r, now):
             continue
         on_site = [r['vehicles'][vid] for vid in inc['assigned']
                    if vid in r['vehicles'] and r['vehicles'][vid]['phase'] == 'vorort'
-                   and not r['vehicles'][vid]['owner']]
+                   and not r['vehicles'][vid]['owner'] and is_kfz(r['vehicles'][vid])]
         if solo and on_site:
             emit(r, 'KI-Gruppenführer', f'{inc["title"]}: Mannschaft beginnt Maßnahmen.')
         else:
@@ -434,25 +614,35 @@ def update(r, now=None):
         # Fahrten aus älteren Räumen ohne phase_until enden wie früher nach der aktuellen Fahrzeit.
         if now < v.get('phase_until', v['phase_at'] + travel_time(r)):
             continue
+        # Anhänger und Abrollbehälter melden sich nicht selbst; sie kommen mit ihrem Zugfahrzeug an.
+        talk = is_kfz(v)
         if v['phase'] == 'anfahrt':
             _stop(v, 'vorort', v.get('phase_to') or v['base'], now)
             if _manual(v):
                 emit(r, v['call'], 'Einsatzstelle erreicht – bitte Status 4 geben.')
             else:
                 v['status'] = 4
-                emit(r, v['call'], 'Status 4 – Einsatzstelle erreicht.')
+                if talk:
+                    emit(r, v['call'], 'Status 4 – Einsatzstelle erreicht.')
         else:
             _stop(v, 'wache', v['base'], now)
             v['incident'] = None
+            if v.get('towing'):
+                _decouple(r, v, now)
+            if _coupled(r, v):
+                # Abgestellt an der eigenen Wache; das Zugfahrzeug fährt allein weiter heim.
+                r['vehicles'][v['towed_by']]['towing'] = None
+            v['towed_by'] = None
             if _manual(v):
                 emit(r, v['call'], 'Auf der Wache angekommen – bitte Status 2 geben.')
             else:
                 v['status'] = 2
-                emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
+                if talk:
+                    emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
         changed = True
     # Alarmiertes Fahrzeug ohne Spieler (z. B. Verbindung verloren): KI-Besatzung rückt aus.
     for v in r['vehicles'].values():
-        if v['phase'] == 'wache' and v['incident'] and not _manual(v):
+        if v['phase'] == 'wache' and v['incident'] and not _manual(v) and not _coupled(r, v):
             inc = next((i for i in r['incidents'] if i['id'] == v['incident'] and not i['closed']), None)
             if inc:
                 _depart(r, v, inc, now)
@@ -523,11 +713,15 @@ def _finish_incident(r, inc, now):
         section['vehicles'] = []
     for vid in inc['assigned']:
         v = r['vehicles'].get(vid)
-        if v and v['incident'] == inc['id'] and v['phase'] in ('anfahrt', 'vorort'):
+        if not v or v['incident'] != inc['id'] or _coupled(r, v):
+            continue
+        if v['phase'] in ('anfahrt', 'vorort'):
             _send_home(r, v, now)
-        elif v and v['incident'] == inc['id'] and v['phase'] == 'wache':
+        elif v['phase'] == 'wache':
             v['incident'] = None
             v.pop('alarmed_at', None)
+            if v.get('towing'):
+                _decouple(r, v, now)
 
 
 def _send_home(r, v, now):
@@ -551,9 +745,22 @@ def _send_home(r, v, now):
     else:
         back = strassen.route(vehicle_position(v, now), v['base'])
         duration = trip_duration(r, back)
+    towed = r['vehicles'].get(v.get('towing') or '')
+    if towed and tuple(towed['base']) != tuple(v['base']):
+        # Fremder Anhänger (Abrollbehälter eines LZ auf dem WLF des FTZ): erst dort abstellen, dann heim.
+        start = vehicle_position(v, now)
+        drop = strassen.route(start, towed['base'])
+        _start_trip(towed, 'rueckfahrt', drop, trip_duration(r, drop), now)
+        towed['status'] = 1
+        back = _route_via(start, towed['base'], v['base'])
+        duration = trip_duration(r, back)
+        towed = None
     _start_trip(v, 'rueckfahrt', back, duration, now)
     if not _manual(v):
         v['status'] = 1
+    if towed:
+        _follow(towed, v)
+        towed['status'] = 1
 
 
 def _snapshot_incident(r, inc):
@@ -562,14 +769,36 @@ def _snapshot_incident(r, inc):
     return {key: value for key, value in inc.items() if key != 'sections'}
 
 
-def snapshot(r, now=None):
+# Felder, die das Frontend für ein Fahrzeug auf der Wache nicht braucht (Position = Wache).
+_AT_STATION = ('phase_at', 'phase_from', 'phase_to', 'phase_until', 'phase_route', 'unattended_since')
+# Ein angehängter Anhänger fährt die Route seines Zugfahrzeugs; das Frontend zeichnet ihn am Zugfahrzeug.
+_TOWED = ('phase_from', 'phase_to', 'phase_route')
+
+
+def _snapshot_vehicle(v, full):
+    """Fahrzeug für das Frontend: leere Felder und Wegdaten, die es nicht braucht, fallen weg.
+    Die festen Felder (STATIC_KEYS) nur, wenn full – sonst hat das Frontend sie schon."""
+    skip = set() if full else set(STATIC_KEYS)
+    if v.get('phase') == 'wache':
+        skip.update(_AT_STATION)
+    if v.get('towed_by'):
+        skip.update(_TOWED)
+    return {key: value for key, value in v.items() if key not in skip and value is not None}
+
+
+def snapshot(r, now=None, fleet_rev=None):
+    """Zustand für das Frontend. fleet_rev: Stand der festen Fahrzeugdaten, den das Frontend schon hat.
+    Stimmt er mit dem Raum überein, fehlen Rufname, Typ, Wache usw. (spart bei 78 Fahrzeugen viel pro Abfrage)."""
     now = time.time() if now is None else now
     shown = {id(i) for i in _latest_closed(r['incidents'], SNAPSHOT_CLOSED)}
+    full = fleet_rev != r.get('fleet_rev', 0)
     return {
         'server_time': now,
         'players': [{'id': p['id'], 'name': p['name'], 'vehicle': p['vehicle'], 'role': p['role']}
                     for p in r['players'].values()],
-        'vehicles': list(r['vehicles'].values()),
+        'vehicles': [_snapshot_vehicle(v, full) for v in r['vehicles'].values()],
+        'fleet_rev': r.get('fleet_rev', 0),
+        'fleet_full': full,
         'incidents': [_snapshot_incident(r, i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
         'radio': r['radio'][-100:],
         'rev': r['rev'],
@@ -600,13 +829,14 @@ def handle(r, data, account_id, account_name, is_developer, now):
     if not p or p['account'] != account_id:
         raise ValueError('Sitzung abgelaufen – bitte neu beitreten')
     p['last'] = now
+    fleet_rev = data.get('fleet_rev')
     if action == 'state':
-        return {'state': snapshot(r, now)}
+        return {'state': snapshot(r, now, fleet_rev)}
     if action == 'settings':
         _settings(r, pid, data, now)
         emit(r, 'System', 'Raumeinstellungen aktualisiert.')
         r['rev'] += 1
-        return {'state': snapshot(r, now)}
+        return {'state': snapshot(r, now, fleet_rev)}
     if action == 'voice_signal':
         return _voice_signal(r, pid, data)
     if action == 'voice_poll':
@@ -618,7 +848,7 @@ def handle(r, data, account_id, account_name, is_developer, now):
         raise ValueError('Unbekannte Aktion')
     if handler(r, pid, p, data, now, is_developer) is not UNCHANGED:
         r['rev'] += 1
-    return {'state': snapshot(r, now)}
+    return {'state': snapshot(r, now, fleet_rev)}
 
 
 def _join(r, account_id, name, now):
@@ -641,11 +871,13 @@ def _settings(r, pid, data, now):
         if not v:
             raise ValueError('Fahrzeug fehlt')
         call = str(data.get('call', '')).strip()[:55]
-        seats = to_int(data.get('seats', 9), 'Sitzplätze')
-        if not call or not 1 <= seats <= 12:
+        # Anhänger und Abrollbehälter haben keine Sitzplätze.
+        seats = to_int(data.get('seats', 9), 'Sitzplätze') if is_kfz(v) else 0
+        if not call or (is_kfz(v) and not 1 <= seats <= 12):
             raise ValueError('Ungültige Fahrzeugdaten')
         v['call'] = call
         v['seats'] = seats
+        r['fleet_rev'] = r.get('fleet_rev', 0) + 1
     elif kind == 'channels':
         channels = data.get('channels')
         if not isinstance(channels, list) or not 1 <= len(channels) <= 8:
@@ -741,6 +973,8 @@ def _claim(r, pid, p, data, now, is_developer):
     v = r['vehicles'].get(str(data.get('vehicle', '')))
     if not v:
         raise ValueError('Fahrzeug fehlt')
+    if not is_kfz(v):
+        raise ValueError('Anhänger und Abrollbehälter fahren nur mit einem Zugfahrzeug – bitte ein Kfz übernehmen')
     if v['owner'] and v['owner'] != pid:
         raise ValueError('Fahrzeug ist bereits besetzt')
     if p['vehicle'] and r['vehicles'][p['vehicle']]['phase'] != 'wache':
@@ -833,10 +1067,30 @@ def _dispatch(r, pid, p, data, now, is_developer):
         raise ValueError('Einsatz oder Fahrzeug nicht verfügbar')
     if not _free(v):
         raise ValueError('Fahrzeug ist nicht frei')
-    if not v['owner'] and (reason := ai_crew_block(r, inc)):
+    zug = _dispatch_zug(r, v, data)
+    crew = zug or v  # ein Gespann fährt mit der Besatzung des Zugfahrzeugs
+    if not crew['owner'] and (reason := ai_crew_block(r, inc)):
         raise ValueError(f'Unbesetztes Fahrzeug nicht alarmierbar: {reason}')
-    alarm(r, inc, v, now)
-    emit(r, 'Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
+    alarm(r, inc, v, now, zug)
+    emit(r, 'Leitstelle', f'Alarm {alarm_name(v, zug)}: {inc["title"]}, {inc["address"]}.')
+
+
+def _dispatch_zug(r, v, data):
+    """Zugfahrzeug für einen Anhänger/Abrollbehälter: das gewählte (data['zug']) oder ein freies passendes."""
+    if is_kfz(v):
+        return None
+    wanted = str(data.get('zug') or '')
+    if wanted:
+        zug = next((z for z in zug_candidates(r, v) if z['id'] == wanted), None)
+        if not zug:
+            raise ValueError(f'{v["call"]} kann nur mit {_zug_types(v)} fahren')
+        if not _free(zug) or zug.get('towing'):
+            raise ValueError(f'{zug["call"]} ist nicht frei')
+        return zug
+    zug = free_zug(r, v)
+    if not zug:
+        raise ValueError(f'Kein freies Zugfahrzeug ({_zug_types(v)}) für {v["call"]}')
+    return zug
 
 
 def _section_add(r, pid, p, data, now, is_developer):

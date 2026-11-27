@@ -1,20 +1,22 @@
 'use strict';
 // Mini-Fahrzeuge auf der Einsatzkarte: nur das Aussehen der Fahrzeugmarker.
-// Grafik je Typ (Seitenansichten: LF/HLF lf20.webp, KdoW kdow-seite.svg; über css/fahrzeuge.css), Namensschild,
-// Drehung in Fahrtrichtung und Versatz, wenn mehrere Fahrzeuge an derselben Stelle stehen.
+// Grafik je Typgruppe (v.grafik aus game/flotte.py: lf-gross, lf-klein, tlf, dlk, rw, gw, wlf, mtw, kdow, atv;
+// Seitenansichten in img/fahrzeuge, Zuordnung über css/fahrzeuge.css), Namensschild, Drehung in Fahrtrichtung und
+// Versatz, wenn mehrere Fahrzeuge an derselben Stelle stehen. Ein angehängter Anhänger oder Abrollbehälter wird
+// am Zugfahrzeug mitgezeichnet (Gespann).
 // Position (left/top in %) und Klick-Verhalten kommen aus game.js.
 const WBFahrzeuge = (() => {
   const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   const PHASES = {anfahrt: 'Anfahrt', vorort: 'an der Einsatzstelle', rueckfahrt: 'Rückfahrt'};
-  const TYPES = {HLF: 'hlf', LF: 'lf', KdoW: 'kdow'};
+  const TYPES = new Set(['lf-gross', 'lf-klein', 'tlf', 'dlk', 'rw', 'gw', 'wlf', 'mtw', 'kdow', 'atv', 'anh', 'ab']);
   // Ab dieser Strecke (px) wird die Fahrtrichtung neu aus der Bewegung bestimmt.
   const STEP = 2;
   const seen = new Map();
 
-  const type = v => TYPES[String(v.kind || '').split(' ')[0]] || 'lf';
-  // Kurzbezeichnung fürs Namensschild, z. B. „1-HLF“.
-  const label = v => `${v.unit}-${String(v.kind || '').split(' ')[0]}`;
-  const describe = v => `${v.call} – ${PHASES[v.phase] || v.phase}${v.status ? ` (Status ${v.status})` : ''}`;
+  const type = v => TYPES.has(v.grafik) ? v.grafik : 'lf-gross';
+  // Kurzbezeichnung fürs Namensschild: Rufname ohne „Florian Westbummeln“, z. B. „1 HLF 20-1“.
+  const label = v => String(v.call || '').replace(/^Florian Westbummeln /, '');
+  const describe = (v, towed) => `${v.call}${towed ? ` mit ${towed.call}` : ''} – ${PHASES[v.phase] || v.phase}${v.status ? ` (Status ${v.status})` : ''}`;
   const classes = v => `veh veh-${type(v)} veh-${v.phase}${v.phase === 'anfahrt' ? ' blaulicht' : ''}`;
 
   // Richtung Start → Ziel (in Kartenanteilen), solange noch keine Bewegung beobachtet wurde.
@@ -28,14 +30,16 @@ const WBFahrzeuge = (() => {
     return `${to[0] - from[0]} ${to[1] - from[1]}`;
   }
 
-  function inner(v) {
-    return `<span class="veh-body" aria-hidden="true"><span class="veh-light"></span></span><span class="veh-label" aria-hidden="true">${escape(label(v))}</span>`;
+  function inner(v, towed) {
+    // Der Anhänger hängt in der Grafik des Zugfahrzeugs und wird mit ihr gespiegelt (AB auf dem WLF, Anhänger hinten).
+    const tow = towed ? `<span class="veh-tow veh-tow-${towed.kategorie === 'ab' ? 'ab' : 'anh'}"></span>` : '';
+    return `<span class="veh-body" aria-hidden="true"><span class="veh-light"></span>${tow}</span><span class="veh-label" aria-hidden="true">${escape(label(v))}</span>`;
   }
 
   // Kompletter Marker als <span>; game.js setzt die Position (left/top in %).
-  function marker(v, pos) {
-    const text = escape(describe(v));
-    return `<span class="pin vehicle ${classes(v)}" data-vehicle-pin="${escape(v.id)}" data-dir="${direction(v)}" role="img" aria-label="${text}" title="${text}" style="left:${pos[0] * 100}%;top:${pos[1] * 100}%">${inner(v)}</span>`;
+  function marker(v, pos, towed) {
+    const text = escape(describe(v, towed));
+    return `<span class="pin vehicle ${classes(v)}" data-vehicle-pin="${escape(v.id)}" data-dir="${direction(v)}" role="img" aria-label="${text}" title="${text}" style="left:${pos[0] * 100}%;top:${pos[1] * 100}%">${inner(v, towed)}</span>`;
   }
 
   function heading(el, x, y, W, H) {
@@ -75,7 +79,7 @@ const WBFahrzeuge = (() => {
     }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     // Fahrzeuge, deren Schilder sich berühren würden, zu Gruppen zusammenfassen (auch über Ketten hinweg).
     const small = window.matchMedia('(max-width: 600px)').matches;
-    const slotX = small ? 48 : 58, slotY = small ? 28 : 34;
+    const slotX = small ? 56 : 70, slotY = small ? 28 : 34;  // Schilder wie „2 AB-Schlauch-1“ brauchen Platz
     const groups = [];
     for (const item of items) {
       const near = groups.filter(g => g.some(o => Math.abs(o.x - item.x) * W < slotX && Math.abs(o.y - item.y) * H < slotY));
@@ -90,16 +94,18 @@ const WBFahrzeuge = (() => {
       const ax = site ? site.x : group.reduce((sum, item) => sum + item.x, 0) / group.length;
       const ay = site ? site.y : group.reduce((sum, item) => sum + item.y, 0) / group.length;
       const cols = group.length === 1 ? 1 : group.length <= 4 ? 2 : 3;
+      // Ein Gespann mit Anhänger ist breiter: Spalten dann weiter auseinander.
+      const colX = slotX + (group.some(item => item.el.querySelector('.veh-tow-anh')) ? 28 : 0);
       const rows = Math.ceil(group.length / cols);
       const placed = group.map((item, i) => {
         const col = i % cols - (cols - 1) / 2;
         const row = Math.floor(i / cols) + (site ? 0.7 : -(rows - 1) / 2);
-        const ox = group.length === 1 && !site ? 0 : (ax - item.x) * W + col * slotX;
+        const ox = group.length === 1 && !site ? 0 : (ax - item.x) * W + col * colX;
         const oy = group.length === 1 && !site ? 0 : (ay - item.y) * H + row * slotY;
         return {item, ox, oy, px: item.x * W + ox, py: item.y * H + oy};
       });
       // Ganze Gruppe in die Karte schieben, damit am Rand nichts abgeschnitten wird (Schild hängt unten dran).
-      const left = Math.min(...placed.map(p => p.px)) - slotX / 2, right = Math.max(...placed.map(p => p.px)) + slotX / 2;
+      const left = Math.min(...placed.map(p => p.px)) - colX / 2, right = Math.max(...placed.map(p => p.px)) + colX / 2;
       const top = Math.min(...placed.map(p => p.py)) - slotY / 2, bottom = Math.max(...placed.map(p => p.py)) + slotY;
       const shiftX = left < 0 ? -left : right > W ? W - right : 0;
       const shiftY = top < 0 ? -top : bottom > H ? H - bottom : 0;

@@ -50,7 +50,7 @@ def test_account_server_error_is_logged_without_personal_data(game_client, monke
 
 def test_status_must_be_a_number(player):
     player.create()
-    assert player.api('claim', vehicle='WB-3-HLF20').status_code == 200
+    assert player.api('claim', vehicle='LZ4-RW-1').status_code == 200
     response = player.api('status', status='abc')
     assert response.status_code == 400
     assert response.json() == {'error': 'Status: bitte eine ganze Zahl angeben.'}
@@ -58,7 +58,7 @@ def test_status_must_be_a_number(player):
 
 def test_seats_must_be_a_number(player):
     player.create()
-    response = player.api('settings', kind='vehicle', vehicle='WB-3-HLF20', call='HLF', seats=None)
+    response = player.api('settings', kind='vehicle', vehicle='LZ4-RW-1', call='HLF', seats=None)
     assert response.json() == {'error': 'Sitzplätze: bitte eine ganze Zahl angeben.'}
 
 

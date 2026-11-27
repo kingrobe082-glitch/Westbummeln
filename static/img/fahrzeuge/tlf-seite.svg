@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 100" width="250" height="100">
+<!-- Tanklöschfahrzeug (TLF, GTLF, Tankwagen) in Seitenansicht.
+     Eigene Zeichnung für Westbummeln. Front nach links; auf der Karte nur gespiegelt, nicht gedreht. -->
+<defs>
+  <linearGradient id="lack" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#f03a30"/><stop offset="1" stop-color="#b81815"/>
+  </linearGradient>
+  <linearGradient id="glas" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3b4652"/><stop offset="1" stop-color="#1b2229"/>
+  </linearGradient>
+  <linearGradient id="rollo" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9dde1"/><stop offset="1" stop-color="#9aa1a8"/>
+  </linearGradient>
+  <linearGradient id="chrom" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#eef1f4"/><stop offset="1" stop-color="#9aa1a8"/>
+  </linearGradient>
+</defs>
+<rect x="18" y="4" width="44" height="7" rx="3" fill="#1f3fbf" stroke="#0d1a55" stroke-width="1.5"/>
+<rect x="21" y="5.5" width="14.0" height="4" rx="2" fill="#6fb6ff"/>
+<rect x="45.0" y="5.5" width="14.0" height="4" rx="2" fill="#6fb6ff"/>
+<path d="M8 66 L9 30 Q10 13 24 12 L72 12 Q78 12 78 18 L78 74 L18 74 Q8 74 8 66 Z" fill="url(#lack)" stroke="#5a0a08" stroke-width="2"/>
+<path d="M14 36 L16 22 Q17 17 23 17 L44 17 L44 36 Z" fill="url(#glas)"/>
+<rect x="48" y="17" width="25" height="19" rx="2" fill="url(#glas)"/>
+<path d="M46 17 L46 62" stroke="#7d100d" stroke-width="1.5"/>
+<rect x="9" y="44" width="7" height="6" rx="1" fill="#fff3b0"/>
+<path d="M80 74 L80 22 Q80 12 92 12 L228 12 Q242 12 242 26 L242 74 Z" fill="url(#lack)" stroke="#5a0a08" stroke-width="2"/>
+<path d="M88 20 H234" stroke="#ff8a80" stroke-width="2" opacity=".7"/>
+<g fill="url(#rollo)" stroke="#6d7379" stroke-width="1"><rect x="88.0" y="34" width="32.5" height="22" rx="1.5"/><rect x="125.5" y="34" width="32.5" height="22" rx="1.5"/></g>
+<path d="M88.0 42 H120.5 M125.5 42 H158.0" stroke="#8a9198" stroke-width="1"/>
+<rect x="166" y="34" width="68" height="22" rx="2" fill="#c81d1d" stroke="#7d100d"/>
+<path d="M9 62 L242 62 L242 70 Q242 74 238 74 L18 74 Q9 74 9 68 Z" fill="#f2f2f2"/>
+<rect x="10" y="57" width="232" height="5" fill="#f4e400"/>
+<text x="200" y="50" font-family="Arial,Helvetica,sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">TLF</text>
+<rect x="238" y="20" width="4" height="10" rx="1" fill="#e0221b" stroke="#7d100d"/>
+<g fill="#1a1a1a"><circle cx="42" cy="76" r="16"/><circle cx="178" cy="76" r="16"/><circle cx="210" cy="76" r="16"/></g>
+<g fill="#b9bec4" stroke="#6d7379" stroke-width="1.5"><circle cx="42" cy="76" r="8.0"/><circle cx="178" cy="76" r="8.0"/><circle cx="210" cy="76" r="8.0"/></g>
+<g fill="#6d7379"><circle cx="42" cy="76" r="2.5"/><circle cx="178" cy="76" r="2.5"/><circle cx="210" cy="76" r="2.5"/></g>
+</svg>

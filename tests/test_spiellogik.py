@@ -32,7 +32,7 @@ def ausruecken(r, vehicle, now=NOW):
         engine.handle(r, {'action': 'status', 'id': p['id'], 'status': 3}, p['account'], 'x', False, now)
 
 
-def leitstelle_mit_gf(r, vehicle='WB-2-LF20'):
+def leitstelle_mit_gf(r, vehicle='LZ2-MLF-2'):
     """Zwei Spieler: Anna besetzt die Leitstelle, Ben das Fahrzeug; ein Einsatz an der Hauptstraße."""
     ls = join(r, 1, 'Anna')
     gf = join(r, 2, 'Ben')
@@ -57,8 +57,8 @@ def on_streets(pos):
 def test_travel_time_is_fixed_at_alarm_despite_weather_change(room):
     room['weather'] = 'Nebel'  # 20 s für eine mittellange Route
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    v = room['vehicles']['WB-2-LF20']
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
+    v = room['vehicles']['LZ2-MLF-2']
     until = v['phase_until']
     assert until == pytest.approx(NOW + engine.trip_duration(room, v['phase_route']))
     room['weather'] = 'Sonnig'  # 12 statt 20 – darf die laufende Fahrt nicht verkürzen
@@ -71,8 +71,8 @@ def test_travel_time_is_fixed_at_alarm_despite_weather_change(room):
 def test_return_trip_uses_fixed_duration(room):
     room['weather'] = 'Regen'
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    v = room['vehicles']['WB-2-LF20']
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
+    v = room['vehicles']['LZ2-MLF-2']
     arrival = v['phase_until']
     engine.update(room, arrival)
     act(room, ls, 1, 'close', now=arrival, incident=inc['id'])
@@ -89,11 +89,11 @@ def test_return_trip_uses_fixed_duration(room):
 def test_return_trip_takes_as_long_as_approach(room):
     """Lars: „Ich bin viel zu schnell wieder an einer Wache.“ Früher dauerte jede Rückfahrt vom
     Einsatzort pauschal travel_time, egal wie weit. Jetzt: gleiche Strecke, gleiche Fahrzeit."""
-    ls, gf, inc = leitstelle_mit_gf(room, vehicle='WB-6-LF20')
+    ls, gf, inc = leitstelle_mit_gf(room, vehicle='LZ1-LF20-1')
     act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Werkstraße 3')
     far = room['incidents'][-1]
-    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-6-LF20')
-    v = room['vehicles']['WB-6-LF20']
+    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='LZ1-LF20-1')
+    v = room['vehicles']['LZ1-LF20-1']
     approach = v['phase_until'] - v['phase_at']
     forward = strassen.length(v['phase_route'])
     engine.update(room, v['phase_until'])
@@ -114,8 +114,8 @@ def test_vehicle_position_follows_route(room):
     ls, gf, inc = leitstelle_mit_gf(room)
     act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Werkstraße 3')
     far = room['incidents'][-1]
-    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-2-LF20')
-    v = room['vehicles']['WB-2-LF20']
+    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='LZ2-MLF-2')
+    v = room['vehicles']['LZ2-MLF-2']
     route, span = v['phase_route'], v['phase_until'] - NOW
     assert route[0] == list(v['base']) and route[-1] == far['pos']
     assert len(route) > 5  # nicht mehr die Luftlinie
@@ -133,9 +133,9 @@ def test_snapshot_contains_server_time(room):
 
 def test_snapshot_contains_route(room):
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     vehicles = {v['id']: v for v in engine.snapshot(room, NOW)['vehicles']}
-    assert vehicles['WB-2-LF20']['phase_route'] == room['vehicles']['WB-2-LF20']['phase_route']
+    assert vehicles['LZ2-MLF-2']['phase_route'] == room['vehicles']['LZ2-MLF-2']['phase_route']
 
 
 def test_closing_during_approach_returns_from_current_position(room):
@@ -143,8 +143,8 @@ def test_closing_during_approach_returns_from_current_position(room):
     ls, gf, inc = leitstelle_mit_gf(room)  # Sonnig
     act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Werkstraße 3')
     far = room['incidents'][-1]
-    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='WB-2-LF20')
-    v = room['vehicles']['WB-2-LF20']
+    act(room, ls, 1, 'dispatch', incident=far['id'], vehicle='LZ2-MLF-2')
+    v = room['vehicles']['LZ2-MLF-2']
     route, full = v['phase_route'], v['phase_until'] - NOW
     abort = NOW + full * .4
     here = engine.vehicle_position(v, abort)
@@ -168,8 +168,8 @@ def test_closing_during_approach_returns_from_current_position(room):
 def test_vehicle_without_route_moves_linearly(room):
     """Fahrten aus Räumen von vor dem Straßennetz haben keine phase_route und laufen weiter gerade."""
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    v = room['vehicles']['WB-2-LF20']
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
+    v = room['vehicles']['LZ2-MLF-2']
     del v['phase_route']
     v['phase_until'] = NOW + 12
     base, target = v['base'], inc['pos']
@@ -209,9 +209,9 @@ def test_closed_incidents_are_limited_in_memory(room):
 
 def test_closing_twice_is_refused(room):
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     act(room, ls, 1, 'close', now=NOW + 5, incident=inc['id'])
-    v = room['vehicles']['WB-2-LF20']
+    v = room['vehicles']['LZ2-MLF-2']
     radio = len(room['radio'])
     with pytest.raises(ValueError, match='bereits abgeschlossen'):
         act(room, ls, 1, 'close', now=NOW + 8, incident=inc['id'])
@@ -223,53 +223,53 @@ def test_closing_twice_is_refused(room):
 
 def test_realarm_does_not_duplicate_main_section(room):
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     act(room, ls, 1, 'section_add', incident=inc['id'], section='Brandbekämpfung')
-    act(room, ls, 1, 'section_assign', incident=inc['id'], vehicle='WB-2-LF20', section='Brandbekämpfung')
-    v = room['vehicles']['WB-2-LF20']
+    act(room, ls, 1, 'section_assign', incident=inc['id'], vehicle='LZ2-MLF-2', section='Brandbekämpfung')
+    v = room['vehicles']['LZ2-MLF-2']
     # Fahrzeug wird z. B. nach einer Rückfahrt erneut zum selben (noch offenen) Einsatz alarmiert.
     v.update(phase='wache', status=2, incident=None)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    entries = [name for name, s in inc['sections'].items() for vid in s['vehicles'] if vid == 'WB-2-LF20']
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
+    entries = [name for name, s in inc['sections'].items() for vid in s['vehicles'] if vid == 'LZ2-MLF-2']
     assert entries == ['Brandbekämpfung']
 
 
 def test_ai_dispatch_does_not_duplicate_main_section(room):
     inc = engine.new_incident('F1', 'Marktplatz', [.41, .65], 'KI-Leitstelle', NOW)
     room['incidents'].append(inc)
-    v = room['vehicles']['WB-1-HLF20']
+    v = room['vehicles']['LZ5-LF20Wald-1']
     engine.ai_dispatch(room, inc, v, NOW)
     v.update(phase='wache', status=2, incident=None)
     engine.ai_dispatch(room, inc, v, NOW + 1)
-    assert inc['sections']['Hauptabschnitt']['vehicles'] == ['WB-1-HLF20']
+    assert inc['sections']['Hauptabschnitt']['vehicles'] == ['LZ5-LF20Wald-1']
 
 
 # ------------------------------------------------------------ Bug 5: verwaiste Fahrzeuge vor Ort
 
 def test_unattended_vehicle_starts_work_in_multiplayer(room):
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     engine.update(room, NOW + 12)
-    assert room['vehicles']['WB-2-LF20']['phase'] == 'vorort'
+    assert room['vehicles']['LZ2-MLF-2']['phase'] == 'vorort'
     # Ben verliert die Verbindung, Anna bleibt online; ein dritter Spieler hält den Mehrspielermodus.
     third = join(room, 3, 'Carla', now=NOW + 12)
     keep_online(room, ls, third, now=NOW + 40)
     engine.clean_offline(room, NOW + 43)
     assert gf not in room['players'] and not engine.ai_mode(room)
-    assert room['vehicles']['WB-2-LF20']['owner'] is None
+    assert room['vehicles']['LZ2-MLF-2']['owner'] is None
     engine.update(room, NOW + 43 + engine.UNATTENDED_DELAY - 1)
     assert not inc['working']
     engine.update(room, NOW + 43 + engine.UNATTENDED_DELAY)
     assert inc['working']
-    assert room['radio'][-1]['message'].startswith('KI übernimmt Florian WB 2 LF 20')
+    assert room['radio'][-1]['message'].startswith('KI übernimmt Florian Westbummeln 2 MLF-2')
 
 
 def test_unattended_vehicle_finishes_incident(room):
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     engine.update(room, NOW + 12)
-    room['vehicles']['WB-2-LF20']['owner'] = None
-    room['vehicles']['WB-2-LF20']['unattended_since'] = NOW + 12
+    room['vehicles']['LZ2-MLF-2']['owner'] = None
+    room['vehicles']['LZ2-MLF-2']['unattended_since'] = NOW + 12
     engine.update(room, NOW + 32)
     engine.update(room, NOW + 200)
     assert inc['closed']
@@ -277,7 +277,7 @@ def test_unattended_vehicle_finishes_incident(room):
 
 def test_owned_vehicle_on_site_waits_for_its_player(room):
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     engine.update(room, NOW + 12)
     engine.update(room, NOW + 100)
     assert not inc['working']
@@ -297,7 +297,7 @@ def test_ai_mode_still_starts_work_immediately(room):
 
 def test_closed_incident_releases_section_vehicles(room):
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     act(room, ls, 1, 'close', incident=inc['id'])
     assert all(not s['vehicles'] for s in inc['sections'].values())
     shown = next(i for i in engine.snapshot(room, NOW)['incidents'] if i['id'] == inc['id'])
@@ -306,7 +306,7 @@ def test_closed_incident_releases_section_vehicles(room):
 
 def test_auto_finished_incident_releases_section_vehicles(room):
     ls, gf, inc = leitstelle_mit_gf(room)
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     engine.update(room, NOW + 12)
     act(room, gf, 2, 'status', now=NOW + 12, status=4)
     act(room, gf, 2, 'work', now=NOW + 12, incident=inc['id'])
@@ -321,10 +321,10 @@ def test_auto_finished_incident_releases_section_vehicles(room):
 def test_leitstelle_alarmiert_mehrere_spielerfahrzeuge(room):
     ls, gf, inc = leitstelle_mit_gf(room)
     carla = join(room, 3, 'Carla')
-    act(room, carla, 3, 'claim', vehicle='WB-1-HLF20')
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-HLF20')
-    assert inc['assigned'] == ['WB-2-LF20', 'WB-1-HLF20']
+    act(room, carla, 3, 'claim', vehicle='LZ5-LF20Wald-1')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ5-LF20Wald-1')
+    assert inc['assigned'] == ['LZ2-MLF-2', 'LZ5-LF20Wald-1']
     assert all(room['vehicles'][vid]['phase'] == 'anfahrt' for vid in inc['assigned'])
 
 
@@ -333,9 +333,9 @@ def test_leitstelle_allein_alarmiert_mehrere_unbesetzte_fahrzeuge(room):
     act(room, ls, 1, 'take_ls')
     act(room, ls, 1, 'incident', title='F3 · Großbrand', address='Hauptstraße 5')
     inc = room['incidents'][-1]
-    for vid in ('WB-1-HLF20', 'WB-1-LF20', 'WB-2-HLF20'):
+    for vid in ('LZ5-LF20Wald-1', 'LZ5-TLF3000-1', 'LZ2-MLF-1'):
         act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle=vid)
-    assert inc['assigned'] == ['WB-1-HLF20', 'WB-1-LF20', 'WB-2-HLF20']
+    assert inc['assigned'] == ['LZ5-LF20Wald-1', 'LZ5-TLF3000-1', 'LZ2-MLF-1']
     assert inc['sections']['Hauptabschnitt']['vehicles'] == inc['assigned']
 
 
@@ -351,28 +351,28 @@ def test_fahrzeugbedarf_aus_stichwort(title, need):
 def test_unbesetzt_bei_kleinem_einsatz_im_mehrspielerbetrieb_gesperrt(room):
     ls, gf = join(room, 1, 'Anna'), join(room, 2, 'Ben')
     act(room, ls, 1, 'take_ls')
-    act(room, gf, 2, 'claim', vehicle='WB-2-LF20')
+    act(room, gf, 2, 'claim', vehicle='LZ2-MLF-2')
     act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Hauptstraße 5')
     inc = room['incidents'][-1]
     with pytest.raises(ValueError, match='erst freie Spielerfahrzeuge'):
-        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-HLF20')
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ5-LF20Wald-1')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     with pytest.raises(ValueError, match=r'Bedarf gedeckt \(1 Fahrzeug laut Stichwort\)'):
-        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-HLF20')
-    assert inc['assigned'] == ['WB-2-LF20']
+        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ5-LF20Wald-1')
+    assert inc['assigned'] == ['LZ2-MLF-2']
 
 
 def test_groesserer_einsatz_bekommt_unbesetzte_fahrzeuge_mit_ki_besatzung(room):
     ls, gf, inc = leitstelle_mit_gf(room)  # F2 · Wohnungsbrand: Bedarf 2
     snap = next(i for i in engine.snapshot(room, NOW)['incidents'] if i['id'] == inc['id'])
     assert snap['need'] == 2 and snap['ai_crew_block'] == 'erst freie Spielerfahrzeuge alarmieren'
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
     assert engine.ai_crew_block(room, inc) == ''
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-HLF20')
-    assert inc['assigned'] == ['WB-2-LF20', 'WB-1-HLF20']
-    assert room['vehicles']['WB-1-HLF20']['owner'] is None
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ5-LF20Wald-1')
+    assert inc['assigned'] == ['LZ2-MLF-2', 'LZ5-LF20Wald-1']
+    assert room['vehicles']['LZ5-LF20Wald-1']['owner'] is None
     with pytest.raises(ValueError, match='Bedarf gedeckt'):
-        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-1-LF20')
+        act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ5-TLF3000-1')
     # Die KI-Besatzung beginnt vor Ort nach der Wartezeit selbst mit den Maßnahmen.
     engine.update(room, NOW + 20)
     keep_online(room, ls, gf, now=NOW + 20)
@@ -383,11 +383,11 @@ def test_groesserer_einsatz_bekommt_unbesetzte_fahrzeuge_mit_ki_besatzung(room):
 def test_zurueckfahrendes_fahrzeug_zaehlt_nicht_zum_bedarf(room):
     ls, gf, inc = leitstelle_mit_gf(room)
     carla = join(room, 3, 'Carla')
-    act(room, carla, 3, 'claim', vehicle='WB-5-HLF20')
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-5-HLF20')
+    act(room, carla, 3, 'claim', vehicle='LZ3-HLF20-1')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ3-HLF20-1')
     assert engine.ai_crew_block(room, inc).startswith('Bedarf gedeckt')
-    room['vehicles']['WB-5-HLF20'].update(phase='rueckfahrt')
+    room['vehicles']['LZ3-HLF20-1'].update(phase='rueckfahrt')
     assert engine.ai_crew_block(room, inc) == ''
 
 
@@ -395,8 +395,8 @@ def test_zurueckfahrendes_fahrzeug_zaehlt_nicht_zum_bedarf(room):
 
 def zwei_gf_ohne_leitstelle(r):
     anna, ben = join(r, 1, 'Anna'), join(r, 2, 'Ben')
-    act(r, anna, 1, 'claim', vehicle='WB-1-HLF20')
-    act(r, ben, 2, 'claim', vehicle='WB-4-LF20')
+    act(r, anna, 1, 'claim', vehicle='LZ5-LF20Wald-1')
+    act(r, ben, 2, 'claim', vehicle='LZ6-RW-1')
     return anna, ben
 
 
@@ -408,7 +408,7 @@ def test_ki_leitstelle_laeuft_mit_mehreren_spielern_ohne_leitstelle(room, monkey
     inc = room['incidents'][0]
     assert inc['creator'] == 'KI-Leitstelle'
     # Nur Spielerfahrzeuge, und zwar das nächste zum Einsatzort.
-    nearest = min(('WB-1-HLF20', 'WB-4-LF20'),
+    nearest = min(('LZ5-LF20Wald-1', 'LZ6-RW-1'),
                   key=lambda vid: engine._distance(room['vehicles'][vid]['base'], inc['pos']))
     assert inc['assigned'] == [nearest]
 
@@ -419,7 +419,7 @@ def test_ki_leitstelle_verteilt_einsaetze_auf_freie_spielerfahrzeuge(room, monke
     engine.update(room, NOW)
     engine.update(room, NOW + 45)
     first, second = room['incidents']
-    assert {*first['assigned'], *second['assigned']} == {'WB-1-HLF20', 'WB-4-LF20'}
+    assert {*first['assigned'], *second['assigned']} == {'LZ5-LF20Wald-1', 'LZ6-RW-1'}
 
 
 def test_ki_leitstelle_alarmiert_im_mehrspielerbetrieb_keine_unbesetzten(room):
@@ -441,16 +441,17 @@ def test_ki_leitstelle_springt_ein_wenn_leitstelle_frei_wird(room):
     ls, gf, inc = leitstelle_mit_gf(room)
     act(room, ls, 1, 'leave_ls')
     engine.update(room, NOW)
-    assert inc['assigned'] == ['WB-2-LF20']
+    assert inc['assigned'] == ['LZ2-MLF-2']
 
 
 # ------------------------------------------------------------ KI-Einsatzrate
 
 def gf_raum(n, seed=1, leitstelle=False):
-    """Raum mit n GF auf eigenen Fahrzeugen (HLF der Wachen 1–6, dann LF); optional eine Leitstelle."""
+    """Raum mit n GF auf eigenen Fahrzeugen (je zwei an den sechs Wachen der alten Flotte, siehe ALT_IDS);
+    optional eine Leitstelle."""
     r = engine.new_room('WB', seed=seed)
     r['weather_mode'] = 'manual'
-    vehicles = [f'WB-{unit}-{kind}' for kind in ('HLF20', 'LF20') for unit in range(1, 7)]
+    vehicles = [engine.ALT_IDS[f'WB-{unit}-{kind}'] for kind in ('HLF20', 'LF20') for unit in range(1, 7)]
     gfs = []
     for i in range(n):
         pid = join(r, i, f'GF{i}')
@@ -572,7 +573,7 @@ def test_ki_alarmiert_nicht_mehr_nach_ab_halber_arbeit(monkeypatch):
     inc = r['incidents'][0]
     inc['progress'] = engine.AI_REINFORCE_BELOW
     pid = join(r, 5, 'Neu')
-    act(r, pid, 5, 'claim', vehicle='WB-6-LF20')
+    act(r, pid, 5, 'claim', vehicle='LZ1-LF20-1')
     engine.update(r, NOW + 1)
     assert inc['assigned'] == [gfs[0][2]]
 

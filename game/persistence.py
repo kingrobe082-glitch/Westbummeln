@@ -105,6 +105,31 @@ def _load_room(data):
     return data
 
 
+def _sync_fleet(code, room):
+    """Fahrzeuge an die aktuelle Flotte anpassen (alte Fahrzeug-IDs, geänderter Bestand in game/flotte.py).
+
+    Geht das schief, bekommt der Raum eine frische Flotte: Einsätze verlieren ihre Fahrzeuge, Spieler
+    steigen aus. Der Raum selbst (Spieler, Funk, Einsätze) bleibt erhalten."""
+    try:
+        renamed, removed, added = engine.sync_fleet(room)
+    except Exception:
+        log.exception('Raum %s: Fahrzeuge nicht übertragbar – frische Flotte', code)
+        room['vehicles'] = {v['id']: engine._fresh_vehicle(v) for v in engine.FLEET}
+        for p in room.get('players', {}).values():
+            p['vehicle'] = None
+            if p.get('role') == 'gf':
+                p['role'] = 'none'
+        for inc in room.get('incidents', []):
+            inc['assigned'] = []
+            for section in inc.get('sections', {}).values():
+                section['vehicles'] = []
+        room['fleet_rev'] = room.get('fleet_rev', 0) + 1
+        return
+    if renamed or removed:
+        log.warning('Raum %s: Flotte umgestellt – %d Fahrzeuge umbenannt, %d entfernt (%s), %d neu',
+                    code, len(renamed), len(removed), ', '.join(removed[:10]), len(added))
+
+
 def dumps(now=None):
     """Alle Räume als JSON-Text. Nur unter rooms.lock aufrufen."""
     payload = {
@@ -147,6 +172,7 @@ def parse(text, now):
             raise ValueError(f'Raum {code!r} ist beschädigt')
         room = _load_room(data)
         shift_times(room, delta)
+        _sync_fleet(code, room)
         # Gnadenfrist: Spieler gelten erst GRACE Sekunden nach dem Start als offline.
         for p in room['players'].values():
             p['last'] = max(p['last'], now + GRACE - engine.OFFLINE_TIMEOUT)

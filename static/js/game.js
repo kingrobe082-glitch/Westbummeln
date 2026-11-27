@@ -46,7 +46,7 @@ $('fmeAcknowledge').onclick = () => {
 // sonst ausgegraut mit Grund (z. B. „Bedarf gedeckt“ oder „erst freie Spielerfahrzeuge alarmieren“).
 function vehicleOptions(incident) {
   const free = state.vehicles.filter(v => v.phase === 'wache' && v.status !== 6 && !v.incident);
-  const option = v => `<option value="${esc(v.id)}">${esc(v.call)}</option>`;
+  const option = v => `<option value="${esc(v.id)}">${esc(v.call)}${WBFlotte.isKfz(v) ? '' : ' (mit Zugfahrzeug)'}</option>`;
   const owned = free.filter(v => v.owner), crewless = free.filter(v => !v.owner);
   if (state.ai_mode) return free.map(option).join('');
   let markup = owned.length ? `<optgroup label="Spielerfahrzeuge">${owned.map(option).join('')}</optgroup>` : '';
@@ -77,7 +77,7 @@ function updateIncidents(markup) {
 }
 
 let me=null,state=null,room='',busy=false,focusIncident='';let pendingActions=0,stateRevision=0;const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const labels={1:'Frei über Funk',2:'Auf Wache',3:'Anfahrt',4:'Einsatzstelle',5:'Sprechwunsch',6:'Nicht einsatzbereit'};function notice(s){$('notice').textContent=s}// Während eines Deploys ist der Server kurz weg (Netzfehler, 502/503/504 von Caddy, keine JSON-Antwort). Dann bleibt das Spiel im Raum und fragt weiter ab; die Räume werden beim Neustart wiederhergestellt (game/persistence.py).
-const RESTARTING='Server startet neu … gleich geht es im selben Raum weiter.';let serverDown=false;function restartError(){let err=Error(RESTARTING);err.restarting=true;return err}async function api(action,data={}){let res;try{res=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify({action,room,id:me,...data})})}catch(e){throw restartError()}let obj;try{obj=await res.json()}catch(e){obj=null}if(!obj||typeof obj!=='object'||[502,503,504].includes(res.status)&&!obj.error)throw restartError();if(!res.ok){let err=Error(obj.error||'Serverfehler');err.kicked=Boolean(obj.kicked);throw err}return obj}async function send(action,data={}){pendingActions++;stateRevision++;try{let x=await api(action,data);if(x.state){setState(x.state);soundsFromState(state);render()}notice('')}catch(e){if(e.kicked)leaveRoom(e.message);else notice(e.message)}finally{pendingActions--}}
+const RESTARTING='Server startet neu … gleich geht es im selben Raum weiter.';let serverDown=false;function restartError(){let err=Error(RESTARTING);err.restarting=true;return err}async function api(action,data={}){let res;try{res=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify({action,room,id:me,fleet_rev:WBFlotte.rev(),...data})})}catch(e){throw restartError()}let obj;try{obj=await res.json()}catch(e){obj=null}if(!obj||typeof obj!=='object'||[502,503,504].includes(res.status)&&!obj.error)throw restartError();if(!res.ok){let err=Error(obj.error||'Serverfehler');err.kicked=Boolean(obj.kicked);throw err}return obj}async function send(action,data={}){pendingActions++;stateRevision++;try{let x=await api(action,data);if(x.state){setState(x.state);soundsFromState(state);render()}notice('')}catch(e){if(e.kicked)leaveRoom(e.message);else notice(e.message)}finally{pendingActions--}}
 // Raum betreten: 'create_room' (Server vergibt den Code) oder 'join' mit eingegebenem Code.
 async function enterRoom(action){try{if(action==='join'){room=$('room').value.toUpperCase().trim();if(!room)throw Error('Bitte gib einen Raumcode ein.')}else room='';let x=await api(action);if(x.room)room=x.room;$('room').value=room;me=x.id;setState(x.state);soundsFromState(state);$('login').classList.add('hidden');['rolesPanel','dashboard','mapPanel','incidentsPanel','vehiclesPanel','controlPanel','sectionsPanel','radioPanel','voicePanel'].forEach(id=>$(id).classList.remove('hidden'));notice('');setNotice('');render()}catch(e){notice(e.message)}}
 $('join').onclick=()=>enterRoom('join');$('publicRoom').onclick=()=>{$('room').value=publicRoomCode;enterRoom('join')};$('createRoom').onclick=()=>enterRoom('create_room');$('room').onkeydown=e=>{if(e.key==='Enter')$('join').click()};
@@ -100,7 +100,7 @@ $('takeLs').onclick=()=>send('take_ls', {
 let clockOffset = 0;
 
 function setState(next) {
-  state = next;
+  state = WBFlotte.merge(next);
   if (typeof next?.server_time === 'number') clockOffset = next.server_time - Date.now() / 1000;
 }
 
@@ -176,6 +176,8 @@ function showIncident(id) {
 function showVehicleInList(id) {
   WBLayout.openList();
   const find = () => $('vehicles').querySelector(`[data-vehicle-item="${CSS.escape(id)}"]`);
+  const vehicle = state?.vehicles.find(v => v.id === id);
+  if (vehicle) WBFlotte.openGroup(vehicle.unit);
   if (!find()) {
     $('vehicleSearch').value = '';
     $('unitFilter').value = 'all';
@@ -219,19 +221,25 @@ function renderMap() {
   // Fahrzeuge als Mini-Fahrzeug (Aussehen, Drehung und Versatz bei mehreren: WBFahrzeuge in fahrzeuge.js).
   for (const vehicle of state.vehicles) {
     const phase = phaseLabels[vehicle.phase];
-    if (!phase) continue;
+    if (!phase || vehicle.towed_by) continue;
+    const towed = vehicle.towing ? state.vehicles.find(v => v.id === vehicle.towing) : null;
     const pin = mapPin('v:' + vehicle.id, pin => {
       pin.dataset.vehiclePin = vehicle.id;
-      pin.innerHTML = WBFahrzeuge.inner(vehicle);  // Grafik + Namensschild, je Fahrzeug unveränderlich
       pin.setAttribute('aria-haspopup', 'dialog');
       pin.setAttribute('aria-controls', 'vehicleInfo');
       pin.addEventListener('click', () => toggleVehicleInfo(pin.dataset.vehiclePin));
     });
+    // Grafik + Namensschild; neu nur, wenn ein Anhänger an- oder abgekoppelt wurde.
+    const tow = towed ? towed.id : '';
+    if (pin.dataset.tow !== tow || !pin.firstChild) {
+      pin.dataset.tow = tow;
+      pin.innerHTML = WBFahrzeuge.inner(vehicle, towed);
+    }
     const className = `pin vehicle ${WBFahrzeuge.classes(vehicle)}${mapVehicle === vehicle.id ? ' selected' : ''}`;
     if (pin.className !== className) pin.className = className;
     pin.dataset.dir = WBFahrzeuge.direction(vehicle);
-    pin.title = WBFahrzeuge.describe(vehicle);
-    pin.setAttribute('aria-label', `${vehicle.call}, Status ${vehicle.status} ${labels[vehicle.status] || ''}, ${phase}`);
+    pin.title = WBFahrzeuge.describe(vehicle, towed);
+    pin.setAttribute('aria-label', `${vehicle.call}${towed ? ' mit ' + towed.call : ''}, Status ${vehicle.status} ${labels[vehicle.status] || ''}, ${phase}`);
     pin.setAttribute('aria-expanded', String(mapVehicle === vehicle.id));
     const [x, y] = position(vehicle);
     pin.style.left = `${x * 100}%`;
@@ -296,7 +304,8 @@ function updateVehicleInfo() {
   }
   const incident = state.incidents.find(i => i.id === vehicle.incident);
   const owner = state.players.find(p => p.id === vehicle.owner);
-  setInfoText('vehicleInfoTitle', vehicle.call);
+  const towed = vehicle.towing ? state.vehicles.find(v => v.id === vehicle.towing) : null;
+  setInfoText('vehicleInfoTitle', towed ? `${vehicle.call} mit ${towed.call}` : vehicle.call);
   setInfoText('vehicleInfoStatus', `${vehicle.status} · ${labels[vehicle.status] || ''}`);
   $('vehicleInfoStatus').dataset.fms = vehicle.status;
   setInfoText('vehicleInfoPhase', phaseLabels[vehicle.phase]);
@@ -325,7 +334,7 @@ document.addEventListener('keydown', event => {
 function render(){if(!state)return;
 updateFme(state);
 $('countOpen').textContent=state.incidents.filter(i=>!i.closed).length;
-$('countFree').textContent=state.vehicles.filter(v=>v.phase==='wache'&&[1,2].includes(v.status)&&!v.incident).length;
+$('countFree').textContent=state.vehicles.filter(v=>WBFlotte.isKfz(v)&&v.phase==='wache'&&[1,2].includes(v.status)&&!v.incident).length;
 $('countDrive').textContent=state.vehicles.filter(v=>v.phase==='anfahrt').length;
 $('countSite').textContent=state.vehicles.filter(v=>v.phase==='vorort').length;$('connection').textContent=`${room} · ${state.players.length} Spieler`;$('connection').dataset.state='ok';
 let p=state.players.find(p=>p.id===me),isLs=p?.role==='ls',isGf=p?.role==='gf',lsOwner=state.players.find(x=>x.id===state.dispatcher);$('roleInfo').textContent=isLs?'Du besetzt die Leitstelle. Nur du kannst Einsätze erstellen, alarmieren und beenden.':isGf?'Du bist Gruppenführer. Fahrzeugstatus und Einsatzmaßnahmen gehören zu deiner Rolle.':lsOwner?'Leitstelle besetzt durch '+lsOwner.name+'. Du kannst ein Fahrzeug übernehmen.':'Leitstelle noch frei. Du kannst die Leitstelle oder ein Fahrzeug übernehmen.';$('takeLs').disabled=isLs||isGf||(!developerAccount&&!!lsOwner);
@@ -333,10 +342,41 @@ $('takeLs').textContent=developerAccount&&lsOwner&&!isLs
   ? 'Besetzte Leitstelle übernehmen'
   : 'Leitstelle übernehmen';$('leaveLs').disabled=!isLs;$('goGf').disabled=isLs;$('incidentsPanel').classList.remove('hidden');$('incidentsPanel').querySelectorAll('.quick, .screen-title, #title, #address, #create').forEach(el=>el.classList.toggle('hidden',!isLs));$('vehiclesPanel').classList.toggle('hidden',isLs);$('controlPanel').classList.toggle('hidden',!isGf);$('dashboard').classList.toggle('hidden',!isLs);$('create').disabled=!isLs;let mine=state.vehicles.find(v=>v.id===p?.vehicle);$('myVehicle').innerHTML=mine?`<b>${esc(mine.call)}</b><p><span class="fms" data-fms="${mine.status}">${mine.status}</span> ${esc(labels[mine.status])}${phaseLabel(mine.phase)===labels[mine.status]?'':' · '+esc(phaseLabel(mine.phase))}</p>`:'Noch kein Fahrzeug besetzt';$('statuses').innerHTML=WBFms.buttons(mine,labels);$('fmsHint').textContent=WBFms.hint(mine,serverNow());$('fmsHint').classList.toggle('hidden',!$('fmsHint').textContent);$('speakRequests').innerHTML=isLs?WBFms.requests(state):'';$('speakRequests').querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>send('speak',{vehicle:b.dataset.speak}));WBFms.signals(state,me,isLs);$('statuses').querySelectorAll('button').forEach(b=>b.onclick=()=>send('status',{status:Number(b.dataset.status)}));$('release').disabled=!mine||mine.phase!=='wache'||!!mine.incident;
 WBLayout.apply(isGf&&mine?mine:null,labels);
-$('vehicles').innerHTML=state.vehicles.filter(v=>( $('unitFilter').value==='all'||String(v.unit)===$('unitFilter').value )&&v.call.toLowerCase().includes($('vehicleSearch').value.trim().toLowerCase())).map(v=>{let owner=state.players.find(p=>p.id===v.owner);return `<div class="item${flashVehicle===v.id&&Date.now()<flashUntil?' vehicle-flash':''}" data-vehicle-item="${esc(v.id)}"><b>${esc(v.call)}</b> <span class="fms" data-fms="${v.status}">${v.status}</span><div class="small">${owner?'GF: '+esc(owner.name):'GF frei'} · ${v.seats} Plätze · ${esc(phaseLabel(v.phase))}</div><button data-vehicle="${esc(v.id)}" ${isLs||(owner&&owner.id!==me)||v.phase!=='wache'?'disabled':''}>${owner?.id===me?'Dein Fahrzeug':'Übernehmen'}</button></div>`}).join('');$('vehicles').querySelectorAll('[data-vehicle]').forEach(b=>b.onclick=()=>send('claim',{vehicle:b.dataset.vehicle}));renderRoomAdmin();
+renderVehicleList(p,isLs);renderRoomAdmin();
 updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}" data-state="${i.closed?'closed':i.working?'working':'open'}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">${esc(i.address)} · <span class="mono">${esc(i.created)}</span></div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+` <span class="fms" data-fms="${v.status}">${v.status}</span>`).join(', ')||'noch keine'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${vehicleOptions(i)}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row"><button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'Discord · ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
 
 const phaseLabel=p=>p==='wache'?'Auf Wache':phaseLabels[p]||p;
+
+// Fahrzeugliste, gruppiert nach Einheit (WBFlotte). Neu geschrieben wird nur, wenn sich etwas geändert hat,
+// damit Scrollposition und Tastaturfokus erhalten bleiben.
+let vehicleMarkup = '';
+function vehicleItem(v, me_, isLs) {
+  const owner = state.players.find(p => p.id === v.owner);
+  const towing = v.towing ? state.vehicles.find(x => x.id === v.towing) : null;
+  const towedBy = v.towed_by ? state.vehicles.find(x => x.id === v.towed_by) : null;
+  const flash = flashVehicle === v.id && Date.now() < flashUntil ? ' vehicle-flash' : '';
+  const kfz = WBFlotte.isKfz(v);
+  const crew = kfz ? (owner ? 'GF: ' + esc(owner.name) : 'GF frei') + ` · ${v.seats} Plätze`
+    : (v.kategorie === 'ab' ? 'Abrollbehälter, fährt mit WLF' : 'Anhänger, fährt mit Zugfahrzeug');
+  const gespann = towing ? ` · mit ${esc(WBFlotte.short(towing))}` : towedBy ? ` · an ${esc(WBFlotte.short(towedBy))}` : '';
+  const button = kfz
+    ? `<button data-vehicle="${esc(v.id)}" ${isLs || (owner && owner.id !== me_) || v.phase !== 'wache' ? 'disabled' : ''}>${owner?.id === me_ ? 'Dein Fahrzeug' : 'Übernehmen'}</button>`
+    : '<span></span>';
+  return `<div class="item veh-item-${esc(v.grafik || 'lf-gross')}${flash}" data-vehicle-item="${esc(v.id)}"><b>${esc(v.call)}</b> <span class="fms" data-fms="${v.status}">${v.status}</span><div class="small">${esc(v.kind || '')} · ${crew} · ${esc(phaseLabel(v.phase))}${gespann}</div>${button}</div>`;
+}
+function renderVehicleList(p, isLs) {
+  WBFlotte.fillFilter($('unitFilter'));
+  const markup = WBFlotte.listMarkup(state.vehicles, {
+    query: $('vehicleSearch').value, unit: $('unitFilter').value, flash: Date.now() < flashUntil ? flashVehicle : '',
+    item: v => vehicleItem(v, p?.id, isLs),
+  });
+  if (markup === vehicleMarkup) return;
+  vehicleMarkup = markup;
+  $('vehicles').innerHTML = markup;
+  $('vehicles').querySelectorAll('[data-vehicle]').forEach(b => b.onclick = () => send('claim', {vehicle: b.dataset.vehicle}));
+}
+WBFlotte.drawBadges();
+WBFlotte.bindList($('vehicles'), () => { vehicleMarkup = ''; render(); });
 
 function renderSections(){
  const own=state.players.find(p=>p.id===me),isLs=own?.role==='ls';

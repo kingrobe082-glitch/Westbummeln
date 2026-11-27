@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 100" width="260" height="100">
+<!-- Wechselladerfahrzeug (WLF) ohne Abrollbehälter in Seitenansicht.
+     Eigene Zeichnung für Westbummeln. Front nach links; auf der Karte nur gespiegelt, nicht gedreht. -->
+<defs>
+  <linearGradient id="lack" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#f03a30"/><stop offset="1" stop-color="#b81815"/>
+  </linearGradient>
+  <linearGradient id="glas" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3b4652"/><stop offset="1" stop-color="#1b2229"/>
+  </linearGradient>
+  <linearGradient id="rollo" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9dde1"/><stop offset="1" stop-color="#9aa1a8"/>
+  </linearGradient>
+  <linearGradient id="chrom" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#eef1f4"/><stop offset="1" stop-color="#9aa1a8"/>
+  </linearGradient>
+</defs>
+<rect x="18" y="4" width="44" height="7" rx="3" fill="#1f3fbf" stroke="#0d1a55" stroke-width="1.5"/>
+<rect x="21" y="5.5" width="14.0" height="4" rx="2" fill="#6fb6ff"/>
+<rect x="45.0" y="5.5" width="14.0" height="4" rx="2" fill="#6fb6ff"/>
+<path d="M8 66 L9 30 Q10 13 24 12 L72 12 Q78 12 78 18 L78 74 L18 74 Q8 74 8 66 Z" fill="url(#lack)" stroke="#5a0a08" stroke-width="2"/>
+<path d="M14 36 L16 22 Q17 17 23 17 L44 17 L44 36 Z" fill="url(#glas)"/>
+<rect x="48" y="17" width="25" height="19" rx="2" fill="url(#glas)"/>
+<path d="M46 17 L46 62" stroke="#7d100d" stroke-width="1.5"/>
+<rect x="9" y="44" width="7" height="6" rx="1" fill="#fff3b0"/>
+<rect x="80" y="58" width="174" height="9" rx="2" fill="#3f444a"/>
+<path d="M86 58 L94 22 L106 22 L112 58 Z" fill="#c81d1d" stroke="#5a0a08" stroke-width="2"/>
+<path d="M94 22 Q92 12 100 12 L104 12" fill="none" stroke="#2b2f33" stroke-width="4"/>
+<circle cx="248" cy="62" r="6" fill="#7a8087" stroke="#3f444a"/>
+<rect x="9" y="57" width="69" height="5" fill="#f4e400"/>
+<path d="M9 62 L78 62 L78 74 L18 74 Q9 74 9 68 Z" fill="#f2f2f2"/>
+<g fill="#1a1a1a"><circle cx="42" cy="76" r="16"/><circle cx="186" cy="76" r="16"/><circle cx="220" cy="76" r="16"/></g>
+<g fill="#b9bec4" stroke="#6d7379" stroke-width="1.5"><circle cx="42" cy="76" r="8.0"/><circle cx="186" cy="76" r="8.0"/><circle cx="220" cy="76" r="8.0"/></g>
+<g fill="#6d7379"><circle cx="42" cy="76" r="2.5"/><circle cx="186" cy="76" r="2.5"/><circle cx="220" cy="76" r="2.5"/></g>
+</svg>

@@ -21,9 +21,9 @@ def act(r, pid, account, action, now=NOW, developer=False, **data):
     return engine.handle(r, {'action': action, 'id': pid, **data}, account, 'x', developer, now)
 
 
-def test_fleet_has_18_vehicles_on_station(room):
-    assert len(room['vehicles']) == 18
-    assert room['vehicles']['WB-1-HLF20']['call'] == 'Florian WB 1 HLF 20'
+def test_fleet_has_78_vehicles_on_station(room):
+    assert len(room['vehicles']) == 78
+    assert room['vehicles']['LZ5-LF20Wald-1']['call'] == 'Florian Westbummeln 5 LF 20-1'
     assert all(v['phase'] == 'wache' and v['status'] == 2 for v in room['vehicles'].values())
 
 
@@ -47,12 +47,12 @@ def test_full_mission_flow(room):
     assert room['dispatcher'] == ls
     with pytest.raises(ValueError, match='Leitstelle ist bereits besetzt'):
         act(room, gf, 2, 'take_ls')
-    act(room, gf, 2, 'claim', vehicle='WB-2-LF20')
+    act(room, gf, 2, 'claim', vehicle='LZ2-MLF-2')
     act(room, ls, 1, 'incident', title='F2 · Wohnungsbrand', address='Hauptstraße 5')
     inc = room['incidents'][-1]
     assert inc['pos'] == [.39, .53]
-    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
-    vehicle = room['vehicles']['WB-2-LF20']
+    act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='LZ2-MLF-2')
+    vehicle = room['vehicles']['LZ2-MLF-2']
     # Spielerfahrzeug: alarmiert, rückt aber erst mit Status 3 aus.
     assert (vehicle['phase'], vehicle['status'], vehicle['incident']) == ('wache', 2, inc['id'])
     engine.update(room, NOW + 5)
@@ -192,16 +192,16 @@ def test_every_station_reaches_every_place_over_streets():
 
 
 def test_route_uses_streets_instead_of_straight_line():
-    lz6, werkstrasse = engine.BASE[6], engine.locate('Werkstraße')
-    route = strassen.route(lz6, werkstrasse)
-    assert strassen.length(route) > strassen.distance(lz6, werkstrasse) * 1.2
+    lz5, werkstrasse = engine.BASE['LZ5'], engine.locate('Werkstraße')
+    route = strassen.route(lz5, werkstrasse)
+    assert strassen.length(route) > strassen.distance(lz5, werkstrasse) * 1.2
     # Die Luftlinie führt mitten durch die Häuser am Marktplatz; die Route meidet das Zentrum.
     assert all(strassen._project(p)[0] < 1e-3 for p in route[1:-1])
 
 
 def test_route_is_shortest_path():
     """Von FW Altstadt zur Kirchstraße geht es über die Gasse, nicht außen herum."""
-    route = strassen.route(engine.BASE[2], engine.locate('Kirchstraße'))
+    route = strassen.route(engine.BASE['LZ2'], engine.locate('Kirchstraße'))
     assert list(strassen.JUNCTIONS['kirch_w']) in route
     assert list(strassen.JUNCTIONS['schul_o']) not in route
 
