@@ -41,6 +41,7 @@ def busy_room():
     act(r, 1, anna, 'incident', T, title='F2 · Wohnungsbrand', address='Marktplatz')
     inc = r['incidents'][0]['id']
     act(r, 1, anna, 'dispatch', T + 1, incident=inc, vehicle='WB-1-HLF20')
+    act(r, 2, ben, 'status', T + 1, 'Ben', status=3)
     act(r, 1, anna, 'section_add', T + 2, incident=inc, section='Abschnitt Nord')
     act(r, 2, ben, 'radio', T + 3, 'Ben', message='Verstanden, fahren an.')
     return r, anna, ben

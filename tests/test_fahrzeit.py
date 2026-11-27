@@ -159,3 +159,13 @@ def test_timetable_is_json_serializable(room):
 def test_speeds_come_from_settings(settings):
     assert strassen.SPEED == settings.DRIVE_SPEED
     assert engine.DEPARTURE_TIME == settings.DRIVE_DEPARTURE_TIME
+
+
+def test_player_vehicle_has_no_extra_departure_time(room):
+    """Spielerfahrzeuge rücken mit Status 3 des GF aus; die Ausrückzeit zählt nur für KI-Besatzungen."""
+    v = room['vehicles']['WB-2-HLF20']
+    target = engine.locate('Werkstraße')
+    crewless = engine.eta(room, v, target)
+    v['owner'] = 'spieler'
+    assert engine.departure_time(v) == 0
+    assert engine.eta(room, v, target) == pytest.approx(crewless - engine.DEPARTURE_TIME)
