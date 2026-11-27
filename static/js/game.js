@@ -1,6 +1,7 @@
 let incidentMarkup = '';
 let fmeKey = '';
 let fmeAcknowledged = false;
+let fmeLines = [];
 
 function updateFme(next) {
   const player = next.players.find(player => player.id === me);
@@ -14,15 +15,13 @@ function updateFme(next) {
   fmeKey = key;
   fmeAcknowledged = false;
   $('fmePanel').classList.toggle('hidden', !incident);
-  $('fmeMessage').textContent = incident
-    ? [vehicle.call, incident.title, incident.address].join(' · ')
-    : '';
   $('fmeAcknowledge').disabled = !incident;
   if (incident) {
-    beep(1060, .16, 0, 'sine', .18);
-    beep(1400, .16, .20, 'sine', .18);
-    beep(1060, .16, .40, 'sine', .18);
-    beep(1400, .30, .60, 'sine', .18);
+    fmeLines = ['Einsatzalarm', vehicle.call, incident.title, incident.address];
+    WBFme.alarm(fmeLines);
+  } else {
+    fmeLines = [];
+    WBFme.clear();
   }
 }
 
@@ -30,7 +29,7 @@ $('fmeAcknowledge').onclick = () => {
   if (!fmeKey || fmeAcknowledged) return;
   fmeAcknowledged = true;
   $('fmeAcknowledge').disabled = true;
-  $('fmeMessage').textContent += ' · Quittiert';
+  WBFme.acknowledge(fmeLines);
 };
 
 // Auswahl im Einsatz: Spielerfahrzeuge immer; unbesetzte (KI-Besatzung) nur, wenn der Server es erlaubt,
