@@ -92,7 +92,8 @@ def _typ(kategorie, sitze, grafik, faehigkeiten, tank_l=0, funk=None, zug=()):
             'grafik': grafik, 'funk': funk, 'zug': list(zug)}
 
 
-_LOESCH = ('loeschen', 'pumpe', 'atemschutz')
+# Löschfahrzeuge mit Pumpe können auch eine Wasserversorgung (Hydrant) aufbauen (Maßnahmen F1, PR #45).
+_LOESCH = ('loeschen', 'pumpe', 'wasserversorgung', 'atemschutz')
 _KUECHE = ('GW-L1', 'MZF')
 TYPEN = {
     # Löschfahrzeuge
@@ -105,7 +106,7 @@ TYPEN = {
     'TSF-W': _typ(KFZ, 6, 'lf-klein', _LOESCH, 750),
     'TLF 3000': _typ(KFZ, 3, 'tlf', (*_LOESCH, 'wasser_transport'), 3000),
     'TLF 4000': _typ(KFZ, 3, 'tlf', (*_LOESCH, 'wasser_transport'), 4000),
-    'GTLF': _typ(KFZ, 3, 'tlf', ('loeschen', 'pumpe', 'wasser_transport', 'wald'), 8000),
+    'GTLF': _typ(KFZ, 3, 'tlf', ('loeschen', 'pumpe', 'wasserversorgung', 'wasser_transport', 'wald'), 8000),
     # Hubrettung, Rüst- und Gerätewagen
     'DLK 23/12': _typ(KFZ, 3, 'dlk', ('hubrettung',), funk='DLK'),
     'RW': _typ(KFZ, 3, 'rw', ('rettungssatz', 'heben', 'oel')),
