@@ -1,4 +1,4 @@
-import json
+import logging
 import re
 import time
 
@@ -8,7 +8,9 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 
 from game import engine, rooms
 from westbummeln.security import ip_limit
-from westbummeln.views import json_reply, not_found, read_json
+from westbummeln.views import BAD_REQUEST, account_id, json_reply, not_found, read_json
+
+logger = logging.getLogger(__name__)
 
 ROOM_RE = re.compile(r'[A-Z0-9-]{2,16}')
 
@@ -27,6 +29,7 @@ def api(request):
         return not_found(request)
     if request.content_type != 'application/json':
         return json_reply({'error': 'JSON erforderlich'}, 415)
+    action = code = None  # fürs Fehlerlog
     try:
         data = read_json(request, 'Anfrage zu groß')
         action = data.get('action')
@@ -53,9 +56,17 @@ def api(request):
             return json_reply(result)
     except rooms.KickedError as error:
         return json_reply({'error': str(error), 'kicked': True}, 403)
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+    except ValueError as error:
+        # Bewusst geworfen, mit deutscher Meldung für den Spieler.
         return json_reply({'error': str(error)}, 400)
+    except (KeyError, TypeError, AttributeError):
+        # Unerwartete Form der Anfrage: Pythons Fehlertext bleibt im Log.
+        logger.warning('Ungültige Anfrage an /api (Aktion %r, Raum %r, Konto %s)', str(action)[:40], code,
+                       account_id(request), exc_info=True)
+        return json_reply({'error': BAD_REQUEST}, 400)
     except Exception:
+        logger.exception('Serverfehler in /api (Aktion %r, Raum %r, Konto %s)', str(action)[:40], code,
+                         account_id(request))
         return json_reply({'error': 'Serverfehler'}, 500)
 
 

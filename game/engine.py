@@ -13,6 +13,7 @@ import time
 from collections import deque
 
 from game import strassen
+from game.parsing import to_int
 
 # Koordinaten beziehen sich auf die vollständige Originalkarte inklusive Legende.
 BASE = {1: (.235, .55), 2: (.466, .51), 3: (.565, .215), 4: (.827, .46), 5: (.548, .80), 6: (.276, .15)}
@@ -489,7 +490,7 @@ def handle(r, data, account_id, account_name, is_developer, now):
     if action == 'voice_signal':
         return _voice_signal(r, pid, data)
     if action == 'voice_poll':
-        since = max(0, int(data.get('since', 0)))
+        since = max(0, to_int(data.get('since', 0), 'Nachrichtennummer'))
         messages = [m for m in r['voice_messages'] if m['to'] == pid and m['seq'] > since]
         return {'messages': messages, 'seq': r['voice_seq'], 'players': snapshot(r, now)['players']}
     handler = ACTIONS.get(action)
@@ -520,7 +521,7 @@ def _settings(r, pid, data, now):
         if not v:
             raise ValueError('Fahrzeug fehlt')
         call = str(data.get('call', '')).strip()[:55]
-        seats = int(data.get('seats', 9))
+        seats = to_int(data.get('seats', 9), 'Sitzplätze')
         if not call or not 1 <= seats <= 12:
             raise ValueError('Ungültige Fahrzeugdaten')
         v['call'] = call
@@ -650,7 +651,7 @@ def _status(r, pid, p, data, now, is_developer):
     if p['role'] != 'gf' or not p['vehicle']:
         raise ValueError('Bitte Fahrzeug übernehmen')
     v = r['vehicles'][p['vehicle']]
-    status = int(data.get('status', 0))
+    status = to_int(data.get('status', 0), 'Status')
     if status not in range(1, 7):
         raise ValueError('Ungültiger Status')
     if v['phase'] != 'wache' and status in (2, 6):
