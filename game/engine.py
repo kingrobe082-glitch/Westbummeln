@@ -6,6 +6,7 @@ gemeldet; die Meldungen gehen unverändert an das Frontend.
 
 Die Logik stammt aus dem alten server.py; Welle 2C hat Fahrzeiten, Einsatzliste und KI-Übernahme korrigiert.
 """
+import itertools
 import json
 import random
 import re
@@ -33,14 +34,14 @@ FLEET = [
 # Straßenpositionen wurden anhand der vom Spieler gelieferten Karte bestimmt.
 PLACES = [
     ('Hauptstraße', .39, .53), ('Marktplatz', .41, .65), ('Schulstraße', .59, .38),
-    ('Waldstraße', .28, .19), ('Dorfstraße', .56, .85), ('Nelkenweg', .77, .51),
+    ('Waldstraße', .28, .19), ('Dorfstraße', .575, .832), ('Nelkenweg', .77, .51),
     ('Mathias-Berg-Straße', .75, .59), ('Robin-Hof-Straße', .77, .69), ('Werkstraße', .86, .86),
-    ('Buchenstraße', .92, .52), ('Eichenstraße', .37, .23), ('Bachstraße', .34, .84),
+    ('Buchenstraße', .92, .52), ('Eichenstraße', .37, .23), ('Bachstraße', .335, .765),
     ('Flurstraße', .69, .26), ('Tannenweg', .87, .32), ('Ahornallee', .91, .39),
     ('Kreuzbergstraße', .82, .20), ('Jägerstraße', .215, .36), ('Scheunenweg', .51, .25),
     ('Blütenstraße', .35, .29), ('Sportplatzring', .32, .39), ('Kirchstraße', .56, .58),
     ('Rosenstraße', .49, .65), ('Sonnenstraße', .55, .68), ('Mozartweg', .91, .69),
-    ('Uferstraße', .43, .85), ('Mühlenweg', .29, .87), ('Gartenweg', .32, .94),
+    ('Uferstraße', .43, .818), ('Mühlenweg', .29, .87), ('Gartenweg', .32, .94),
     ('Wiesenstraße', .34, .985), ('Bummelbachweg', .51, .93), ('Dorflick', .69, .94),
     ('Bürgerstraße', .63, .92), ('Forstweg', .38, .09), ('Feldweg', .74, .10),
     ('Am Rathauspark', .32, .70), ('Erlenstraße', .92, .60),
@@ -52,12 +53,13 @@ UNATTENDED_DELAY = 20  # Sekunden, bis die KI ein unbesetztes Fahrzeug vor Ort �
 SNAPSHOT_CLOSED = 20  # so viele abgeschlossene Einsätze sieht das Frontend
 KEEP_CLOSED = 50  # so viele abgeschlossene Einsätze bleiben im Speicher
 WEATHER = ['Sonnig', 'Bewölkt', 'Regen', 'Nebel', 'Windig']
-TRAVEL_TIME = {'Sonnig': 12, 'Bewölkt': 13, 'Regen': 17, 'Nebel': 20, 'Windig': 15}
-# Fahrten folgen dem Straßennetz (game.strassen). TRAVEL_TIME gilt für eine mittellange Route
-# (Mittel über alle Wachen und Einsatzorte); kürzere und längere Routen dauern anteilig kürzer oder
-# länger, aber höchstens halb bzw. doppelt so lange, damit das Spiel nicht zäh wird.
-ROUTE_REFERENCE = .9
-ROUTE_FACTOR = (.5, 2)
+# Fahrzeit = Ausrückzeit + Summe(Abschnittslänge / Geschwindigkeit der Straßenklasse) × Wetterfaktor.
+# Geschwindigkeiten je Klasse: game.strassen.SPEED. Weg und Fahrzeit stehen beim Alarm fest.
+DEPARTURE_TIME = 3  # Sekunden vom Alarm bis zur Abfahrt (nur Anfahrt, nicht Rückfahrt)
+WEATHER_SLOWDOWN = {'Sonnig': 1, 'Bewölkt': 1.05, 'Regen': 1.25, 'Nebel': 1.4, 'Windig': 1.1}
+MUD_SLOWDOWN = 1.5  # Feld- und Schotterwege bei Regen zusätzlich (matschig)
+KIND_SPEED = {'KdoW': 1.15}  # Kommandowagen ist wendiger als die Löschfahrzeuge
+LEGACY_TRAVEL_TIME = 12  # Fahrten aus sehr alten Räumen ohne phase_until
 WORK_FACTOR = {'Sonnig': 1, 'Bewölkt': 1, 'Regen': .85, 'Nebel': .8, 'Windig': .9}
 # KI-Leitstelle (ohne menschliche Leitstelle). Die AI_*-Werte überschreibt westbummeln/settings.py per Env.
 # Abstand zwischen zwei Einsätzen: Zufall zwischen MIN und MAX Sekunden, geteilt durch (1 + freie GF-Fahrzeuge).
@@ -99,7 +101,8 @@ def new_room(code, seed=None):
         'code': code,
         'players': {},
         'vehicles': {
-            v['id']: {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0}
+            v['id']: {**v, 'owner': None, 'status': 2, 'incident': None, 'phase': 'wache', 'phase_at': 0,
+                      'vorbelastet': False}
             for v in FLEET
         },
         'incidents': [],
@@ -193,7 +196,30 @@ def ai_dispatcher(r):
 
 
 def _free(v):
+    """Frei auf der Wache (Status 2, auch 1 oder 5 auf der Wache)."""
     return v['phase'] == 'wache' and v['status'] != 6 and not v['incident']
+
+
+def alarmable(v):
+    """Darf alarmiert werden: frei auf der Wache, Status 1 auf der Rückfahrt oder frei an der Einsatzstelle.
+
+    Frei an der Einsatzstelle heißt: Maßnahmen abgeschlossen bzw. Einsatz beendet, das Fahrzeug wartet
+    noch dort (released_at gesetzt) – oder, in älteren Räumen, der GF hat dort Status 1 gedrückt.
+    So ein Fahrzeug ist vorbelastet (siehe alarm). Nie während der Anfahrt, bei der Arbeit oder in Status 6."""
+    if _free(v):
+        return True
+    if v['phase'] == 'rueckfahrt':
+        return v['status'] == 1
+    return v['phase'] == 'vorort' and (v['status'] == 1 or v.get('released_at') is not None)
+
+
+def alarm_eta(r, v, pos, now):
+    """Voraussichtliche Fahrzeit in Sekunden von der aktuellen Position des Fahrzeugs nach pos.
+
+    Wie alarm(): auf der Wache mit Ausrückzeit (= eta), unterwegs ohne."""
+    if v['phase'] == 'wache':
+        return eta(r, v, pos)
+    return plan_trip(r, v, vehicle_position(v, now), pos)[1][-1]
 
 
 def needed_vehicles(inc):
@@ -215,58 +241,115 @@ def ai_crew_block(r, inc):
                  and r['vehicles'][vid]['phase'] in ('anfahrt', 'vorort'))
     if active >= need:
         return f'Bedarf gedeckt ({need} Fahrzeug{"e" if need > 1 else ""} laut Stichwort)'
-    if any(v['owner'] and _free(v) for v in r['vehicles'].values()):
+    if any(v['owner'] and alarmable(v) for v in r['vehicles'].values()):
         return 'erst freie Spielerfahrzeuge alarmieren'
     return ''
 
 
 def alarm(r, inc, v, now):
-    """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI)."""
+    """Fahrzeug zum Einsatz schicken (gemeinsam für Leitstelle und KI).
+
+    Die Anfahrt beginnt dort, wo das Fahrzeug gerade ist. Kommt es nicht von der Wache (Status 1),
+    verlässt es seinen alten Einsatz und gilt bis zur nächsten Ankunft auf der Wache als vorbelastet;
+    sein übriger Zustand (z. B. ein Wassertank) bleibt, wie er ist. Liefert den Funkspruch zum Alarm."""
+    from_station = v['phase'] == 'wache'
+    text = f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.'
+    if not from_station:
+        text += (' Aus Status 1 alarmiert, vorbelastet.' if v['status'] == 1
+                 else ' Frei an der Einsatzstelle alarmiert, vorbelastet.')
+    start = list(v['base']) if from_station else vehicle_position(v, now)
+    if not from_station:
+        _leave_incident(r, v, inc)
     if v['id'] not in inc['assigned']:
         inc['assigned'].append(v['id'])
     sections = inc.setdefault('sections', default_sections())
     if not any(v['id'] in section['vehicles'] for section in sections.values()):
         sections['Hauptabschnitt']['vehicles'].append(v['id'])
-    route = strassen.route(v['base'], inc['pos'])
-    _start_trip(v, 'anfahrt', route, trip_duration(r, route), now)
-    v.update(status=3, incident=inc['id'])
+    # Ausrückzeit nur auf der Wache; ein Fahrzeug, das schon fährt, dreht einfach um.
+    _start_trip(v, 'anfahrt', *plan_trip(r, v, start, inc['pos'], DEPARTURE_TIME if from_station else 0), now)
+    v.update(status=3, incident=inc['id'], vorbelastet=not from_station)
+    return text
 
 
-def trip_duration(r, route):
-    """Fahrzeit in Sekunden für eine Route, abhängig vom aktuellen Wetter."""
-    factor = strassen.length(route) / ROUTE_REFERENCE
-    return travel_time(r) * min(ROUTE_FACTOR[1], max(ROUTE_FACTOR[0], factor))
+def _leave_incident(r, v, new):
+    """Fahrzeug aus seinem bisherigen, noch offenen Einsatz austragen (Zuordnung, Abschnitte, Erledigt-Liste).
+
+    Ein abgeschlossener Einsatz bleibt unverändert, damit seine Fahrzeugliste erhalten bleibt."""
+    old = next((i for i in r['incidents'] if i['id'] == v.get('incident')), None)
+    if not old or old is new or old['closed']:
+        return
+    for listed in (old['assigned'], old.get('done', [])):
+        if v['id'] in listed:
+            listed.remove(v['id'])
+    for section in old.get('sections', {}).values():
+        if v['id'] in section['vehicles']:
+            section['vehicles'].remove(v['id'])
 
 
-def _start_trip(v, phase, route, duration, now):
-    """Fahrt entlang route beginnen. Weg und Ankunftszeit stehen ab jetzt fest; ein Wetterwechsel ändert sie nicht."""
-    v.update(phase=phase, phase_at=now, phase_until=now + duration, phase_from=list(route[0]),
-             phase_to=list(route[-1]), phase_route=route)
+def drive_slowdown(r):
+    """Wetterfaktor auf alle Fahrzeiten (1 = sonnig)."""
+    return WEATHER_SLOWDOWN.get(r['weather'], 1)
+
+
+def drive_speeds(r, v=None):
+    """Meter pro Sekunde je Straßenklasse für dieses Fahrzeug beim aktuellen Wetter."""
+    factor = KIND_SPEED.get(v['kind'], 1) / drive_slowdown(r) if v else 1 / drive_slowdown(r)
+    speeds = {road: speed * factor for road, speed in strassen.SPEED.items()}
+    if r['weather'] == 'Regen':
+        speeds['weg'] /= MUD_SLOWDOWN
+    return speeds
+
+
+def plan_trip(r, v, start, target, departure=0):
+    """Schnellster Weg von start nach target: (Punkte, Sekunden ab Alarm je Punkt)."""
+    route, times = strassen.plan(start, target, drive_speeds(r, v))
+    return route, [round(departure + t, 2) for t in times]
+
+
+def eta(r, v, target):
+    """Voraussichtliche Fahrzeit in Sekunden von der Wache zu target (inklusive Ausrückzeit)."""
+    return plan_trip(r, v, v['base'], target, DEPARTURE_TIME)[1][-1]
+
+
+def _start_trip(v, phase, route, times, now):
+    """Fahrt entlang route beginnen. times[i]: Sekunden ab now, zu denen route[i] erreicht wird.
+
+    Weg, Tempo je Abschnitt und Ankunftszeit stehen ab jetzt fest; ein Wetterwechsel ändert sie nicht."""
+    v.update(phase=phase, phase_at=now, phase_until=now + times[-1], phase_from=list(route[0]),
+             phase_to=list(route[-1]), phase_route=route, phase_times=times)
 
 
 def _stop(v, phase, pos, now):
     v.update(phase=phase, phase_at=now, phase_until=now, phase_from=list(pos), phase_to=list(pos))
     v.pop('phase_route', None)
+    v.pop('phase_times', None)
 
 
-def _trip_share(v, now):
-    """Zurückgelegter Anteil der laufenden Fahrt (0–1) nach der Zeit."""
-    duration = v.get('phase_until', v['phase_at']) - v['phase_at']
-    return 1 if duration <= 0 else min(1, max(0, (now - v['phase_at']) / duration))
+def _timeline(v):
+    """Weg und Zeitplan (Sekunden ab phase_at) der laufenden Fahrt.
+
+    Fahrten aus älteren Räumen ohne phase_times laufen gleichmäßig über die Strecke, ganz alte ohne
+    Route gerade von phase_from nach phase_to."""
+    route = v.get('phase_route')
+    if not route or len(route) < 2:
+        start = v.get('phase_from') or list(v['base'])
+        route = [start, v.get('phase_to') or start]
+    times = v.get('phase_times')
+    if times and len(times) == len(route):
+        return route, times
+    span = max(0, v.get('phase_until', v['phase_at']) - v['phase_at'])
+    total = strassen.length(route)
+    times, walked = [0], 0
+    for a, b in itertools.pairwise(route):
+        walked += strassen.distance(a, b)
+        times.append(span * walked / total if total else span)
+    return route, times
 
 
 def vehicle_position(v, now):
-    """Position auf der Karte (0–1) zum Zeitpunkt now.
-
-    Entlang phase_route, falls vorhanden; Fahrten aus älteren Räumen ohne Route linear zwischen
-    phase_from und phase_to."""
-    share = _trip_share(v, now)
-    route = v.get('phase_route')
-    if route and len(route) > 1:
-        return strassen.along(route, share)[0]
-    start = v.get('phase_from') or list(v['base'])
-    target = v.get('phase_to') or start
-    return [start[0] + (target[0] - start[0]) * share, start[1] + (target[1] - start[1]) * share]
+    """Position auf der Karte (0–1) zum Zeitpunkt now, entlang des Wegs mit dem Tempo je Abschnitt."""
+    route, times = _timeline(v)
+    return strassen.at_time(route, times, now - v['phase_at'])[0]
 
 
 def _distance(a, b):
@@ -274,10 +357,9 @@ def _distance(a, b):
 
 
 def ai_dispatch(r, inc, v, now):
-    if not _free(v):
+    if not alarmable(v):
         return False
-    alarm(r, inc, v, now)
-    emit(r, 'KI-Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
+    emit(r, 'KI-Leitstelle', alarm(r, inc, v, now))
     return True
 
 
@@ -287,17 +369,21 @@ def _crews(r):
     return [v for v in vehicles if v['status'] != 6]
 
 
-def _ai_vehicle(r, inc):
-    """Fahrzeug für die KI-Leitstelle: das nächste freie Spielerfahrzeug.
+def _ai_vehicle(r, inc, now):
+    """Fahrzeug für die KI-Leitstelle: das alarmierbare Spielerfahrzeug mit der kürzesten Fahrzeit.
 
-    Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn das erlaubt ist."""
+    Bei gleicher Fahrzeit (auf volle Sekunden) gewinnt ein Fahrzeug auf der Wache (voll, ausgeruht)
+    vor einem in Status 1. Sitzt kein Spieler auf einem Fahrzeug, ein unbesetztes (ohne KdoW), wenn
+    das erlaubt ist – auch dort zuerst eines von der Wache."""
     crews = _crews(r)
     if crews:
-        return min((v for v in crews if _free(v)), key=lambda v: _distance(v['base'], inc['pos']), default=None)
+        return min((v for v in crews if alarmable(v)),
+                   key=lambda v: (round(alarm_eta(r, v, inc['pos'], now)), not _free(v)), default=None)
     if not ai_mode(r):
         return None
-    return next((v for v in r['vehicles'].values()
-                 if not v['owner'] and _free(v) and v['kind'] != 'KdoW'), None)
+    return min((v for v in r['vehicles'].values()
+                if not v['owner'] and alarmable(v) and v['kind'] != 'KdoW'),
+               key=lambda v: not _free(v), default=None)
 
 
 def ai_open_limit(r):
@@ -351,12 +437,12 @@ def run_ai(r, now):
     open_incidents = [i for i in r['incidents'] if not i['closed']]
     for inc in open_incidents:
         if not inc['assigned']:
-            v = _ai_vehicle(r, inc)
+            v = _ai_vehicle(r, inc, now)
             if v and ai_dispatch(r, inc, v, now):
                 changed = True
     for inc in open_incidents:
         while len(inc['assigned']) < needed_vehicles(inc) and inc['progress'] < AI_REINFORCE_BELOW:
-            v = _ai_vehicle(r, inc)
+            v = _ai_vehicle(r, inc, now)
             if not v or not ai_dispatch(r, inc, v, now):
                 break
             changed = True
@@ -391,10 +477,6 @@ def ai_group_leaders(r, now):
     return changed
 
 
-def travel_time(r):
-    return TRAVEL_TIME.get(r['weather'], 12)
-
-
 def weather_work_factor(r):
     return WORK_FACTOR.get(r['weather'], 1)
 
@@ -410,8 +492,8 @@ def update(r, now=None):
     for v in r['vehicles'].values():
         if v['phase'] not in ('anfahrt', 'rueckfahrt'):
             continue
-        # Fahrten aus älteren Räumen ohne phase_until enden wie früher nach der aktuellen Fahrzeit.
-        if now < v.get('phase_until', v['phase_at'] + travel_time(r)):
+        # Fahrten aus sehr alten Räumen ohne phase_until enden nach der alten Pauschale.
+        if now < v.get('phase_until', v['phase_at'] + LEGACY_TRAVEL_TIME):
             continue
         if v['phase'] == 'anfahrt':
             _stop(v, 'vorort', v.get('phase_to') or v['base'], now)
@@ -419,7 +501,7 @@ def update(r, now=None):
             emit(r, v['call'], 'Status 4 – Einsatzstelle erreicht.')
         else:
             _stop(v, 'wache', v['base'], now)
-            v.update(status=2, incident=None)
+            v.update(status=2, incident=None, vorbelastet=False)
             emit(r, v['call'], 'Status 2 – wieder einsatzbereit auf Wache.')
         changed = True
     if ai_group_leaders(r, now):
@@ -483,31 +565,30 @@ def _finish_incident(r, inc, now):
 def _send_home(r, v, now):
     """Rückfahrt ab der aktuellen Position.
 
-    Bricht die Anfahrt ab, fährt das Fahrzeug den bisherigen Weg zurück und braucht dafür anteilig
-    so lange, wie es schon unterwegs war. Vom Einsatzort aus geht es über den kürzesten Weg heim."""
-    route = v.get('phase_route')
-    if v['phase'] == 'anfahrt' and route and len(route) > 1:
-        share = _trip_share(v, now)
-        _, walked = strassen.along(route, share)
-        back = walked[::-1] if len(walked) > 1 else [walked[0], walked[0]]
-        duration = trip_duration(r, route) * (strassen.length(walked) / (strassen.length(route) or 1))
-    elif v['phase'] == 'anfahrt':
-        # Anfahrt aus einem älteren Raum ohne Route: wie früher gerade zurück.
-        start = vehicle_position(v, now)
-        base = list(v['base'])
-        full = _distance(v.get('phase_to') or start, base)
-        back = [start, base]
-        duration = travel_time(r) * (_distance(start, base) / full if full else 1)
+    Bricht die Anfahrt ab, fährt das Fahrzeug den bisherigen Weg zurück, mit demselben Tempo je
+    Abschnitt, braucht also so lange, wie es schon gefahren ist. Vom Einsatzort aus geht es über
+    den schnellsten Weg heim (ohne Ausrückzeit)."""
+    if v['phase'] == 'anfahrt':
+        route, times = _timeline(v)
+        elapsed = min(times[-1], max(times[0], now - v['phase_at']))
+        here, walked = strassen.at_time(route, times, elapsed)
+        passed = times[:len(walked) - 1]  # Zeitpunkte der schon erreichten Wegpunkte
+        back = walked[::-1]
+        back_times = [0] + [round(elapsed - t, 2) for t in reversed(passed)]
+        if len(back) == 1:
+            back, back_times = [here, here], [0, 0]
     else:
-        back = strassen.route(vehicle_position(v, now), v['base'])
-        duration = trip_duration(r, back)
-    _start_trip(v, 'rueckfahrt', back, duration, now)
+        back, back_times = plan_trip(r, v, vehicle_position(v, now), v['base'])
+    _start_trip(v, 'rueckfahrt', back, back_times, now)
     v['status'] = 1
 
 
-def _snapshot_incident(r, inc):
+def _snapshot_incident(r, inc, now):
     if not inc['closed']:
-        return {**inc, 'need': needed_vehicles(inc), 'ai_crew_block': ai_crew_block(r, inc)}
+        # Voraussichtliche Fahrzeit jedes alarmierbaren Fahrzeugs; das Frontend sortiert die Alarm-Auswahl danach.
+        eta = {v['id']: round(alarm_eta(r, v, inc['pos'], now))
+               for v in r['vehicles'].values() if alarmable(v)}
+        return {**inc, 'need': needed_vehicles(inc), 'ai_crew_block': ai_crew_block(r, inc), 'eta': eta}
     return {key: value for key, value in inc.items() if key != 'sections'}
 
 
@@ -519,7 +600,7 @@ def snapshot(r, now=None):
         'players': [{'id': p['id'], 'name': p['name'], 'vehicle': p['vehicle'], 'role': p['role']}
                     for p in r['players'].values()],
         'vehicles': list(r['vehicles'].values()),
-        'incidents': [_snapshot_incident(r, i) for i in r['incidents'] if not i['closed'] or id(i) in shown],
+        'incidents': [_snapshot_incident(r, i, now) for i in r['incidents'] if not i['closed'] or id(i) in shown],
         'radio': r['radio'][-100:],
         'rev': r['rev'],
         'dispatcher': r['dispatcher'],
@@ -530,7 +611,7 @@ def snapshot(r, now=None):
         'roles': r['roles'],
         'weather': r['weather'],
         'weather_mode': r['weather_mode'],
-        'travel_time': travel_time(r),
+        'drive_slowdown': drive_slowdown(r),
         'work_factor': weather_work_factor(r),
     }
 
@@ -750,12 +831,11 @@ def _dispatch(r, pid, p, data, now, is_developer):
     v = r['vehicles'].get(str(data.get('vehicle', '')))
     if not inc or inc['closed'] or not v:
         raise ValueError('Einsatz oder Fahrzeug nicht verfügbar')
-    if not _free(v):
+    if not alarmable(v):
         raise ValueError('Fahrzeug ist nicht frei')
     if not v['owner'] and (reason := ai_crew_block(r, inc)):
         raise ValueError(f'Unbesetztes Fahrzeug nicht alarmierbar: {reason}')
-    alarm(r, inc, v, now)
-    emit(r, 'Leitstelle', f'Alarm {v["call"]}: {inc["title"]}, {inc["address"]}.')
+    emit(r, 'Leitstelle', alarm(r, inc, v, now))
 
 
 def _section_add(r, pid, p, data, now, is_developer):

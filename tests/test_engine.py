@@ -139,7 +139,7 @@ def test_settings_only_for_admin(room):
     with pytest.raises(ValueError, match='Nur die Raumverwaltung'):
         act(room, other, 2, 'settings', kind='weather', mode='manual', weather='Regen')
     act(room, admin, 1, 'settings', kind='weather', mode='manual', weather='Nebel')
-    assert engine.snapshot(room)['travel_time'] == 20
+    assert engine.snapshot(room)['drive_slowdown'] == engine.WEATHER_SLOWDOWN['Nebel']
 
 
 def test_unknown_action(room):
@@ -160,7 +160,7 @@ def test_radio_hook_receives_entries(room, monkeypatch):
 def test_street_network_is_connected():
     seen, todo = {0}, [0]
     while todo:
-        for other, _ in strassen.NEIGHBOURS[todo.pop()]:
+        for other, *_ in strassen.NEIGHBOURS[todo.pop()]:
             if other not in seen:
                 seen.add(other)
                 todo.append(other)
@@ -187,7 +187,7 @@ def test_route_uses_streets_instead_of_straight_line():
     assert all(strassen._project(p)[0] < 1e-3 for p in route[1:-1])
 
 
-def test_route_is_shortest_path():
+def test_route_takes_the_direct_way_when_it_is_fastest():
     """Von FW Altstadt zur Kirchstraße geht es über die Gasse, nicht außen herum."""
     route = strassen.route(engine.BASE[2], engine.locate('Kirchstraße'))
     assert list(strassen.JUNCTIONS['kirch_w']) in route
@@ -204,13 +204,3 @@ def test_along_route_interpolates_by_length():
     assert strassen.along(route, 0)[0] == [0, 0]
     assert strassen.along(route, 1)[0] == pytest.approx([.2, .3])
 
-
-def test_trip_duration_grows_with_route_length(room):
-    short = [[0, 0], [0, engine.ROUTE_REFERENCE * .8]]
-    medium = [[0, 0], [0, engine.ROUTE_REFERENCE]]
-    tiny = [[0, 0], [0, .01]]
-    huge = [[0, 0], [0, 5]]
-    assert engine.trip_duration(room, medium) == 12
-    assert engine.trip_duration(room, short) == pytest.approx(12 * .8)
-    assert engine.trip_duration(room, tiny) == 12 * engine.ROUTE_FACTOR[0]
-    assert engine.trip_duration(room, huge) == 12 * engine.ROUTE_FACTOR[1]
