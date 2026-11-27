@@ -5,11 +5,15 @@ Typnamen. Eine Maßnahme verlangt Fähigkeiten (z. B. `pumpe`), jedes Fahrzeug b
 Fahrzeugtyp (TLF, DLK, RW, ELW …) braucht deshalb nur einen Eintrag in FAHRZEUGTYPEN, ein neues Stichwort
 nur einen Eintrag in KATALOG.
 
-Bisher ist nur F1 als Katalog-Einsatz ausgebaut (Schlüssel = Stichwort, z. B. später „B 1“ nach NRW-Schema;
-Leerzeichen und Groß-/Kleinschreibung zählen beim Erkennen nicht). Alle anderen Stichworte laufen über den alten
-Fortschrittsbalken (Allgemein-Ablauf). Im Code gibt es keine festen Stichwort- oder Maßnahmen-Schlüssel: die Logik
+Bisher ist nur B 1 (Kleinbrand, früher „F1“) als Katalog-Einsatz ausgebaut. Schlüssel = AAO-Stichwort mit
+Leerzeichen wie in game/aao.py (#51); Leerzeichen und Groß-/Kleinschreibung zählen beim Erkennen nicht.
+Alle anderen Stichworte laufen über den alten Fortschrittsbalken (Allgemein-Ablauf).
+Im Code gibt es keine festen Stichwort- oder Maßnahmen-Schlüssel: die Logik
 fragt nach `wirkung` (erkunden, wasser, loeschen) und nach `gegen` (Gegenmaßnahme je Eskalationsregel).
 """
+
+# Alte Stichworte (vor der AAO-Umstellung, #51) → AAO-Stichwort. Nach #51 übernimmt das aao.stichwort_aus_titel.
+ALIASE = {'F1': 'B 1', 'F2': 'B 2'}
 
 # Fähigkeiten (gleiche Namen wie game/flotte.py der Session „Echte Flotte“)
 LOESCHEN = 'loeschen'                  # Löschwassertank + Schläuche: Angriff, Nachlöschen
@@ -57,13 +61,13 @@ BRAND_AUS = 'brand_aus'
 BEDINGUNGEN = {BRAND_AUS: 'Erst muss das Feuer aus sein'}
 
 KATALOG = {
-    'F1': {
+    'B 1': {
         'name': 'Kleinbrand',
         'aao': ['LF 20'],
         'lage': {'brand': 15, 'wachstum': .2},
         # Brand-Schwelle → neues Stichwort. `warnung` Punkte vorher kommt die Warnung, unter `einfangen` gilt
         # die Lage wieder als unter Kontrolle.
-        'eskalation': {'schwelle': 40, 'warnung': 10, 'einfangen': 25, 'stichwort': 'F2',
+        'eskalation': {'schwelle': 40, 'warnung': 10, 'einfangen': 25, 'stichwort': 'B 2',
                        'aao': ['HLF 20', 'LF 20', 'KdoW'], 'ziel': 'Carport/Wohnhaus'},
         # Varianten: zufällig beim Anlegen (oder aus dem Titel), Erkunden deckt sie auf.
         'varianten': {

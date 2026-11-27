@@ -13,6 +13,7 @@ import random
 import re
 
 from game.katalog import (
+    ALIASE,
     BEDINGUNGEN,
     BRAND_AUS,
     BRAND_WETTER,
@@ -40,11 +41,13 @@ def _norm(text):
 
 
 def stichwort_aus_titel(title):
-    """Katalog-Schlüssel zum Titel oder ''. 'F1 · Kleinbrand' → 'F1', 'B 1 · Kleinbrand' → 'B 1' (wenn im Katalog).
+    """Katalog-Schlüssel zum Titel oder ''. 'B 1 · Kleinbrand' → 'B 1', altes 'F1 · Kleinbrand' → 'B 1'.
 
-    Verglichen wird ohne Leerzeichen und Groß-/Kleinschreibung: der Teil vor „·“, ohne „·“ das erste Wort."""
+    Verglichen wird ohne Leerzeichen und Groß-/Kleinschreibung: der Teil vor „·“, ohne „·“ das erste Wort.
+    Nach #51 kann das auf aao.stichwort_aus_titel umgestellt werden (gleiche Ergebnisse für den Katalog)."""
     head = str(title).split('·', 1)[0].strip()
     katalog = {_norm(key): key for key in KATALOG}
+    katalog.update({_norm(alt): neu for alt, neu in ALIASE.items() if neu in KATALOG})
     for kandidat in (head, head.split()[0] if head else ''):
         if _norm(kandidat) in katalog:
             return katalog[_norm(kandidat)]

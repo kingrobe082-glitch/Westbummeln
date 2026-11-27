@@ -145,7 +145,7 @@ def new_incident(title, address, pos, creator, now, seed=None):
         'created': time.strftime('%H:%M:%S'), 'closed': False, 'assigned': [], 'working': False,
         'progress': 0, 'updated': now, 'sections': default_sections(),
     }
-    # Stichworte aus dem Katalog (bisher F1) bekommen Maßnahmen und Lage, alle anderen den Fortschrittsbalken.
+    # Stichworte aus dem Katalog (bisher B 1) bekommen Maßnahmen und Lage, alle anderen den Fortschrittsbalken.
     massnahmen.init_einsatz(inc, now, seed)
     return inc
 

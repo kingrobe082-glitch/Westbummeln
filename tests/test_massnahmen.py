@@ -94,7 +94,7 @@ def test_nur_f1_bekommt_massnahmen():
     f1 = engine.new_incident('F1 · Kleinbrand', 'Marktplatz', [.41, .65], 'x', NOW)
     f2 = engine.new_incident('F2 · Wohnungsbrand', 'Marktplatz', [.41, .65], 'x', NOW)
     frei = engine.new_incident('TH · Wasserschaden', 'Marktplatz', [.41, .65], 'x', NOW)
-    assert f1['stichwort'] == 'F1' and 'mn' in f1
+    assert f1['stichwort'] == 'B 1' and 'mn' in f1
     assert 'mn' not in f2 and 'mn' not in frei
 
 
@@ -139,8 +139,8 @@ def test_richtige_reihenfolge_loescht_f1_ohne_eskalation(room):
     starten(room, gf, inc, 'nachloeschen', t)
     laufen(room, t + 1, t + 21)
     assert inc['closed'] and inc['bilanz']['stufe_max'] == 0
-    assert inc['bilanz']['sterne'] == 3 and inc['stichwort'] == 'F1'
-    assert any(m.startswith('📋 Einsatzbilanz F1 · Hauptstraße 5: ★★★') for m in funk(room))
+    assert inc['bilanz']['sterne'] == 3 and inc['stichwort'] == 'B 1'
+    assert any(m.startswith('📋 Einsatzbilanz B 1 · Hauptstraße 5: ★★★') for m in funk(room))
     assert 'mn' not in inc
     assert v['phase'] == 'rueckfahrt'
 
@@ -177,10 +177,10 @@ def test_angriff_ohne_wasser_warnt_eskaliert_und_wird_eingefangen(room):
     # 3. Feuer wächst doppelt → Warnung E2 → Stichworterhöhung F1 → F2 mit Nachforderung
     t = bis_dass(room, t, lambda: mn['eskaliert'], 200)
     assert any('Feuer droht' in m for m in funk(room))
-    assert inc['stichwort'] == 'F2' and inc['title'] == 'F2 · Gartenhütte'
+    assert inc['stichwort'] == 'B 2' and inc['title'] == 'B 2 · Gartenhütte'
     assert massnahmen.stufe(inc) == 2
     assert sorted(massnahmen.offene_nachforderungen(inc, room['vehicles'])) == ['HLF 20', 'KdoW']
-    assert any('Stichworterhöhung F1 → F2' in m and 'Nachforderung: 1 HLF 20, 1 KdoW' in m for m in funk(room))
+    assert any('Stichworterhöhung B 1 → B 2' in m and 'Nachforderung: 1 HLF 20, 1 KdoW' in m for m in funk(room))
     # Die Leitstelle darf die Nachforderung auch mit KI-Besatzung schicken.
     assert engine.ai_crew_block(room, inc) == ''
     act(room, ls, 1, 'dispatch', now=t, incident=inc['id'], vehicle='WB-2-HLF20')
@@ -198,7 +198,7 @@ def test_angriff_ohne_wasser_warnt_eskaliert_und_wird_eingefangen(room):
     assert inc['closed']
     assert any(x['author'] == 'KI-Gruppenführer' for x in room['radio'])  # HLF hat mitgearbeitet
     b = inc['bilanz']
-    assert b['stichwort'] == 'F1' and b['stichwort_ende'] == 'F2' and b['stufe_max'] == 2
+    assert b['stichwort'] == 'B 1' and b['stichwort_ende'] == 'B 2' and b['stufe_max'] == 2
     assert b['wasser_aus'] == 1 and b['sterne'] < 3 and b['tipp']
 
 
@@ -208,7 +208,7 @@ def test_ki_leitstelle_erfuellt_nachforderung(room):
     room['ai_last'] = t + 10_000  # keine neuen KI-Einsätze
     inc['mn']['brand'] = 39.9
     laufen(room, t + 1, t + 1)
-    assert inc['stichwort'] == 'F2'
+    assert inc['stichwort'] == 'B 2'
     laufen(room, t + 2, t + engine.NACHFORDERUNG_KI_DELAY)
     assert len(inc['assigned']) == 1
     laufen(room, t + engine.NACHFORDERUNG_KI_DELAY + 1, t + engine.NACHFORDERUNG_KI_DELAY + 2)
@@ -256,11 +256,12 @@ def test_vorbelasteter_tank_ist_schnell_leer(room):
     assert inc['mn']['zaehler']['wasser_aus'] == 1 and v['tank'] == 0
 
 
-def test_stichwort_nach_nrw_schema(monkeypatch):
-    monkeypatch.setitem(katalog.KATALOG, 'B 1', katalog.KATALOG['F1'])
+def test_stichwort_nach_aao():
     inc = engine.new_incident('B 1 · Kleinbrand', 'Marktplatz', [.41, .65], 'x', NOW)
     assert inc['stichwort'] == 'B 1' and inc['mn']['katalog'] == 'B 1'
     assert massnahmen.stichwort_aus_titel('b1 · Mülltonne') == 'B 1'
+    assert massnahmen.stichwort_aus_titel('F1 · Kleinbrand') == 'B 1'  # alter Titel (vor #51)
+    assert massnahmen.stichwort_aus_titel('F2 · Wohnungsbrand') == ''  # B 2 hat noch keinen Katalog
     assert massnahmen.stichwort_aus_titel('TH 1 · Ölspur') == ''
 
 
@@ -414,7 +415,7 @@ def test_ki_gf_loest_f1_im_raum(room, monkeypatch):
     laufen(room, NOW, NOW + 200)
     inc = room['incidents'][0]
     assert inc['closed'] and inc['bilanz']['sterne'] >= 1
-    assert any(m.startswith('📋 Einsatzbilanz F1') for m in funk(room))
+    assert any(m.startswith('📋 Einsatzbilanz B 1') for m in funk(room))
     assert any(x['author'] == 'KI-Gruppenführer' for x in room['radio'])
 
 
