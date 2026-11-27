@@ -37,7 +37,7 @@ from pathlib import Path
 
 from django.conf import settings
 
-from game import engine, rooms
+from game import aao, engine, rooms
 from integrations import discord
 
 log = logging.getLogger(__name__)
@@ -99,6 +99,9 @@ def _load_room(data):
     data['banned'] = {account: name for account, name in data.get('banned', [])}
     for p in data['players'].values():
         p.pop('radio_times', None)
+    # Räume von vor der AAO: alte Stichworte (F1, F2, TH1 …) auf die neuen abbilden.
+    for inc in data.get('incidents', []):
+        aao.migriere_einsatz(inc)
     return data
 
 

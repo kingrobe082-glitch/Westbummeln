@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 
-from game import engine, rooms
+from game import aao, engine, rooms
 from westbummeln.security import ip_limit
 from westbummeln.views import BAD_REQUEST, account_id, json_reply, not_found, read_json
 
@@ -17,7 +17,7 @@ ROOM_RE = re.compile(r'[A-Z0-9-]{2,16}')
 
 @ensure_csrf_cookie
 def index(request):
-    response = render(request, 'index.html')
+    response = render(request, 'index.html', {'aao': aao.frontend_liste()})
     response['Cache-Control'] = 'no-cache'
     return response
 

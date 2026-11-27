@@ -1,0 +1,26 @@
+/* Alarmierung nach AAO (static/js/aao.js) */
+#aaoForm{margin-bottom:10px}
+.aaoInputs>#stichwort{flex:1 1 230px}
+.aaoInputs>#address{flex:1 1 170px}
+.aaoInputs>#title{flex:2 1 220px}
+.aaoInfo{margin:2px 0 6px;min-height:1em}
+.aaoVorschlag{border:1px solid var(--line);border-radius:2px;background:var(--surface);padding:6px 8px;max-height:420px;overflow:auto}
+.aaoHead{margin:2px 0 6px}
+.aaoSub{margin:8px 0 2px;text-transform:uppercase;letter-spacing:.05em}
+.aaoRow{display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;align-items:center;padding:4px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.aaoRow:last-of-type{border-bottom:0}
+.aaoRow input{min-height:0;width:18px;height:18px;margin:0}
+.aaoRow .aaoName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aaoRow .aaoNote{grid-column:2/4;color:var(--muted)}
+.aaoRow[data-status=ersatz] .pill{border-color:var(--warn);color:var(--warn)}
+.aaoRow[data-status=alarmiert]{opacity:.6;cursor:default}
+.aaoRow[data-status=alarmiert] .pill{border-color:var(--ok);color:var(--ok)}
+.aaoRow[data-optional]:not([data-status=alarmiert]) .aaoName{color:var(--muted)}
+.aaoFehlt{margin:6px 0;color:var(--warn)}
+.aaoMeldung{margin:6px 0}
+.aaoActions>#create{flex:1 1 auto}
+.aaoActions>#aaoCancel{flex:0 0 auto}
+@media (max-width:600px){
+  .aaoInputs>*{flex:1 1 100%}
+  .aaoVorschlag{max-height:none}
+}

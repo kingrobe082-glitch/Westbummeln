@@ -126,6 +126,7 @@ def test_delete_removes_player_from_all_rooms(player, game_client):
     # Raum 1: Florian1 ist Besitzer und fährt ein Fahrzeug, Ben spielt mit.
     player.create()
     own_room = player.room
+    rooms.rooms[own_room]['ai_last'] = 10 ** 12  # KI-Leitstelle alarmiert allein sofort nach AAO
     assert player.api('claim', vehicle='WB-3-HLF20').status_code == 200
     ben = game_client()
     ben.account('register', name='Ben', email='ben@example.com', password='Ben-Funkwort-1')
