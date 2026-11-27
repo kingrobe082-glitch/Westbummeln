@@ -1,6 +1,6 @@
 """Erzeugt den FME-Alarmton (static/sounds/Westbummeln_FME_ZVEI.wav).
 
-Klang wie ein Funkmeldeempfänger am Gürtel: kurz die ZVEI-Fünftonfolge, danach der Weckton
+Klang wie ein Funkmeldeempfänger am Gürtel: zweimal die ZVEI-Fünftonfolge, danach der Weckton
 als einzelne kurze Piezo-Pieps („pip pip“) in der Tonfolge A-C-A-B, mehrmals wiederholt.
 Alles synthetisch erzeugt, keine Aufnahme.
 
@@ -22,7 +22,8 @@ ZVEI_TONE = 0.070  # 70 ms je Ton (ZVEI-Norm)
 NOTES = {'A': 1760.0, 'C': 2093.0, 'B': 1864.66, 'H': 1975.53}
 MELODY = 'ACAB'
 PIP, PIP_GAP = 0.11, 0.07      # kurzer Pieps, kurze Lücke -> „pip pip pip pip“
-ROUNDS, ROUND_GAP = 9, 0.30
+ROUND_GAP = 0.30
+ZVEI_REPEAT, ZVEI_GAP = 2, 0.25  # Fünftonfolge zweimal, wie bei echter Alarmierung
 TOTAL = 10.0  # Gesamtlänge in Sekunden (Rest wird mit Stille aufgefüllt)
 
 samples = []
@@ -68,9 +69,12 @@ def five_tone(code):
 
 
 pause(0.03)
-five_tone(CODE)
-pause(0.30)
-for _round in range(ROUNDS):
+for i in range(ZVEI_REPEAT):
+    five_tone(CODE)
+    pause(ZVEI_GAP if i < ZVEI_REPEAT - 1 else 0.30)
+# So viele A-C-A-B-Runden, wie noch in TOTAL passen.
+ROUND = len(MELODY) * (PIP + PIP_GAP) + ROUND_GAP
+for _round in range(int((TOTAL - len(samples) / RATE) / ROUND)):
     for note in MELODY:
         pip(NOTES[note], PIP, 0.55)
         pause(PIP_GAP)
