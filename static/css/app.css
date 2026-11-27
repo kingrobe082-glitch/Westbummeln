@@ -290,3 +290,13 @@ button.gf-return{background:var(--fms1);border-color:var(--fms1);color:var(--fms
 @media(max-width:600px){#vehicleInfo{width:auto;left:6px;right:6px;padding:0 8px 8px;font-size:12px}.vehicle-info-head{margin:0 -8px 4px;padding-left:8px}#vehicleInfo.at-top{top:6px}#vehicleInfo.at-bottom{bottom:6px}#vehicleInfo dl{gap:1px 8px;margin:0 0 6px}}
 /* Kurz hervorgehobener Eintrag in der Fahrzeugliste („In Fahrzeugliste zeigen“) */
 .vehicle-flash{background:var(--hover);outline:2px solid var(--focus)}
+
+/* FMS: Hinweis für den GF, gewünschter nächster Status, Sprechwünsche für die Leitstelle */
+.fmsHint{margin:6px 0 10px;padding:8px 10px;border-radius:8px;background:#3a2f0b;border:1px solid var(--focus);color:#ffe7a3;font-size:13px}
+.statuses button.wanted{outline:2px solid var(--focus);outline-offset:1px;animation:fms-wanted 1.2s ease-in-out infinite}
+@keyframes fms-wanted{50%{box-shadow:0 0 0 4px #f0c24b55}}
+.speakRequests:empty{display:none}
+.speakRequests{margin-top:10px;border-top:1px solid var(--line);padding-top:6px}
+.speakItem{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.speakItem>button{margin-left:auto;min-height:32px;background:var(--primary);border-color:var(--primary)}
+@media(prefers-reduced-motion:reduce){.statuses button.wanted{animation:none}}

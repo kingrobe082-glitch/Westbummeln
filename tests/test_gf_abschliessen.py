@@ -28,14 +28,25 @@ def online(r, now):
         p['last'] = now
 
 
+def gf_status(r, vid, status, now=NOW):
+    """Der GF des Fahrzeugs gibt einen Status (Spielerfahrzeuge setzen ihn selbst, siehe test_status)."""
+    owner = r['vehicles'][vid]['owner']
+    act(r, owner, r['players'][owner]['account'], 'status', now=now, status=status)
+
+
 def on_site(r, ls, inc, *vehicles):
-    """Fahrzeuge alarmieren und an der Einsatzstelle ankommen lassen; gibt die Ankunftszeit zurück."""
+    """Fahrzeuge alarmieren (Spieler-GF geben Status 3), ankommen lassen (Status 4); gibt die Ankunftszeit zurück."""
     for vid in vehicles:
         act(r, ls, 1, 'dispatch', incident=inc['id'], vehicle=vid)
+        if r['vehicles'][vid]['owner']:
+            gf_status(r, vid, 3)
     arrival = max(r['vehicles'][vid]['phase_until'] for vid in vehicles)
     online(r, arrival)
     engine.update(r, arrival)
     assert all(r['vehicles'][vid]['phase'] == 'vorort' for vid in vehicles)
+    for vid in vehicles:
+        if r['vehicles'][vid]['owner']:
+            gf_status(r, vid, 4, arrival)
     return arrival
 
 
@@ -200,7 +211,10 @@ def test_zurueck_zur_wache_nutzt_rueckfahrt_ueber_strassen(room, einsatz):
     assert radio(room)[-1] == ('Florian WB 2 LF 20', 'Status 1 – Einsatzstelle verlassen, Rückfahrt zur Wache.')
     online(room, v['phase_until'])
     engine.update(room, v['phase_until'])
-    assert (v['phase'], v['status'], v['incident']) == ('wache', 2, None)
+    # Auf der Wache gibt der GF Status 2 selbst (Spielerfahrzeuge setzen ihren Status nicht automatisch).
+    assert (v['phase'], v['status'], v['incident']) == ('wache', 1, None)
+    act(room, ben, 2, 'status', now=v['phase_until'], status=2)
+    assert engine._free(v)
 
 
 def test_zurueck_zur_wache_nicht_waehrend_des_einsatzes(room, einsatz):
@@ -239,6 +253,7 @@ def test_leitstelle_beendet_waehrend_anfahrt_faehrt_sofort_heim(room):
     act(room, ls, 1, 'incident', title='F1 · Kleinbrand', address='Hauptstraße 5')
     inc = room['incidents'][-1]
     act(room, ls, 1, 'dispatch', incident=inc['id'], vehicle='WB-2-LF20')
+    gf_status(room, 'WB-2-LF20', 3)
     act(room, ls, 1, 'close', now=NOW + 2, incident=inc['id'])
     assert room['vehicles']['WB-2-LF20']['phase'] == 'rueckfahrt'
     assert radio(room)[-1] == ('Leitstelle', 'Einsatz F1 · Kleinbrand beendet – Rückfahrt eingeleitet.')
@@ -253,7 +268,8 @@ def test_wartendes_fahrzeug_faehrt_nach_frist_selbst(room, einsatz):
     assert v['phase'] == 'vorort'
     online(room, now + engine.RETURN_DELAY)
     engine.update(room, now + engine.RETURN_DELAY)
-    assert (v['phase'], v['status']) == ('rueckfahrt', 1)
+    assert (v['phase'], v['status']) == ('rueckfahrt', 4)  # Status gibt der GF selbst
+    assert radio(room)[-1] == ('Florian WB 2 LF 20', 'Einsatzstelle verlassen, Rückfahrt zur Wache.')
 
 
 def test_wartendes_fahrzeug_ohne_gf_faehrt_sofort(room, einsatz):
@@ -289,8 +305,10 @@ def test_ki_modus_eigenes_fahrzeug_wartet_auf_gf(room):
     inc = room['incidents'][0]
     v = room['vehicles']['WB-2-LF20']
     assert inc['assigned'] == ['WB-2-LF20']
+    act(room, anna, 1, 'status', status=3)
     online(room, v['phase_until'])
     engine.update(room, v['phase_until'])
+    act(room, anna, 1, 'status', now=v['phase_at'], status=4)
     act(room, anna, 1, 'work', now=v['phase_at'], incident=inc['id'])
     now = work_until(room, inc, engine.COMPLETE_MIN, v['phase_at'])
     act(room, anna, 1, 'complete', now=now, incident=inc['id'])

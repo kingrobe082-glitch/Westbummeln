@@ -1,6 +1,10 @@
 let incidentMarkup = '';
 let fmeKey = '';
 let fmeAcknowledged = false;
+let fmeLines = [];
+let fmeCloseTimer = 0;
+// So lange bleibt das Pop-up nach dem Quittieren mit „✓ Quittiert“ sichtbar (ms).
+const FME_CLOSE_DELAY = 1600;
 
 function updateFme(next) {
   const player = next.players.find(player => player.id === me);
@@ -13,16 +17,17 @@ function updateFme(next) {
   if (key === fmeKey) return;
   fmeKey = key;
   fmeAcknowledged = false;
+  clearTimeout(fmeCloseTimer);
+  // Der Melder ist ein Pop-up: Er erscheint bei jeder neuen Alarmierung über allem anderen.
   $('fmePanel').classList.toggle('hidden', !incident);
-  $('fmeMessage').textContent = incident
-    ? [vehicle.call, incident.title, incident.address].join(' · ')
-    : '';
   $('fmeAcknowledge').disabled = !incident;
   if (incident) {
-    beep(1060, .16, 0, 'sine', .18);
-    beep(1400, .16, .20, 'sine', .18);
-    beep(1060, .16, .40, 'sine', .18);
-    beep(1400, .30, .60, 'sine', .18);
+    fmeLines = ['Einsatzalarm', vehicle.call, incident.title, incident.address];
+    WBFme.alarm(fmeLines);
+    $('fmeAcknowledge').focus({preventScroll: true});
+  } else {
+    fmeLines = [];
+    WBFme.clear();
   }
 }
 
@@ -30,7 +35,11 @@ $('fmeAcknowledge').onclick = () => {
   if (!fmeKey || fmeAcknowledged) return;
   fmeAcknowledged = true;
   $('fmeAcknowledge').disabled = true;
-  $('fmeMessage').textContent += ' · Quittiert';
+  WBFme.acknowledge(fmeLines);
+  const key = fmeKey;
+  fmeCloseTimer = setTimeout(() => {
+    if (fmeKey === key) $('fmePanel').classList.add('hidden');
+  }, FME_CLOSE_DELAY);
 };
 
 // Auswahl im Einsatz: Spielerfahrzeuge immer; unbesetzte (KI-Besatzung) nur, wenn der Server es erlaubt,
@@ -375,13 +384,13 @@ function render(){if(!state)return;
 updateFme(state);
 renderGfActions();
 $('countOpen').textContent=state.incidents.filter(i=>!i.closed).length;
-$('countFree').textContent=state.vehicles.filter(v=>v.phase==='wache'&&v.status!==6).length;
+$('countFree').textContent=state.vehicles.filter(v=>v.phase==='wache'&&[1,2].includes(v.status)&&!v.incident).length;
 $('countDrive').textContent=state.vehicles.filter(v=>v.phase==='anfahrt').length;
 $('countSite').textContent=state.vehicles.filter(v=>v.phase==='vorort').length;$('connection').textContent=`${room} · ${state.players.length} Spieler`;$('connection').dataset.state='ok';
 let p=state.players.find(p=>p.id===me),isLs=p?.role==='ls',isGf=p?.role==='gf',lsOwner=state.players.find(x=>x.id===state.dispatcher);$('roleInfo').textContent=isLs?'Du besetzt die Leitstelle. Nur du kannst Einsätze erstellen, alarmieren und beenden.':isGf?'Du bist Gruppenführer. Fahrzeugstatus und Einsatzmaßnahmen gehören zu deiner Rolle.':lsOwner?'Leitstelle besetzt durch '+lsOwner.name+'. Du kannst ein Fahrzeug übernehmen.':'Leitstelle noch frei. Du kannst die Leitstelle oder ein Fahrzeug übernehmen.';$('takeLs').disabled=isLs||isGf||(!developerAccount&&!!lsOwner);
 $('takeLs').textContent=developerAccount&&lsOwner&&!isLs
   ? 'Besetzte Leitstelle übernehmen'
-  : 'Leitstelle übernehmen';$('leaveLs').disabled=!isLs;$('goGf').disabled=isLs;$('incidentsPanel').classList.remove('hidden');$('incidentsPanel').querySelectorAll('.quick, .screen-title, #title, #address, #create').forEach(el=>el.classList.toggle('hidden',!isLs));$('vehiclesPanel').classList.toggle('hidden',isLs);$('controlPanel').classList.toggle('hidden',!isGf);$('dashboard').classList.toggle('hidden',!isLs);$('create').disabled=!isLs;let mine=state.vehicles.find(v=>v.id===p?.vehicle);$('myVehicle').innerHTML=mine?`<b>${esc(mine.call)}</b><p><span class="fms" data-fms="${mine.status}">${mine.status}</span> ${esc(labels[mine.status])}${phaseLabel(mine.phase)===labels[mine.status]?'':' · '+esc(phaseLabel(mine.phase))}</p>`:'Noch kein Fahrzeug besetzt';$('statuses').innerHTML=Object.entries(labels).map(([n,t])=>`<button data-status="${n}" class="${mine?.status==n?'active':''}" ${!mine?'disabled':''}>${n} ${esc(t)}</button>`).join('');$('statuses').querySelectorAll('button').forEach(b=>b.onclick=()=>send('status',{status:Number(b.dataset.status)}));$('release').disabled=!mine||mine.phase!=='wache';
+  : 'Leitstelle übernehmen';$('leaveLs').disabled=!isLs;$('goGf').disabled=isLs;$('incidentsPanel').classList.remove('hidden');$('incidentsPanel').querySelectorAll('.quick, .screen-title, #title, #address, #create').forEach(el=>el.classList.toggle('hidden',!isLs));$('vehiclesPanel').classList.toggle('hidden',isLs);$('controlPanel').classList.toggle('hidden',!isGf);$('dashboard').classList.toggle('hidden',!isLs);$('create').disabled=!isLs;let mine=state.vehicles.find(v=>v.id===p?.vehicle);$('myVehicle').innerHTML=mine?`<b>${esc(mine.call)}</b><p><span class="fms" data-fms="${mine.status}">${mine.status}</span> ${esc(labels[mine.status])}${phaseLabel(mine.phase)===labels[mine.status]?'':' · '+esc(phaseLabel(mine.phase))}</p>`:'Noch kein Fahrzeug besetzt';$('statuses').innerHTML=WBFms.buttons(mine,labels);$('fmsHint').textContent=WBFms.hint(mine,serverNow());$('fmsHint').classList.toggle('hidden',!$('fmsHint').textContent);$('speakRequests').innerHTML=isLs?WBFms.requests(state):'';$('speakRequests').querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>send('speak',{vehicle:b.dataset.speak}));WBFms.signals(state,me,isLs);$('statuses').querySelectorAll('button').forEach(b=>b.onclick=()=>send('status',{status:Number(b.dataset.status)}));$('release').disabled=!mine||mine.phase!=='wache'||!!mine.incident;
 WBLayout.apply(isGf&&mine?mine:null,labels);
 $('vehicles').innerHTML=state.vehicles.filter(v=>( $('unitFilter').value==='all'||String(v.unit)===$('unitFilter').value )&&v.call.toLowerCase().includes($('vehicleSearch').value.trim().toLowerCase())).map(v=>{let owner=state.players.find(p=>p.id===v.owner);return `<div class="item${flashVehicle===v.id&&Date.now()<flashUntil?' vehicle-flash':''}" data-vehicle-item="${esc(v.id)}"><b>${esc(v.call)}</b> <span class="fms" data-fms="${v.status}">${v.status}</span><div class="small">${owner?'GF: '+esc(owner.name):'GF frei'} · ${v.seats} Plätze · ${esc(phaseLabel(v.phase))}</div><button data-vehicle="${esc(v.id)}" ${isLs||(owner&&owner.id!==me)||v.phase!=='wache'?'disabled':''}>${owner?.id===me?'Dein Fahrzeug':'Übernehmen'}</button></div>`}).join('');$('vehicles').querySelectorAll('[data-vehicle]').forEach(b=>b.onclick=()=>send('claim',{vehicle:b.dataset.vehicle}));renderRoomAdmin();
 updateIncidents(state.incidents.filter(i=>$('incidentFilter').value==='all'||($('incidentFilter').value==='closed'?i.closed:!i.closed)).slice().reverse().map(i=>{let assigned=i.assigned.map(id=>state.vehicles.find(v=>v.id===id)).filter(Boolean);let arrived=assigned.some(v=>v.phase==='vorort');return `<div class="incident" id="inc-${esc(i.id)}" data-state="${i.closed?'closed':i.working?'working':'open'}"><b>${esc(i.title)}</b> <span class="pill ${i.closed?'green':''}">${i.closed?'Abgeschlossen':i.working?'In Bearbeitung':'Offen'}</span><div class="small">${esc(i.address)} · <span class="mono">${esc(i.created)}</span></div><div class="small">Alarmiert: ${assigned.map(v=>esc(v.call)+` <span class="fms" data-fms="${v.status}">${v.status}</span>`+((i.done||[]).includes(v.id)?' <span class="done-mark">fertig</span>':'')).join(', ')||'noch keine'}</div><div class="progress"><span style="width:${i.progress}%"></span></div><div class="small">Fortschritt: ${Math.round(i.progress)} % ${i.working?'· Mannschaft arbeitet':''}</div>${i.closed?'':`<div class="row" ${!isLs?'style="display:none"':''}><select data-for="${esc(i.id)}" ${!isLs?'disabled':''}><option value="">Fahrzeug wählen</option>${vehicleOptions(i)}</select><button data-dispatch="${esc(i.id)}" ${!isLs?'disabled':''}>Alarmieren</button></div><div class="row">${gfCanComplete(mine,i)?`<button class="gf-complete" data-complete="${esc(i.id)}">Maßnahmen abschließen</button>`:`<button data-work="${esc(i.id)}" ${!isGf||!mine||!i.assigned.includes(mine.id)||mine.phase!=='vorort'||i.working?'disabled':''}>${i.working?'Arbeiten laufen':'Maßnahmen starten'}</button>`}${isLs?`<button data-close="${esc(i.id)}">Einsatz beenden</button>`:''}</div>`}</div>`}).join(''));$('incidents').querySelectorAll('[data-dispatch]').forEach(b=>b.onclick=()=>{let id=b.dataset.dispatch,v=$('incidents').querySelector(`select[data-for="${id}"]`).value;if(!v){notice('Bitte zuerst ein verfügbares Fahrzeug auswählen.');return}send('dispatch',{incident:id,vehicle:v})});$('incidents').querySelectorAll('[data-work]').forEach(b=>b.onclick=()=>send('work',{incident:b.dataset.work}));$('incidents').querySelectorAll('[data-complete]').forEach(b=>b.onclick=()=>send('complete',{incident:b.dataset.complete}));$('incidents').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>send('close',{incident:b.dataset.close}));let log=$('log'),atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-35;log.innerHTML=state.radio.filter(x=>{const rf=$('radioFilter').value,talk=x.kind==='funk'||x.kind==='discord';return rf==='all'||(rf==='funk'?talk:!talk)}).map(x=>`<div class="item radio-${esc(x.kind||'auto')}"><span class="small">${esc(x.time)} · ${x.kind==='discord'?'Discord · ':''}${esc(x.author)}${x.call?' · '+esc(x.call):''}</span><div>${esc(x.message)}</div></div>`).join('');if(atBottom)log.scrollTop=log.scrollHeight;renderMap();renderSections()}
